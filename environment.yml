@@ -1,0 +1,17 @@
+# Minimal environment for running the MiracleGro DSE flows.
+#
+#     git submodule update --init chia chia-internal-nodes
+#     conda env create -f environment.yml   # run from the repo root
+#     conda activate miraclegro_env
+#
+# Installs chia (the vendored submodule, which pulls ray/pydantic/pyyaml/...),
+# chia-internal-nodes (ClaudeCodeLLM / pool), and miraclegro itself (editable),
+# which provides the `miraclegro <command>` CLI (see cli.py) plus matplotlib/numpy.
+name: chia_env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.19
+  - pip
+  - pip:
+      - chialoops
