@@ -338,6 +338,6 @@ SSH to your dev machine:                    gcloud compute ssh $DEV_VM --zone $D
                                         or: $SSH_DIRECT
   (stopping and starting the VM changes its IP: re-run gcloud compute config-ssh;
    gcloud compute instances list shows the new IP)
-Stop paying when you're done:               $0 --account $ACCOUNT --teardown
+Tear down the development machine:          $0 --account $ACCOUNT --teardown
 Remove everything (VM, sign-in, local files): $0 --account $ACCOUNT --purge
 EOF
