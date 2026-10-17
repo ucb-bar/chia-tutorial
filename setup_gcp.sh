@@ -11,6 +11,8 @@
 # Usage:
 #   ./setup_gcp.sh --account you@gmail.com [--project ID] [--billing-account ID]
 #   ./setup_gcp.sh --account you@gmail.com --teardown     # delete the VM
+#   ./setup_gcp.sh --account you@gmail.com --purge        # delete the VM (and optionally the
+#                                                         # project), sign out, remove local files
 #
 # Sign-in happens in the browser (Google OAuth); the script never sees your password.
 # Safe to re-run: existing project, VMs and installs are reused.
@@ -20,13 +22,14 @@
 set -euo pipefail
 
 usage() { grep '^#   \./setup_gcp' "$0" | sed 's/^#   /usage: /'; exit 1; }
-ACCOUNT="" TEARDOWN=""
+ACCOUNT="" TEARDOWN="" PURGE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --account)         ACCOUNT="$2"; shift 2 ;;
         --project)         PROJECT_ID="$2"; shift 2 ;;
         --billing-account) BILLING_ACCOUNT="$2"; shift 2 ;;
         --teardown)        TEARDOWN=1; shift ;;
+        --purge)           TEARDOWN=1 PURGE=1; shift ;;
         *) usage ;;
     esac
 done
@@ -51,6 +54,11 @@ die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 # CLOUDSDK_CONFIG keeps this install's accounts/projects separate from ~/.config/gcloud.
 export CLOUDSDK_CONFIG="$TUT_HOME/gcloud-config"
 SDK="$TUT_HOME/google-cloud-sdk"
+if [ -n "$PURGE" ] && [ ! -x "$SDK/bin/gcloud" ]; then
+    echo "The tutorial's gcloud isn't installed in $TUT_HOME; nothing to sign out of."
+    rm -f "$STATE"
+    exit 0
+fi
 if [ ! -x "$SDK/bin/gcloud" ]; then
     log "Installing a private gcloud CLI into $SDK"
     case "$(uname -s)-$(uname -m)" in
@@ -70,10 +78,47 @@ gcloud() { "$SDK/bin/gcloud" "$@"; }
 gcloud config set account "$ACCOUNT" >/dev/null 2>&1
 
 if [ -n "$TEARDOWN" ]; then
-    [ -n "${PROJECT_ID:-}" ] || die "no project recorded in $STATE"
-    log "Deleting $DEV_VM in $PROJECT_ID"
-    gcloud compute instances delete "$DEV_VM" --zone "$DEV_ZONE" --project "$PROJECT_ID" --quiet || true
-    echo "To delete the whole project too: $SDK/bin/gcloud projects delete $PROJECT_ID"
+    if [ -n "${PROJECT_ID:-}" ]; then
+        log "Deleting $DEV_VM in $PROJECT_ID"
+        gcloud compute instances delete "$DEV_VM" --zone "$DEV_ZONE" --project "$PROJECT_ID" --quiet || true
+    elif [ -z "$PURGE" ]; then
+        die "no project recorded in $STATE"
+    fi
+    if [ -z "$PURGE" ]; then
+        echo "To delete the whole project too: $SDK/bin/gcloud projects delete $PROJECT_ID"
+        echo "To also sign out and remove the tutorial's local files: $0 --account $ACCOUNT --purge"
+        exit 0
+    fi
+
+    if [ -n "${PROJECT_ID:-}" ]; then
+        read -r -p "Also delete the whole project $PROJECT_ID? [y/N] " answer
+        case "$answer" in
+            [yY]*) gcloud projects delete "$PROJECT_ID" --quiet || true ;;
+            *) echo "Keeping project $PROJECT_ID." ;;
+        esac
+    fi
+
+    log "Signing $ACCOUNT out of the tutorial's gcloud"
+    gcloud auth revoke "$ACCOUNT" --quiet >/dev/null 2>&1 || true
+    gcloud auth application-default revoke --quiet >/dev/null 2>&1 || true
+
+    # Other accounts may share TUT_HOME (and the SSH key); only clean up when this
+    # is the last one.
+    rm -f "$STATE"
+    others="$(ls "$TUT_HOME"/state-*.sh 2>/dev/null || true)"
+    if [ -z "$others" ]; then
+        # The SSH key is shared with any other gcloud on this machine: only remove
+        # it if this tutorial created it.
+        if [ "$(cat "$TUT_HOME/ssh-key-preexisting" 2>/dev/null)" = no ]; then
+            log "Removing the SSH key the tutorial created"
+            rm -f ~/.ssh/google_compute_engine ~/.ssh/google_compute_engine.pub \
+                  ~/.ssh/google_compute_known_hosts
+        fi
+        log "Removing $TUT_HOME"
+        rm -rf "$TUT_HOME"
+    else
+        echo "Keeping $TUT_HOME: it still holds state for: $others"
+    fi
     exit 0
 fi
 
@@ -181,6 +226,11 @@ create_vm() {  # name zone type cpu-platform disk-type disk-size [extra flags...
 create_vm "$DEV_VM" "$DEV_ZONE" "$DEV_TYPE" "$DEV_CPU" pd-balanced 200GB --scopes=cloud-platform
 
 # --- 7. Per-user setup on the VM (docker group, conda) ----------------------
+# Before the first `gcloud compute ssh` creates it, note whether an SSH key
+# already existed so --purge knows whether it may delete it.
+if [ ! -f "$TUT_HOME/ssh-key-preexisting" ]; then
+    if [ -f ~/.ssh/google_compute_engine ]; then echo yes; else echo no; fi > "$TUT_HOME/ssh-key-preexisting"
+fi
 vm_ssh() { gcloud compute ssh "$1" --zone "$2" --quiet --command "${3:-bash -s}"; }
 
 log "Waiting for SSH + Docker on $DEV_VM"
@@ -247,5 +297,6 @@ VM:       $DEV_VM ($DEV_ZONE)
 Use the tutorial's gcloud in a new shell:   source $TUT_HOME/env.sh
 SSH to your dev machine:                    gcloud compute ssh $DEV_VM --zone $DEV_ZONE
 Stop paying when you're done:               $0 --account $ACCOUNT --teardown
+Remove everything (VM, sign-in, local files): $0 --account $ACCOUNT --purge
 EOF
 
