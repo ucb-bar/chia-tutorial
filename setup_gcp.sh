@@ -233,8 +233,17 @@ if [ ! -f "$TUT_HOME/ssh-key-preexisting" ]; then
 fi
 vm_ssh() { gcloud compute ssh "$1" --zone "$2" --quiet --command "${3:-bash -s}"; }
 
-log "Waiting for SSH + Docker on $DEV_VM"
-until vm_ssh "$DEV_VM" "$DEV_ZONE" "command -v docker" >/dev/null 2>&1; do sleep 10; done
+# The docker command appears partway through Docker's install, before its group
+# and service exist, so wait for those instead.
+log "Waiting for SSH + Docker on $DEV_VM (the VM installs Docker on first boot, a few minutes)"
+tries=0
+until vm_ssh "$DEV_VM" "$DEV_ZONE" \
+        "getent group docker && systemctl is-active --quiet docker" >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 60 ] || die "Docker still isn't running on $DEV_VM after 10 minutes. See the install log with:
+  $SDK/bin/gcloud compute ssh $DEV_VM --zone $DEV_ZONE --command 'sudo journalctl -u google-startup-scripts --no-pager | tail -50'"
+    sleep 10
+done
 vm_ssh "$DEV_VM" "$DEV_ZONE" 'sudo usermod -aG docker "$USER"'
 echo "$DEV_VM: $(vm_ssh "$DEV_VM" "$DEV_ZONE" "lscpu | sed -n 's/^Model name: *//p'")"
 
@@ -299,4 +308,3 @@ SSH to your dev machine:                    gcloud compute ssh $DEV_VM --zone $D
 Stop paying when you're done:               $0 --account $ACCOUNT --teardown
 Remove everything (VM, sign-in, local files): $0 --account $ACCOUNT --purge
 EOF
-
