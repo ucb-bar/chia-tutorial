@@ -316,6 +316,10 @@ log "Adding $DEV_VM to ~/.ssh/config"
 gcloud compute config-ssh --quiet >/dev/null \
     || echo "WARNING: gcloud compute config-ssh failed; VS Code Remote-SSH won't list $DEV_VM."
 SSH_HOST="$DEV_VM.$DEV_ZONE.$PROJECT_ID"
+# The same connection spelled out, for anyone who'd rather not rely on ~/.ssh/config.
+target="$(gcloud compute ssh "$DEV_VM" --zone "$DEV_ZONE" --dry-run 2>/dev/null \
+          | grep -oE '[^ ]+@[0-9]+(\.[0-9]+){3}' | tail -1 || true)"
+SSH_DIRECT="ssh -i ~/.ssh/google_compute_engine ${target:-USER@EXTERNAL_IP}"
 
 # --- Done ---------------------------------------------------------------------
 cat > "$TUT_HOME/env.sh" <<EOF
@@ -331,7 +335,9 @@ VM:       $DEV_VM ($DEV_ZONE)
 Use the tutorial's gcloud in a new shell:   source $TUT_HOME/env.sh
 SSH to your dev machine:                    gcloud compute ssh $DEV_VM --zone $DEV_ZONE
                                         or: ssh $SSH_HOST
-  (if the VM is stopped and started, its IP changes: re-run gcloud compute config-ssh)
+                                        or: $SSH_DIRECT
+  (stopping and starting the VM changes its IP: re-run gcloud compute config-ssh;
+   gcloud compute instances list shows the new IP)
 Stop paying when you're done:               $0 --account $ACCOUNT --teardown
 Remove everything (VM, sign-in, local files): $0 --account $ACCOUNT --purge
 EOF

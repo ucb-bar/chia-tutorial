@@ -396,10 +396,13 @@ gcloud compute config-ssh --quiet | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: gcloud compute config-ssh failed; VS Code Remote-SSH won't list $DevVm." }
 # The config entries have no User line, so ssh logs in as the local username. gcloud
 # uses a different one when that has spaces or non-ASCII characters, so spell it out.
+# Also spell out the whole connection, for anyone who'd rather not rely on ~/.ssh/config.
 $SshHost = "$DevVm.$DevZone.$Project"
-if ((gcloud compute ssh $DevVm --zone $DevZone --dry-run | Out-String) -match '(\S+)@\d+\.\d+\.\d+\.\d+' -and
-    $Matches[1] -cne $env:USERNAME) {
-    $SshHost = "$($Matches[1])@$SshHost"
+$keyArg = "-i `"$(Join-Path $HOME '.ssh\google_compute_engine')`""
+$SshDirect = "ssh $keyArg USER@EXTERNAL_IP"
+if ((gcloud compute ssh $DevVm --zone $DevZone --dry-run | Out-String) -match '(\S+)@(\d+\.\d+\.\d+\.\d+)') {
+    $SshDirect = "ssh $keyArg $($Matches[1])@$($Matches[2])"
+    if ($Matches[1] -cne $env:USERNAME) { $SshHost = "$($Matches[1])@$SshHost" }
 }
 
 # --- Done ---------------------------------------------------------------------
@@ -417,7 +420,9 @@ VM:       $DevVm ($DevZone)
 Open a shell that uses the tutorial's gcloud:  powershell -ExecutionPolicy Bypass -NoExit -File "$EnvFile"
 SSH to your dev machine (from that shell):    gcloud compute ssh $DevVm --zone $DevZone   (opens a PuTTY window)
                                           or: ssh $SshHost
-  (if the VM is stopped and started, its IP changes: re-run gcloud compute config-ssh)
+                                          or: $SshDirect
+  (stopping and starting the VM changes its IP: re-run gcloud compute config-ssh;
+   gcloud compute instances list shows the new IP)
 Stop paying when you're done:                 $Self -Account $Account -Teardown
 Remove everything (VM, sign-in, local files): $Self -Account $Account -Purge
 "@
