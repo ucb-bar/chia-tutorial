@@ -21,6 +21,13 @@
 #   DEV_ZONE=us-west4-c   TUT_HOME=~/.chia-tutorial
 set -euo pipefail
 
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "On Windows, run setup_gcp.ps1 from PowerShell instead:" >&2
+        echo "  powershell -ExecutionPolicy Bypass -File .\\setup_gcp.ps1 -Account you@gmail.com" >&2
+        exit 1 ;;
+esac
+
 usage() { grep '^#   \./setup_gcp' "$0" | sed 's/^#   /usage: /'; exit 1; }
 ACCOUNT="" TEARDOWN="" PURGE=""
 while [ $# -gt 0 ]; do
@@ -181,13 +188,20 @@ EOF
 done
 
 # --- 5. Pre-flight: network, machine types, CPU quota ------------------------
+# New projects get a default network (with SSH/internal firewall rules) once the
+# Compute API is on, but asynchronously: it can appear while we create our own.
 if ! gcloud compute networks describe default >/dev/null 2>&1; then
     log "Creating the default network + SSH firewall rule"
-    gcloud compute networks create default --subnet-mode=auto
-    gcloud compute firewall-rules create default-allow-ssh --network=default \
-        --allow=tcp:22 --source-ranges=0.0.0.0/0
-    gcloud compute firewall-rules create default-allow-internal --network=default \
-        --allow=tcp,udp,icmp --source-ranges=10.128.0.0/9
+    if out="$(gcloud compute networks create default --subnet-mode=auto 2>&1)"; then
+        gcloud compute firewall-rules create default-allow-ssh --network=default \
+            --allow=tcp:22 --source-ranges=0.0.0.0/0
+        gcloud compute firewall-rules create default-allow-internal --network=default \
+            --allow=tcp,udp,icmp --source-ranges=10.128.0.0/9
+    elif gcloud compute networks describe default >/dev/null 2>&1; then
+        echo "GCP created the default network itself in the meantime"
+    else
+        printf '%s\n' "$out" >&2; die "creating the default network failed"
+    fi
 fi
 
 gcloud compute machine-types describe "$DEV_TYPE" --zone "$DEV_ZONE" >/dev/null 2>&1 || die \

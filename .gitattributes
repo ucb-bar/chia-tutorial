@@ -1,0 +1,4 @@
+# Keep LF in shell scripts even on Windows checkouts (core.autocrlf=true would
+# otherwise give setup_gcp.sh CRLF line endings, which bash can't run).
+*.sh  text eol=lf
+*.ps1 text eol=crlf
