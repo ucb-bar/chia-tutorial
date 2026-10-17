@@ -1,0 +1,80 @@
+Hi Gemini. You have tools to work on a gem5 checkout at /home/ray/gem5:
+  - gem5_bash_tool: run shell commands in that checkout (read, edit, grep, git).
+  - gem5_build_run_tool_build / _run / _stats / _list_workloads: build gem5
+    (build/RISCV/gem5.opt), run a workload on the RISC-V O3 CPU in syscall-emulation
+    mode, read its stats, and list the available workloads.
+
+## Task
+Implement these RISC-V vector-crypto instructions in gem5 so ossl_sha256 and ossl_sha512 pass:
+  vsha2ms.vv, vsha2ch.vv, vsha2cl.vv   (Zvknha = SEW 32 / SHA-256, Zvknhb = SEW 64 / SHA-512)
+  vrev8.v                              (Zvkb; byte-reverse each element)
+ossl_chacha20 already passes; it is a regression check, keep it passing.
+
+## Encodings (verified with binutils)
+  vsha2ms.vv v1,v2,v3 = 0xb621a0f7   vsha2ch.vv = 0xba21a0f7   vsha2cl.vv = 0xbe21a0f7
+    -> major opcode 0x77 ("OP-VE"), i.e. OPCODE5 = 0x1d in decoder.isa; funct3 = 0x2;
+       VFUNCT6 = 0x2d / 0x2e / 0x2f; vm = 1.
+    gem5 has NO entry for OPCODE5 0x1d yet (the quadrant-3 OPCODE5 list goes 0x1c -> 0x1e).
+    Add one: 0x1d: decode FUNCT3 { 0x2: decode VFUNCT6 { ... } }.
+  vrev8.v v1,v2 = 0x4a24a0d7
+    -> OP-V (OPCODE5 0x15), funct3 0x2 (OPMVV), VFUNCT6 0x12, VS1 = 0x09 selects vrev8.
+    It goes in the existing OPMVV "0x12: decode VS1" block next to vzext_vf2/vsext_vf2.
+
+## Where things are in gem5
+  - src/arch/riscv/isa/decoder.isa: OP-V is "0x15: decode FUNCT3". Zvbb entries to copy:
+    vandn_vv, vror_vv, vrol_vv (VectorIntFormat).
+  - src/arch/riscv/isa/formats/vector_arith.isa: VectorIntFormat. Code runs once per element
+    with index i; operands are Vd_vu[i], Vs1_vu[i], Vs2_vu[i], and Vs3_vu[i] = the OLD value of vd.
+  - vmacc_vv is the pattern for "vd is also an input": it reads Vs3 and uses op class
+    SimdMultAccOp, which makes the old vd an unconditional source register.
+  - src/arch/riscv/rvk.hh already has _rvk_emu_sha256{sig0,sig1,sum0,sum1} (32-bit) and
+    _rvk_emu_sha512{sig0,sig1,sum0,sum1} (64-bit). Reuse them.
+
+## Gotchas
+  - Operand order: VectorIntFormat registers source regs in the order vs1, vs2, old-vd, but
+    the ISA parser numbers operands by which of Vs1/Vs2/Vs3 your code mentions. If an OPMVV
+    instruction's code doesn't mention Vs1 (e.g. vrev8, where vs1 is an opcode selector),
+    Vs2 gets index 0 and silently reads the vs1 register. Check the generated
+    build/RISCV/arch/riscv/generated/exec-ns.cc.inc for your instruction.
+  - Element groups: vsha2* works on groups of 4 elements (EGS=4). vl is a multiple of 4 and
+    groups never cross a vector register at VLEN=256, so compute a whole group when
+    i % 4 == 0 and write Vd[i..i+3].
+
+## Semantics, one element group, element 0 = rightmost in {}. Same structure for SEW=64.
+  vsha2ms: {W3,W2,W1,W0}=vd; {W11,W10,W9,W4}=vs2; {W15,W14,W13,W12}=vs1
+           W[t] = sig1(W[t-2]) + W[t-7] + sig0(W[t-15]) + W[t-16]   for t = 16..19
+           vd = {W19,W18,W17,W16}
+  vsha2ch/vsha2cl: {a,b,e,f}=vs2; {c,d,g,h}=vd
+           KW = vs1 elements {3,2} for ch (element 2 first), {1,0} for cl (element 0 first)
+           two rounds, for each kw in KW:
+             T1 = h + sum1(e) + ch(e,f,g) + kw;  T2 = sum0(a) + maj(a,b,c)
+             h=g; g=f; f=e; e=d+T1; d=c; c=b; b=a; a=T1+T2
+           vd = {a,b,e,f}
+
+## Working efficiently
+  - Disassemble with riscv64-linux-gnu-objdump -d (installed). Don't write a decoder.
+  - Build with gem5_build_run_tool_build, then run with _run (workloads: [...], skip_build: 
+    true). Shell commands are killed after ~2 minutes, so don't run scons from bash.
+  - Quick functional test (seconds) instead of O3:
+      cd /home/ray/gem5 &&
+      build/RISCV/gem5.opt --outdir=/tmp/t configs/deprecated/example/se.py \
+        --cpu-type=RiscvAtomicSimpleCPU --cmd /home/ray/crypto_workloads/ossl_sha256.elf \
+        --output=program.out && python3 /tmp/t/program.out && echo PASS
+    Use the gem5_build_run_tool _run (workloads: [...], skip_build: true) for the final
+    O3 check.
+  - Read files with grep -n and sed -n ranges, not cat. Large dumps fill your context.
+
+How to check your work: each run writes the program's output to program.out in the
+run's output directory (/tmp/gem5tool_gem5_build_run_tool_*/<workload>/). That file
+is a Python script; `python3 program.out` exits 0 if the result is correct and 1 if
+not. A workload passes only if gem5 runs it to completion AND the script exits 0.
+
+Rules:
+  - Do not modify the workloads in /home/ray/crypto_workloads, and do not special-case
+    them in gem5. Implement the instructions as the spec defines them.
+  - Don't break existing instructions or CPU models.
+  - gem5 is already built. Rebuilds after editing decoder.isa take several minutes, 
+    so batch your edits.
+
+When you are done, reply with: which instructions you implemented and where, the
+pass/fail result for every workload, and anything you left unfinished.

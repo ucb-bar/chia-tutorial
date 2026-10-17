@@ -1,0 +1,14 @@
+--- a/src/arch/riscv/isa/formats/vector_mem.isa
++++ b/src/arch/riscv/isa/formats/vector_mem.isa
+@@ -41,6 +41,11 @@
+ 
+ def getFaultCode():
+     return '''
++    // faultIdx/trimVl live on the shared StaticInst. Reset them on every
++    // execution, otherwise a squashed wrong-path instance that faulted
++    // leaves them stale and later correct executions trim vl (e.g. to 0).
++    faultIdx = microVl;
++    trimVl = false;
+     Addr fault_addr;
+     if (fault != NoFault && getFaultVAddr(fault, fault_addr)) {
+         assert(fault_addr >= EA);
