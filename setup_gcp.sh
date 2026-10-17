@@ -105,6 +105,15 @@ if [ -n "$TEARDOWN" ]; then
         esac
     fi
 
+    # Take the tutorial's VMs out of ~/.ssh/config if it added that section and this is
+    # the last account using TUT_HOME (see below). config-ssh needs valid credentials,
+    # so this comes before signing out.
+    if [ -z "$(ls "$TUT_HOME"/state-*.sh 2>/dev/null | grep -vxF "$STATE")" ] \
+       && [ "$(cat "$TUT_HOME/ssh-config-preexisting" 2>/dev/null)" = no ]; then
+        log "Removing the tutorial's VMs from ~/.ssh/config"
+        gcloud compute config-ssh --remove --quiet >/dev/null 2>&1 || true
+    fi
+
     log "Signing $ACCOUNT out of the tutorial's gcloud"
     gcloud auth revoke "$ACCOUNT" --quiet >/dev/null 2>&1 || true
     gcloud auth application-default revoke --quiet >/dev/null 2>&1 || true
@@ -274,19 +283,8 @@ mkdir -p ~/.gemini
 EOF
 
 # --- 8. Gemini / Antigravity -------------------------------------------------
-log "Gemini Code Assist license (needed by the Antigravity CLI)"
-cat <<EOF
-Open this page, start the Gemini Code Assist trial (Standard or Enterprise) for
-project $PROJECT_ID, and assign a license to $ACCOUNT:
-
-  https://console.cloud.google.com/gemini-admin?project=$PROJECT_ID
-
-EOF
-read -r -p "Press Enter once the license is assigned (or type 'skip'): " answer
 AGY_TOKEN=.gemini/antigravity-cli/antigravity-oauth-token
-if [ "$answer" = skip ]; then
-    :
-elif vm_ssh "$DEV_VM" "$DEV_ZONE" "test -s ~/$AGY_TOKEN"; then
+if vm_ssh "$DEV_VM" "$DEV_ZONE" "test -s ~/$AGY_TOKEN"; then
     echo "agy is already signed in on $DEV_VM (~/$AGY_TOKEN exists)"
 else
     # The login lands in ~/.gemini on $DEV_VM, which CHIA mounts into its LLM containers.
@@ -306,6 +304,19 @@ EOF
         || echo "WARNING: no agy login found in ~/.gemini on $DEV_VM; re-run this script to try again."
 fi
 
+# --- 9. SSH config (VS Code Remote-SSH, plain ssh) ---------------------------
+# config-ssh keeps one "Google Compute Engine Section" in ~/.ssh/config and rewrites
+# it with this project's running VMs. Note whether one already existed so --purge
+# knows whether it may remove it.
+if [ ! -f "$TUT_HOME/ssh-config-preexisting" ]; then
+    if grep -qs '^# Google Compute Engine Section' ~/.ssh/config; then echo yes; else echo no; fi \
+        > "$TUT_HOME/ssh-config-preexisting"
+fi
+log "Adding $DEV_VM to ~/.ssh/config"
+gcloud compute config-ssh --quiet >/dev/null \
+    || echo "WARNING: gcloud compute config-ssh failed; VS Code Remote-SSH won't list $DEV_VM."
+SSH_HOST="$DEV_VM.$DEV_ZONE.$PROJECT_ID"
+
 # --- Done ---------------------------------------------------------------------
 cat > "$TUT_HOME/env.sh" <<EOF
 export CLOUDSDK_CONFIG="$CLOUDSDK_CONFIG"
@@ -319,6 +330,8 @@ VM:       $DEV_VM ($DEV_ZONE)
 
 Use the tutorial's gcloud in a new shell:   source $TUT_HOME/env.sh
 SSH to your dev machine:                    gcloud compute ssh $DEV_VM --zone $DEV_ZONE
+                                        or: ssh $SSH_HOST
+  (if the VM is stopped and started, its IP changes: re-run gcloud compute config-ssh)
 Stop paying when you're done:               $0 --account $ACCOUNT --teardown
 Remove everything (VM, sign-in, local files): $0 --account $ACCOUNT --purge
 EOF

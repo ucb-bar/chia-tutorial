@@ -124,6 +124,17 @@ if ($DoTeardown) {
         else { Write-Host "Keeping project $Project." }
     }
 
+    # Take the tutorial's VMs out of ~/.ssh/config if it added that section and this is
+    # the last account using TUT_HOME (see below). config-ssh needs valid credentials,
+    # so this comes before signing out.
+    $marker = Join-Path $TutHome 'ssh-config-preexisting'
+    $otherStates = @(Get-ChildItem -LiteralPath $TutHome -Filter 'state-*.sh' | Where-Object { $_.FullName -ne $State })
+    if ($otherStates.Count -eq 0 -and (Test-Path -LiteralPath $marker) -and
+        (Get-Content -LiteralPath $marker -Raw).Trim() -eq 'no') {
+        Log "Removing the tutorial's VMs from ~/.ssh/config"
+        gcloud compute config-ssh --remove --quiet *> $null
+    }
+
     Log "Signing $Account out of the tutorial's gcloud"
     gcloud auth revoke $Account --quiet *> $null
     gcloud auth application-default revoke --quiet *> $null
@@ -328,20 +339,9 @@ mkdir -p ~/.gemini
 Assert-Ok 'installing conda'
 
 # --- 8. Gemini / Antigravity -------------------------------------------------
-Log 'Gemini Code Assist license (needed by the Antigravity CLI)'
-Write-Host @"
-Open this page, start the Gemini Code Assist trial (Standard or Enterprise) for
-project $Project, and assign a license to ${Account}:
-
-  https://console.cloud.google.com/gemini-admin?project=$Project
-
-"@
-$answer = Read-Host "Press Enter once the license is assigned (or type 'skip')"
 $AgyToken = '.gemini/antigravity-cli/antigravity-oauth-token'
-if ($answer -ne 'skip') { Invoke-Vm "test -s ~/$AgyToken" *> $null }
-if ($answer -eq 'skip') {
-    # nothing to do
-} elseif ($LASTEXITCODE -eq 0) {
+Invoke-Vm "test -s ~/$AgyToken" *> $null
+if ($LASTEXITCODE -eq 0) {
     Write-Host "agy is already signed in on $DevVm (~/$AgyToken exists)"
 } else {
     # The login lands in ~/.gemini on $DevVm, which CHIA mounts into its LLM containers.
@@ -380,6 +380,28 @@ type /exit (or press Ctrl-C) to leave agy and let this script continue.
     }
 }
 
+# --- 9. SSH config (VS Code Remote-SSH, plain ssh) ---------------------------
+# config-ssh keeps one "Google Compute Engine Section" in ~/.ssh/config and rewrites
+# it with this project's running VMs. Note whether one already existed so -Purge
+# knows whether it may remove it.
+$marker = Join-Path $TutHome 'ssh-config-preexisting'
+if (-not (Test-Path -LiteralPath $marker)) {
+    $sshConfig = Join-Path $HOME '.ssh\config'
+    $existed = if ((Test-Path -LiteralPath $sshConfig) -and
+                   (Select-String -LiteralPath $sshConfig -Pattern '^# Google Compute Engine Section' -Quiet)) { 'yes' } else { 'no' }
+    Set-Content -LiteralPath $marker -Value $existed -Encoding Ascii
+}
+Log "Adding $DevVm to ~/.ssh/config"
+gcloud compute config-ssh --quiet | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: gcloud compute config-ssh failed; VS Code Remote-SSH won't list $DevVm." }
+# The config entries have no User line, so ssh logs in as the local username. gcloud
+# uses a different one when that has spaces or non-ASCII characters, so spell it out.
+$SshHost = "$DevVm.$DevZone.$Project"
+if ((gcloud compute ssh $DevVm --zone $DevZone --dry-run | Out-String) -match '(\S+)@\d+\.\d+\.\d+\.\d+' -and
+    $Matches[1] -cne $env:USERNAME) {
+    $SshHost = "$($Matches[1])@$SshHost"
+}
+
 # --- Done ---------------------------------------------------------------------
 $EnvFile = Join-Path $TutHome 'env.ps1'
 Set-Content -LiteralPath $EnvFile -Encoding UTF8 -Value @(
@@ -394,6 +416,8 @@ VM:       $DevVm ($DevZone)
 
 Open a shell that uses the tutorial's gcloud:  powershell -ExecutionPolicy Bypass -NoExit -File "$EnvFile"
 SSH to your dev machine (from that shell):    gcloud compute ssh $DevVm --zone $DevZone   (opens a PuTTY window)
+                                          or: ssh $SshHost
+  (if the VM is stopped and started, its IP changes: re-run gcloud compute config-ssh)
 Stop paying when you're done:                 $Self -Account $Account -Teardown
 Remove everything (VM, sign-in, local files): $Self -Account $Account -Purge
 "@
