@@ -87,6 +87,31 @@ With the extension installed:
 
 ## On-Machine Setup (once you're SSH'd in)
 
+Edit your ~/.bashrc file
+
+```bash
+nano ~/.bashrc
+```
+
+Comment out the following lines:
+
+```bash
+# If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+```
+
+And add the following lines to the bottom 
+
+```bash
+export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+if [ ! -S "$SSH_AUTH_SOCK" ]; then
+    eval "$(ssh-agent -a "$SSH_AUTH_SOCK")" > /dev/null
+fi
+```
+
 Clone the GitHub repo for the tutorial:
 
 ```bash
