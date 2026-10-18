@@ -27,7 +27,6 @@ available_node_types:
         resources: {"riscv_build": 4}
         num_workers: 1
         compatible_ips: ["${THIS_MACHINE}"]
-        worker_setup_commands: ["export ACCEL_PORT_BASE=31200"]
         docker:
             image: "ghcr.io/ucb-bar/chia-riscv-cross:latest"
             container_name: "accel-riscv-cross-${USER}"
@@ -39,7 +38,6 @@ available_node_types:
         resources: {"antigravity_creds": 1}
         num_workers: 1
         compatible_ips: ["${THIS_MACHINE}"]
-        worker_setup_commands: ["export ACCEL_PORT_BASE=31300"]
         docker:
             image: "ghcr.io/ucb-bar/chia-antigravity:latest"
             container_name: "accel-antigravity-${USER}"

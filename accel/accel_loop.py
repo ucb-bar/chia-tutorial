@@ -88,24 +88,28 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         build_cache.software_body_hash = software_body_hash
         build_cache.elfs = {c.name: compile_software(source, c) for c in CASES}
     elf_refs = build_cache.elfs
+
+    # 2. Dispatch hardware build if the RTL diff changed
     rtl_diff_hash = hashlib.sha256(json.dumps(get(git_diff()), sort_keys=True).encode()).hexdigest()
     if build_cache.build is not None and build_cache.rtl_diff_hash == rtl_diff_hash:
         logger.info("[%s] chipyard unchanged since the last build: reusing the simulator", tag)
     else:
         logger.info("[%s] building FastRTLSimRocketConfig", tag)
-        build_cache.rtl_diff_hash, build_cache.build, build_cache.logged = rtl_diff_hash, build_hardware(), False
+        build_cache.rtl_diff_hash = rtl_diff_hash
+        build_cache.logged = False
+        build_cache.build = build_hardware()
 
-    # 2. Get the compiled software artifacts
+    # 3. Get the compiled software artifacts
     elfs: dict[str, RiscvBuildArtifact] = {name: get(ref) for name, ref in elf_refs.items()}
 
-    # 3. Get the hardware build artifact
+    # 4. Get the hardware build artifact
     hw_build_artifact: BuildArtifact = get(build_cache.build)
     if not build_cache.logged:
         iter_out_dir.log(f"{tag}_hw_build.stdout.txt", hw_build_artifact.stdout)
         iter_out_dir.log(f"{tag}_hw_build.stderr.txt", hw_build_artifact.stderr)
         build_cache.logged = True
     
-    # 4. If sw compile or hardware build failed, return early
+    # 5. If sw compile or hardware build failed, return early
     sw_compile_failed = [name for name, elf in elfs.items() if not elf.success]
     for name in sw_compile_failed:
         elf = elfs[name]
@@ -113,18 +117,21 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
                 f"rc={elf.returncode}\n\n## stdout\n{elf.stdout}\n\n## stderr\n{elf.stderr}")
     dump = next((elf.dump for elf in elfs.values() if elf.success), "")
     if sw_compile_failed:
+        build_cache.elfs = {}
         first = elfs[sw_compile_failed[0]]
         detail = f"{len(sw_compile_failed)}/{len(elfs)} cases, first {sw_compile_failed[0]}: rc={first.returncode}"
         feedback = agent_prompt.feedback_sw_build(first)
         if not hw_build_artifact.success:
+            build_cache.build = None
             detail += f"; hardware build rc={hw_build_artifact.returncode}"
             feedback += "\n" + agent_prompt.feedback_hw_build(hw_build_artifact)
         return EvaluationResult("software compile", detail, feedback)
 
     if not hw_build_artifact.success:
+        build_cache.build = None
         return EvaluationResult("hardware build", f"rc={hw_build_artifact.returncode}", agent_prompt.feedback_hw_build(hw_build_artifact))
 
-    # 5. Simulation: every case on the same simulator
+    # 6. Simulation: every case on the same simulator
     logger.info("[%s] running %d cases", tag, len(CASES))
     run_refs = {name: run_simulation(hw_build_artifact, elf) for name, elf in elfs.items()}
     runs: dict[str, RunResult] = {name: get(ref) for name, ref in run_refs.items()}
@@ -216,7 +223,8 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
 
     # 1. Software write
     prompt = agent_prompt.software_prompt(parent)
-    cli = agent_prompt.check_answer(get(prompt_llm(llm, prompt, chipyard_bash)))
+    llm_sw_write_response = get(prompt_llm(llm, prompt, chipyard_bash))
+    cli = agent_prompt.check_answer(llm_sw_write_response)
     agent_prompt.log_call(iter_out_dir, "software", prompt, cli)
     if not cli.success:
         summary["stopped"] = "software write: LLM call failed"
@@ -225,7 +233,8 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
 
     # 2. Hardware write (a revised body in the answer replaces the first)
     prompt = agent_prompt.hardware_prompt(parent, applied, apply_msg)
-    cli = agent_prompt.check_answer(get(prompt_llm(llm, prompt, chipyard_bash)))
+    llm_hw_write_response = get(prompt_llm(llm, prompt, chipyard_bash))
+    cli = agent_prompt.check_answer(llm_hw_write_response)
     agent_prompt.log_call(iter_out_dir, "hardware", prompt, cli)
     if not cli.success:
         summary["stopped"] = "hardware write: LLM call failed"
@@ -238,7 +247,8 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
     for n in range(5):   # the first evaluation_result, then up to 4 debug calls
         if n > 0:
             prompt = agent_prompt.debug_prompt(n, evaluation_result.stage, evaluation_result.feedback)
-            cli = agent_prompt.check_answer(get(prompt_llm(llm, prompt, chipyard_bash)))
+            llm_debug_response = get(prompt_llm(llm, prompt, chipyard_bash))
+            cli = agent_prompt.check_answer(llm_debug_response)
             agent_prompt.log_call(iter_out_dir, f"debug_{n}", prompt, cli)
             if not cli.success:
                 summary["stopped"] = f"debug {n}: LLM call failed"
