@@ -24,7 +24,7 @@ chia down --yes accel/cluster.yaml
 | `results.py` | results processing helpers, output parsing, scoring, CSVs, best-design selection |
 | `memcpy_rocc.c` | The software harness, test + eval, and baseline memcpy |
 | `prompts/` | `software.md`, `hardware.md`, `debug.md` |
-| `cluster.yaml` | Single-machine cluster: chipyard, riscv-cross, antigravity containers |
+| `cluster.yaml` | Single-machine cluster: chipyard, verilator-run, riscv-cross, antigravity containers |
 | `dramsim_ini/` | DRAMSim2 config for the simulator's SimDRAM |
 
 ## Outputs

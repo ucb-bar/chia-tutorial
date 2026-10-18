@@ -1,16 +1,4 @@
 // RoCC memcpy accelerator harness.
-//
-// The loop replaces everything between the BEGIN / END markers inside
-// memcpy_rocc() with the LLM's body; as committed, the body is the software
-// baseline. Everything else is fixed.
-//
-// Each test and eval is its own program: this file compiled with that case's
-// -D flags (CASE_NAME, CASE_IS_EVAL, CASE_LEN, CASE_SRC_OFF, CASE_DST_OFF,
-// CASE_SEED; results.py's CASES). The program makes that one copy (timed with rdcycle), checks it with check_copy(), and
-// prints (parsed by results.py, one line each):
-//   TEST <name> <PASS|FAIL> ret=<r> mismatches=<k>
-//   EVAL <name> <PASS|FAIL> bytes=<n> cycles=<c> ret=<r> mismatches=<k>
-//   DONE
 
 #include <stdint.h>
 #include <stddef.h>

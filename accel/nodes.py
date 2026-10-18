@@ -17,8 +17,6 @@ from chia.chipyard.state_def import BuildArtifact, BuildTarget, RiscvBuildArtifa
 from chia.chipyard.verilator_run_node import VerilatorRunNode
 from chia.models.antigravity import AntigravityLLM
 
-from results import Case
-
 logger = logging.getLogger("accel.nodes")
 
 # ---------------------------------------------------------------------------
@@ -26,13 +24,11 @@ logger = logging.getLogger("accel.nodes")
 # ---------------------------------------------------------------------------
 
 
-def compile_software(source: str, case: Case) -> ObjectRef[RiscvBuildArtifact]:
-    """Cross-compile the harness with *case*'s flags into <case>.riscv
-    (+ <case>.dump)."""
+def compile_software(source: str, name: str, cflags: str) -> ObjectRef[RiscvBuildArtifact]:
     node = RiscvBuildNode(timeout_seconds=300)
     return node.build.options(resources={"riscv_build": 1}).chia_remote(
-        node, source.encode(), case.name, "/tmp/accel_sw",
-        target="verilator", extra_cflags=case.cflags, include_dump=True,
+        node, source.encode(), name, "/tmp/accel_sw",
+        target="verilator", extra_cflags=cflags, include_dump=True,
     )
 
 # ---------------------------------------------------------------------------
