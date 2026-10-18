@@ -23,7 +23,7 @@ SE_PY = f"{GEM5_ROOT}/configs/deprecated/example/se.py"
 GEM5_BIN = f"{GEM5_ROOT}/build/RISCV/gem5.opt"
 
 # Path on head machine (development machine)
-OUT = Path.home() / "gem5tutorial" / "runs" / time.strftime("%Y%m%d-%H%M%S")
+OUT = Path.home() / "chia-tutorial" / "gem5tutorial" / "runs" / time.strftime("%Y%m%d-%H%M%S")
 OUT.mkdir(parents=True, exist_ok=True)
 
 CPU_ARGS = ["--cpu-type=RiscvO3CPU", "--caches", "--l2cache"]
