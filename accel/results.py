@@ -13,6 +13,57 @@ OUT_DIR = Path(__file__).resolve().parent / "out"
 BASELINE_DIR = OUT_DIR / "baseline"
 TEMPLATE_C_PATH = Path(__file__).resolve().parent / "memcpy_rocc.c"
 
+
+# ---------------------------------------------------------------------------
+# Cases
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Case:
+    """One test or eval: the harness compiled with this case's -D flags is its
+    own program."""
+    name: str       # a C identifier; the harness stringifies it
+    kind: str       # "test" | "eval"
+    len: int
+    src_off: int    # byte offset from a 64-byte-aligned address
+    dst_off: int
+    seed: int
+
+    @property
+    def cflags(self) -> str:
+        return (f"-DCASE_NAME={self.name} -DCASE_IS_EVAL={int(self.kind == 'eval')} "
+                f"-DCASE_LEN={self.len} -DCASE_SRC_OFF={self.src_off} "
+                f"-DCASE_DST_OFF={self.dst_off} -DCASE_SEED={self.seed}")
+
+
+_TESTS = [  # name, len, src_off, dst_off
+    ("zero_bytes",           0,    0, 0),
+    ("one_byte",             1,    0, 0),
+    ("seven_bytes",          7,    0, 0),
+    ("one_word",             8,    0, 0),
+    ("one_word_src_unalign", 8,    3, 0),
+    ("one_word_dst_unalign", 8,    0, 5),
+    ("nine_bytes",           9,    0, 0),
+    ("same_misalign",        24,   3, 3),
+    ("diff_misalign",        61,   1, 6),
+    ("cache_line",           64,   0, 0),
+    ("cache_line_plus_one",  65,   0, 0),
+    ("odd_large",            1021, 7, 2),
+]
+_EVALS = [
+    ("copy_256B",            256,   0, 0),
+    ("copy_1KiB",            1024,  0, 0),
+    ("copy_4KiB",            4096,  0, 0),
+    ("copy_16KiB",           16384, 0, 0),
+    ("copy_4KiB_unaligned",  4093,  3, 5),
+]
+
+# Every test, then every eval. Tests are seeded by index, evals by 100 + index.
+CASES = ([Case(n, "test", *c, seed=i) for i, (n, *c) in enumerate(_TESTS)]
+         + [Case(n, "eval", *c, seed=100 + i) for i, (n, *c) in enumerate(_EVALS)])
+
+
 # ---------------------------------------------------------------------------
 # Harness source
 # ---------------------------------------------------------------------------
@@ -43,7 +94,6 @@ def render_source(body: str) -> str:
 # Harness output
 # ---------------------------------------------------------------------------
 
-_PLAN_RE = re.compile(r"^PLAN tests=(\d+) evals=(\d+)", re.MULTILINE)
 _TEST_RE = re.compile(r"^TEST (\S+) (PASS|FAIL) ret=(-?\d+) mismatches=(\d+)", re.MULTILINE)
 _EVAL_RE = re.compile(
     r"^EVAL (\S+) (PASS|FAIL) bytes=(\d+) cycles=(\d+) ret=(-?\d+) mismatches=(\d+)", re.MULTILINE)
@@ -51,49 +101,42 @@ _EVAL_RE = re.compile(
 
 @dataclass
 class SimResults:
+    """Every case's result line, and why each case that does not count as
+    correct does not."""
     tests: list[dict] = field(default_factory=list)
     evals: list[dict] = field(default_factory=list)
-    planned_tests: int | None = None
-    planned_evals: int | None = None
-    done: bool = False
+    problems: dict[str, str] = field(default_factory=dict)
 
-    @property
-    def failed_tests(self) -> list[str]:
-        return [t["name"] for t in self.tests if t["status"] != "PASS"]
+    def add(self, case: Case, text: str, returncode: int) -> None:
+        """Parse one case's simulator output into its result line, or a
+        problem when the run did not produce a correct one."""
+        if case.kind == "test":
+            m = _TEST_RE.search(text)
+            row = m and {"name": m.group(1), "status": m.group(2),
+                         "ret": int(m.group(3)), "mismatches": int(m.group(4))}
+        else:
+            m = _EVAL_RE.search(text)
+            row = m and {"name": m.group(1), "status": m.group(2), "bytes": int(m.group(3)),
+                         "cycles": int(m.group(4)), "ret": int(m.group(5)),
+                         "mismatches": int(m.group(6))}
+        if row:
+            (self.tests if case.kind == "test" else self.evals).append(row)
 
-    @property
-    def failed_evals(self) -> list[str]:
-        return [e["name"] for e in self.evals if e["status"] != "PASS"]
-
-    def problem(self, returncode: int) -> str | None:
-        """Why this run does not count as correct, or None if it does."""
         if returncode != 0:
-            return (f"simulator exited with rc={returncode} (a nonzero rc after the "
-                    "cycle budget means the program hung)")
-        if self.planned_tests is None:
-            return "the program never printed its PLAN line"
-        if not self.done:
-            return "the program never reached DONE"
-        if len(self.tests) != self.planned_tests or len(self.evals) != self.planned_evals:
-            return (f"expected {self.planned_tests} TEST and {self.planned_evals} EVAL lines, "
-                    f"got {len(self.tests)} and {len(self.evals)}")
-        if self.failed_tests or self.failed_evals:
-            return "failing: " + ", ".join(self.failed_tests + self.failed_evals)
-        return None
+            self.problems[case.name] = (f"simulator exited with rc={returncode} (a nonzero rc "
+                                        "after the cycle budget means the program hung)")
+        elif not row:
+            self.problems[case.name] = f"the program never printed its {case.kind.upper()} line"
+        elif not re.search(r"^DONE\s*$", text, re.MULTILINE):
+            self.problems[case.name] = "the program never reached DONE"
+        elif row["status"] != "PASS":
+            self.problems[case.name] = f"FAIL ret={row['ret']} mismatches={row['mismatches']}"
 
-
-def parse_sim_output(text: str) -> SimResults:
-    res = SimResults(done=bool(re.search(r"^DONE\s*$", text, re.MULTILINE)))
-    if m := _PLAN_RE.search(text):
-        res.planned_tests, res.planned_evals = int(m.group(1)), int(m.group(2))
-    for m in _TEST_RE.finditer(text):
-        res.tests.append({"name": m.group(1), "status": m.group(2),
-                          "ret": int(m.group(3)), "mismatches": int(m.group(4))})
-    for m in _EVAL_RE.finditer(text):
-        res.evals.append({"name": m.group(1), "status": m.group(2), "bytes": int(m.group(3)),
-                          "cycles": int(m.group(4)), "ret": int(m.group(5)),
-                          "mismatches": int(m.group(6))})
-    return res
+    def problem(self) -> str | None:
+        """Why this run does not count as correct, or None if it does."""
+        if not self.problems:
+            return None
+        return "failing: " + "; ".join(f"{name} ({why})" for name, why in self.problems.items())
 
 
 # ---------------------------------------------------------------------------

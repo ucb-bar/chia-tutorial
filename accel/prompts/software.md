@@ -44,12 +44,19 @@ You may only change the body: no new includes, globals or helper
 functions outside it (statement expressions and inline asm inside it are
 fine). `string.h`, `stdint.h`, `stddef.h` and `rocc.h` are already included.
 
-The harness the body is pasted into — correctness tests, then evaluations
-whose cycles (`rdcycle` around the call) are compared against the software
-baseline (newlib `memcpy`) — is:
+The harness the body is pasted into is below. Each correctness test and each
+evaluation is its own program: the harness compiled with that case's `-D`
+flags (`CASE_LEN`, `CASE_SRC_OFF`, ...), run on its own simulator. An evaluation's cycles (`rdcycle` around
+the call) are compared against the software baseline (newlib `memcpy`).
 
 ```c
 ${HARNESS}
+```
+
+The cases (tests, then evaluations):
+
+```
+${CASES}
 ```
 
 ${PARENT}

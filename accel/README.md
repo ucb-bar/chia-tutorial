@@ -19,7 +19,7 @@ chia down --yes accel/cluster.yaml
 | File | Role |
 |---|---|
 | `accel_loop.py` | Chia orchestration of the nodes  |
-| `llm.py` | prompts, failure feedback, parsing and logging LLM answers |
+| `agent_prompt.py` | prompts, failure feedback, parsing and logging LLM answers |
 | `nodes.py` | Chia nodes: chipyard reset / apply / diff, compile, build, simulate, prompt the LLM |
 | `results.py` | results processing helpers, output parsing, scoring, CSVs, best-design selection |
 | `memcpy_rocc.c` | The software harness, test + eval, and baseline memcpy |
@@ -32,6 +32,8 @@ chia down --yes accel/cluster.yaml
 ```
 out/
   baseline/        the reference design (software memcpy, no accelerator)
+  profile_<ts>/     ChiaProfileCollector.log: the chia profiler's timing of every
+                   compile, build, simulation and LLM call in the job
   iter_<n>/
     summary.json   status, avg_speedup, parent, attempts (stage + detail each)
     memcpy_rocc.c  the harness with this design's body

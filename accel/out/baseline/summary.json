@@ -1,0 +1,13 @@
+{
+  "name": "baseline",
+  "config": "FastRTLSimRocketConfig",
+  "attempts": [
+    {
+      "evaluation_result": 0,
+      "stage": "passed",
+      "detail": "12 tests, 5 evals passed"
+    }
+  ],
+  "avg_speedup": 1.0,
+  "status": "passed"
+}

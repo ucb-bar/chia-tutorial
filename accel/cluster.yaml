@@ -1,50 +1,3 @@
-# Single-machine cluster for the RoCC memcpy tutorial flow.
-#
-# Three containers on ${THIS_MACHINE}; the Ray head runs in your conda env on it.
-#
-#   chipyard     chia-chisel-build   chipyard:1, verilator_run:4
-#                the chipyard checkout the LLM edits (chipyard_bash), the
-#                Verilator build of FastRTLSimRocketConfig, and the simulation
-#   riscv_cross  chia-riscv-cross    riscv_build:1   cross-compiles the harness
-#   antigravity  chia-antigravity    antigravity_creds:1   the LLM (agy)
-#
-# verilator_run:4 matches the simulator's 4 threads (nodes.py): one simulation
-# at a time, with all of its threads.
-#
-# Before first use:
-#   * Sign in to Antigravity on this machine (run `agy`), and check that
-#     `agy models` lists gemini-4-argon-high for your account (the flow's model,
-#     accel_loop.py). The antigravity node mounts ${HOME}/.gemini.
-#
-#   chia up   --yes accel/cluster.yaml
-#   chia job submit --chia-cluster accel/cluster.yaml -- python "$(pwd)/accel/accel_loop.py" --iterations 3
-#   chia down --yes accel/cluster.yaml
-#
-# ---------------------------------------------------------------------------
-# Sharing the machine with other Ray clusters
-# ---------------------------------------------------------------------------
-# The containers run with --net=host, so the head and all three workers bind
-# ports on the host itself. Every port this cluster binds is pinned to its own
-# block in 31000-31999 (GCS 6395, dashboard 8095 on localhost), so nothing
-# lands on Ray's defaults (6379, 8265, 10001, workers 10002-19999) or in the
-# ephemeral range other clusters' pinned ports sit in:
-#
-#   head         31000-31099      chipyard     31100-31199
-#   riscv_cross  31200-31299      antigravity  31300-31399
-#
-# Each block: +0 node manager, +1 object manager, +2 ray client (head only),
-# +3 dashboard agent gRPC, +4 dashboard agent HTTP, +5 metrics export,
-# +6 runtime-env agent, +10..+79 Ray workers, +80..+99 chia tool servers
-# (chipyard_bash; CHIA_TOOL_BASE_PORT, otherwise they scan up from 8000).
-#
-# Other isolation: container names are accel-*-${USER}; Ray's temp dir is
-# /tmp/ray_accel/${USER}; there is no `ray stop` on the head (chia also skips
-# it there, and `chia down` stops only this cluster's processes, matched by its
-# GCS address); the workers run no `ray stop` either (chia skips it for
-# workers on the head's IP). Always pass --chia-cluster accel/cluster.yaml
-# to `chia job`: without it Ray picks whatever cluster RAY_ADDRESS / "auto"
-# finds first.
-
 cluster_name: accel-memcpy
 
 provider:
@@ -52,17 +5,15 @@ provider:
 
 auth:
     ssh_user: ${USER}
-    # ssh_private_key: ~/.ssh/<ssh_key_name>   # omit if your key is in ssh-agent
 
 available_node_types:
 
     chipyard:
-        resources: {"chipyard": 1, "verilator_run": 4}
+        resources: {"chipyard": 1, "verilator_run": 8}
         num_workers: 1
         compatible_ips: ["${THIS_MACHINE}"]
         worker_setup_commands:
             - "source /home/ray/chipyard/env.sh"
-            - "export ACCEL_PORT_BASE=31100"
         docker:
             image: "ghcr.io/ucb-bar/chia-chisel-build:latest"
             container_name: "accel-chipyard-${USER}"
@@ -73,7 +24,7 @@ available_node_types:
                 - --shm-size=10.24gb
 
     riscv_cross:
-        resources: {"riscv_build": 1}
+        resources: {"riscv_build": 4}
         num_workers: 1
         compatible_ips: ["${THIS_MACHINE}"]
         worker_setup_commands: ["export ACCEL_PORT_BASE=31200"]
@@ -115,22 +66,17 @@ head_start_ray_commands:
     - >-
       ulimit -c unlimited &&
       ray start --head --port=6395
-      --dashboard-host=127.0.0.1 --dashboard-port=8095 --include-dashboard=True
+      --dashboard-host=127.0.0.1 
+      --dashboard-port=8095 
+      --include-dashboard=True
       --temp-dir=/tmp/ray_accel/${USER}
-      --node-manager-port=31000 --object-manager-port=31001
-      --ray-client-server-port=31002
-      --dashboard-agent-grpc-port=31003 --dashboard-agent-listen-port=31004
-      --metrics-export-port=31005 --runtime-env-agent-port=31006
-      --min-worker-port=31010 --max-worker-port=31079
+      --dashboard-agent-listen-port=0
+
 
 # ACCEL_PORT_BASE comes from each node type's worker_setup_commands (same
 # script). CHIA_TOOL_* are inherited by the raylet, so tool servers started on
 # the node bind in its block.
 worker_start_ray_commands:
-    - export CHIA_TOOL_BASE_PORT=$((ACCEL_PORT_BASE + 80)) CHIA_TOOL_MAX_PORT=$((ACCEL_PORT_BASE + 99))
     - >-
       ray start --address=$RAY_HEAD_IP:6395
-      --node-manager-port=$((ACCEL_PORT_BASE + 0)) --object-manager-port=$((ACCEL_PORT_BASE + 1))
-      --dashboard-agent-grpc-port=$((ACCEL_PORT_BASE + 3)) --dashboard-agent-listen-port=$((ACCEL_PORT_BASE + 4))
-      --metrics-export-port=$((ACCEL_PORT_BASE + 5)) --runtime-env-agent-port=$((ACCEL_PORT_BASE + 6))
-      --min-worker-port=$((ACCEL_PORT_BASE + 10)) --max-worker-port=$((ACCEL_PORT_BASE + 79))
+      --dashboard-agent-listen-port=0

@@ -1,10 +1,3 @@
-"""What goes into and comes out of the LLM: the prompts, the failure
-feedback, and parsing / logging its answers.
-
-The LLM itself (one AntigravityLLM per iteration) and its calls live in
-accel_loop.py.
-"""
-
 from __future__ import annotations
 
 import json
@@ -13,7 +6,7 @@ from pathlib import Path
 from chia.base.llm_call import QueryResult
 from chia.chipyard.state_def import BuildArtifact, RiscvBuildArtifact, RunResult
 
-from results import BODY_RE, TEMPLATE_C_PATH, Design, IterDir, SimResults
+from results import BODY_RE, TEMPLATE_C_PATH, Design, IterDir, SimResults, CASES
 
 
 def _load_prompt(name: str, **subs: str) -> str:
@@ -36,6 +29,15 @@ def _truncate(text: str, max_chars: int = 30_000) -> str:
 # ---------------------------------------------------------------------------
 # LLM answers
 # ---------------------------------------------------------------------------
+
+
+def check_answer(cli: QueryResult) -> QueryResult:
+    """*cli*, failed if it has no answer: agy reports a run that ended without
+    one (e.g. after auto-denying a tool in headless mode) as a success."""
+    if cli.success and not (cli.result or "").strip():
+        cli.success = False
+        cli.stderr = f"[accel] empty answer\n{cli.stderr or ''}"
+    return cli
 
 
 def parse_body(cli: QueryResult) -> str | None:
@@ -81,12 +83,14 @@ def software_prompt(parent: Design | None) -> str:
                f"Its eval results (speedup = baseline cycles / cycles):\n\n"
                f"```csv\n{parent.eval_csv}```\n\n"
                f"Its chipyard changes (git diff per repo):\n\n```diff\n{diff}```")
-    return _load_prompt("software.md", HARNESS=TEMPLATE_C_PATH.read_text(), PARENT=ctx)
+    cases = "\n".join(f"{c.kind:<5} {c.name:<21} len={c.len:<5} src_off={c.src_off} "
+                      f"dst_off={c.dst_off} seed={c.seed}" for c in CASES)
+    return _load_prompt("software.md", HARNESS=TEMPLATE_C_PATH.read_text(), CASES=cases, PARENT=ctx)
 
 
 def hardware_prompt(parent: Design | None, applied: bool, apply_msg: str = "") -> str:
     if parent is None or parent.name == "baseline" or not any(parent.diff.values()):
-        state = f"The chipyard tree is clean: `FastRTLSimRocketConfig` has no accelerator yet."
+        state = "The chipyard tree is clean: `FastRTLSimRocketConfig` has no accelerator yet."
     elif applied:
         state = (f"The chipyard tree already contains `{parent.name}`'s changes (the diff "
                  "you were shown). Modify or replace that accelerator as your design needs.")
@@ -134,16 +138,26 @@ def _dump_excerpt(dump: str) -> str:
     return "\n".join(lines[start:start + 120])
 
 
-def feedback_sim(run: RunResult, res: SimResults, problem: str, dump: str) -> str:
+def feedback_sim(runs: dict[str, RunResult], res: SimResults, problem: str, dump: str,
+                 max_logs: int = 2) -> str:
+    """*runs*: case name -> its simulation. Shows the output of the first
+    *max_logs* failing cases."""
     rows = "\n".join(
         f"{r['name']}: {r['status']} ret={r['ret']} mismatches={r['mismatches']}"
         + (f" bytes={r['bytes']} cycles={r['cycles']}" if "cycles" in r else "")
         for r in res.tests + res.evals) or "(none)"
+    logs = ""
+    for name in list(res.problems)[:max_logs]:
+        run = runs[name]
+        logs += (f"## `{name}`: simulator stdout\n```\n{_truncate(run.log, 15_000)}\n```\n\n"
+                 f"## `{name}`: simulator stderr (spike-dasm)\n```\n{_truncate(run.out, 5_000)}\n```\n\n")
+    if len(res.problems) > max_logs:
+        logs += f"({len(res.problems) - max_logs} more failing cases not shown)\n\n"
     return (f"The simulation did not pass: {problem}.\n\n"
-            f"A test PASSes when memcpy_rocc returns 1 and `check_copy` finds no "
-            f"mismatch (a wrong destination byte, a byte written outside the "
-            f"destination, or a changed source byte).\n\n"
-            f"## Results so far\n```\n{rows}\n```\n\n"
-            f"## Simulator stdout\n```\n{_truncate(run.log)}\n```\n\n"
-            f"## Simulator stderr (spike-dasm)\n```\n{_truncate(run.out, 10_000)}\n```\n\n"
+            f"Each test and eval runs as its own program. A case PASSes when "
+            f"memcpy_rocc returns 1 and `check_copy` finds no mismatch (a wrong "
+            f"destination byte, a byte written outside the destination, or a "
+            f"changed source byte).\n\n"
+            f"## Results\n```\n{rows}\n```\n\n"
+            f"{logs}"
             f"## Disassembly of memcpy_rocc\n```\n{_dump_excerpt(dump)}\n```\n")

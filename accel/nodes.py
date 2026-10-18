@@ -1,23 +1,3 @@
-"""The flow's worker-side steps.
-
-  * chipyard git ops (run on the chipyard container): ``reset_chipyard``,
-    ``apply_diff``, ``collect_diff``.
-  * ``compile_software``: cross-compile the harness on the riscv-cross
-    container (chia's RiscvBuildNode).
-  * ``build_hardware``: build the Verilator simulator for FastRTLSimRocketConfig
-    (chia's ChiselBuildNode).
-  * ``run_simulation``: run the harness ELF on it (chia's VerilatorRunNode).
-  * ``prompt_llm``: one prompt on the iteration's AntigravityLLM, with
-    chipyard_bash as its tool.
-
-These wrappers dispatch and block, returning chia's result dataclasses; none
-of them raise on a failed build, run or LLM call.
-
-Resources match cluster.yaml. The chipyard container has one ``chipyard``
-token, and chipyard_bash holds 0.01 of it for the whole job, so the build
-takes 0.9 and the git ops 0.05.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -26,7 +6,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from chia.base.ChiaFunction import ChiaFunction, get
+from ray import ObjectRef
+
+from chia.base.ChiaFunction import ChiaFunction
 from chia.base.llm_call import QueryResult
 from chia.base.tools.BashTool import BashTool
 from chia.chipyard.chisel_build_node import ChiselBuildNode
@@ -35,6 +17,8 @@ from chia.chipyard.state_def import BuildArtifact, BuildTarget, RiscvBuildArtifa
 from chia.chipyard.verilator_run_node import VerilatorRunNode
 from chia.models.antigravity import AntigravityLLM
 
+from results import Case
+
 logger = logging.getLogger("accel.nodes")
 
 # ---------------------------------------------------------------------------
@@ -42,60 +26,50 @@ logger = logging.getLogger("accel.nodes")
 # ---------------------------------------------------------------------------
 
 
-def compile_software(source: str) -> RiscvBuildArtifact:
-    """Cross-compile the harness into memcpy_rocc.riscv (+ memcpy_rocc.dump)."""
+def compile_software(source: str, case: Case) -> ObjectRef[RiscvBuildArtifact]:
+    """Cross-compile the harness with *case*'s flags into <case>.riscv
+    (+ <case>.dump)."""
     node = RiscvBuildNode(timeout_seconds=300)
-    compile_software_result = get(
-        node.build.options(resources={"riscv_build": 1}).chia_remote(
-            node, source.encode(), "memcpy_rocc", "/tmp/accel_sw",
-            target="verilator", include_dump=True,
-        )
+    return node.build.options(resources={"riscv_build": 1}).chia_remote(
+        node, source.encode(), case.name, "/tmp/accel_sw",
+        target="verilator", extra_cflags=case.cflags, include_dump=True,
     )
-    return compile_software_result
 
 # ---------------------------------------------------------------------------
 # Hardware build node
 # ---------------------------------------------------------------------------
 
-def build_hardware() -> BuildArtifact:
-    """Build FastRTLSimRocketConfig's Verilator simulator (4 threads) from the
-    current chipyard tree."""
+# Verilator threads per simulation; each simulation holds this many
+# verilator_run tokens.
+SIM_THREADS = 1
+
+
+def build_hardware() -> ObjectRef[BuildArtifact]:
     node = ChiselBuildNode(
         chipyard_path="/home/ray/chipyard",
         config="FastRTLSimRocketConfig",
         target=BuildTarget.VERILATOR,
         make_jobs=8,
         timeout_seconds=4 * 3600,
-        extra_make_args={"VERILATOR_THREADS": 4},
+        extra_make_args={"VERILATOR_THREADS": SIM_THREADS},
     )
-    build_hardware_result = get(node.build.options(resources={"chipyard": 0.9}).chia_remote(node))
-    return build_hardware_result
+    return node.build.options(resources={"chipyard": 0.9}).chia_remote(node)
 
 # ---------------------------------------------------------------------------
 # Hardware simulation node
 # ---------------------------------------------------------------------------
 
-def run_simulation(artifact: BuildArtifact, elf: RiscvBuildArtifact) -> RunResult:
-    """Run the harness ELF on the simulator, with all 4 verilator_run tokens
-    (one per simulator thread).
-
-    The DRAMSim2 config is for the SimDRAM backing memory. No +verbose: the
-    per-instruction trace of a 16 KiB copy would dwarf the program output. A
-    hung accelerator stops at 30M cycles (the baseline needs a few million).
-    """
+def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact) -> ObjectRef[RunResult]:
     dramsim_ini = {p.name: p.read_bytes() for p in sorted((Path(__file__).resolve().parent / "dramsim_ini").iterdir())}
     node = VerilatorRunNode()
-    simulation_result = get(
-        node.run.options(resources={"verilator_run": 4}).chia_remote(
-            node, artifact, elf.binary_content, elf.binary_name, "/home/ray/accel_sim",
-            plusargs={"+loadmem": elf.binary_name},
-            timeout_cycles=30_000_000,
-            timeout_seconds=3600,
-            dramsim_ini_files=dramsim_ini,
-            verbose=False,
-        )
+    return node.run.options(resources={"verilator_run": SIM_THREADS}).chia_remote(
+        node, artifact, elf.binary_content, elf.binary_name, "/home/ray/accel_sim",
+        plusargs={"+loadmem": elf.binary_name},
+        timeout_cycles=3_000_000,
+        timeout_seconds=3600,
+        dramsim_ini_files=dramsim_ini,
+        verbose=False,
     )
-    return simulation_result
 
 
 # ---------------------------------------------------------------------------
@@ -103,20 +77,10 @@ def run_simulation(artifact: BuildArtifact, elf: RiscvBuildArtifact) -> RunResul
 # ---------------------------------------------------------------------------
 
 
-def prompt_llm(llm: AntigravityLLM, prompt: str, chipyard_bash: BashTool) -> QueryResult:
+def prompt_llm(llm: AntigravityLLM, prompt: str, chipyard_bash: BashTool) -> ObjectRef[QueryResult]:
     """Send *prompt* on *llm*'s conversation, on an antigravity_creds worker.
-    A call that raises (rate limit, auth, a lost worker) comes back as a
-    failed QueryResult with the exception in ``stderr``."""
-    llm_result = get(
-        llm.prompt.options(resources={"antigravity_creds": 1})
-        .chia_remote(llm, prompt, [chipyard_bash])
-    )
-    # agy reports a run that ended without an answer (e.g. after auto-denying a
-    # tool in headless mode) as a success; count it as a failed call.
-    if llm_result.success and not (llm_result.result or "").strip():
-        llm_result.success = False
-        llm_result.stderr = f"[accel] empty answer\n{llm_result.stderr or ''}"
-    return llm_result
+    ``get`` re-raises agy's rate-limit, auth and billing errors."""
+    return llm.prompt.options(resources={"antigravity_creds": 1}).chia_remote(llm, prompt, [chipyard_bash])
 
 # ---------------------------------------------------------------------------
 # Chipyard git nodes
@@ -140,8 +104,8 @@ def reset_chipyard(chipyard_path: str, submodules: list[str]) -> str:
                 out.append(f"[{repo or 'root'}] git {' '.join(args)}: {r.stderr.strip()}")
     return "\n".join(out) or "clean"
 
-def git_reset() -> str:
-    return get(reset_chipyard.chia_remote("/home/ray/chipyard", SUBMODULES))
+def git_reset() -> ObjectRef[str]:
+    return reset_chipyard.chia_remote("/home/ray/chipyard", SUBMODULES)
 
 @ChiaFunction(resources={"chipyard": 0.05})
 def apply_diff(chipyard_path: str, diffs: dict[str, str]) -> tuple[bool, str]:
@@ -158,8 +122,8 @@ def apply_diff(chipyard_path: str, diffs: dict[str, str]) -> tuple[bool, str]:
             return False, f"[{repo or 'root'}] git apply failed: {r.stderr.strip()}"
     return True, "applied"
 
-def git_apply(diffs: dict[str, str]) -> tuple[bool, str]:
-    return get(apply_diff.chia_remote("/home/ray/chipyard", diffs))
+def git_apply(diffs: dict[str, str]) -> ObjectRef[tuple[bool, str]]:
+    return apply_diff.chia_remote("/home/ray/chipyard", diffs)
 
 @ChiaFunction(resources={"chipyard": 0.05})
 def collect_diff(chipyard_path: str, submodules: list[str]) -> dict[str, str]:
@@ -173,6 +137,6 @@ def collect_diff(chipyard_path: str, submodules: list[str]) -> dict[str, str]:
         diffs[repo] = text
     return diffs
 
-def git_diff() -> dict[str, str]:
-    return get(collect_diff.chia_remote("/home/ray/chipyard", SUBMODULES))
+def git_diff() -> ObjectRef[dict[str, str]]:
+    return collect_diff.chia_remote("/home/ray/chipyard", SUBMODULES)
 

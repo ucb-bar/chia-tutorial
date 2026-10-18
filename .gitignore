@@ -1,3 +1,5 @@
 __pycache__/
 .mypy_cache/
-accel/out/
+accel/out/iter_*/
+accel/out/profile_*/
+logs/
