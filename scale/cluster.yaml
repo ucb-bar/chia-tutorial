@@ -1,0 +1,154 @@
+cluster_name: scale
+
+provider:
+    head_ip: ${THIS_MACHINE}
+
+auth:
+    ssh_user: ${USER}
+
+available_node_types:
+
+    chipyard:
+        resources: {"chipyard": 1}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        worker_setup_commands:
+            - "source /home/ray/chipyard/env.sh"
+        docker:
+            image: "ghcr.io/ucb-bar/chia-chisel-build:latest"
+            container_name: "accel-chipyard-${USER}"
+            pull_before_run: True
+            pull_timeout: 7200  # the image is large; the default 600 s is too short
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+
+    verilator_run:
+        resources: {"verilator_run": 8}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
+            container_name: "accel-verilator-run-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+
+    riscv_cross:
+        resources: {"riscv_build": 4}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-riscv-cross:latest"
+            container_name: "accel-riscv-cross-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+
+    antigravity:
+        resources: {"antigravity_creds": 1}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-antigravity:latest"
+            container_name: "accel-antigravity-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+                - "--user $(id -u):$(id -g)"
+                # agy's OAuth token and settings
+                - "-v ${HOME}/.gemini:/home/ray/.gemini"
+            run_setup_commands:
+                - echo "user:x:$(id -u):$(id -g)::/home/ray:/bin/bash" >> /etc/passwd
+                # agy's working directory (work_dir in accel_loop.py), kept empty
+                - mkdir -p /home/ray/agy_workspace
+
+    parallel_worker:
+        resources: {"gem5": 2}
+        num_workers: 1
+        docker:
+            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
+            container_name: "scale-worker-${USER}"
+            pull_timeout: 3600
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+        compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"]
+
+    benchmark_worker:
+        resources: {"verilator_run": 2}
+        num_workers: 1
+        docker:
+            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
+            container_name: "scale-benchmark-worker-${USER}"
+            pull_timeout: 3600
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+        compatible_ips: ["@benchmark_gcp:0", "@benchmark_gcp:1"]
+
+    head_worker:
+        resources: {"verilator_run": 2}
+        num_workers: 1
+        docker:
+            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
+            container_name: "scale-benchmark-worker-${USER}"
+            pull_timeout: 3600
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+        compatible_ips: ["@head_gcp:0"]
+    
+    
+
+gcp_nodes:
+    project: chia-codesign26oak-1967
+    zone: us-west4-c
+    parallel_gcp:
+        machine_type: c4-standard-32
+        count: 3
+        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
+        ssh_user: ubuntu               # user the guest agent creates on the VM
+        ssh_private_key: ${HOME}/.ssh/chia-key
+
+    benchmark_gcp:
+        machine_type: c4-standard-32
+        count: 2
+        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
+        ssh_user: ubuntu               # user the guest agent creates on the VM
+        ssh_private_key: ${HOME}/.ssh/chia-key
+
+    head_gcp:
+        machine_type: c4-standard-8
+        count: 1
+        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
+        ssh_user: ubuntu               # user the guest agent creates on the VM
+        ssh_private_key: ${HOME}/.ssh/chia-key
+
+connection: tunnel
+
+# chia runs the head's commands over SSH in a login shell that has neither
+head_env_commands:
+    - export PATH="${CONDA_PREFIX}/bin:$PATH"
+
+head_start_ray_commands:
+    - >-
+      ulimit -c unlimited &&
+      ray start --head --port=6395
+      --dashboard-port=8095 
+      --include-dashboard=True
+      --temp-dir=/tmp/ray_accel/${USER}
+      --dashboard-agent-listen-port=0
+
+worker_start_ray_commands:
+    - >-
+      ray start --address=$RAY_HEAD_IP:6395
+      --dashboard-agent-listen-port=0
