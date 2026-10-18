@@ -132,7 +132,6 @@ Create an SSH key, add it to the ssh-agent, and authorize it on this machine:
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/chia-key
-eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/chia-key
 cat ~/.ssh/chia-key.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
