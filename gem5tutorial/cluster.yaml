@@ -20,7 +20,7 @@ available_node_types:
         compatible_ips: ["${CHIA_HEAD}"]
 
     gem5_worker:
-        resources: {"gem5": 1}
+        resources: {"gem5": 2}
         num_workers: 1
         docker:
             image: "ghcr.io/ucb-bar/chia-gem5:latest"

@@ -54,7 +54,7 @@ def main():
     })
 
     # Setup objects
-    g5 = Gem5Node(require_colocated=True, reserve_bundle={"CPU": 10, "gem5": 0.5})
+    g5 = Gem5Node(require_colocated=True, reserve_bundle={"CPU": 10, "gem5": 1})
     g5bash = BashTool("gem5_bash_tool", GEM5_ROOT, task_options=g5.task_options)
     ag = AntigravityLLM("gemini-4-argon-low", timeout_seconds=3600 * 2, mcp_timeout_seconds=3600)
 
