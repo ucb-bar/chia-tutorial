@@ -27,13 +27,9 @@ logger = logging.getLogger("accel.nodes")
 
 
 def compile_software(source: str, case: Case) -> ObjectRef[RiscvBuildArtifact]:
-    """Cross-compile the harness with *case*'s flags into <case>.riscv
-    (+ <case>.dump)."""
-    node = RiscvBuildNode(timeout_seconds=300)
-    return node.build.options(resources={"riscv_build": 1}).chia_remote(
-        node, source.encode(), case.name, "/tmp/accel_sw",
-        target="verilator", extra_cflags=case.cflags, include_dump=True,
-    )
+    # TODO: Implement software compilation using RiscvBuildNode
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Hardware build node
@@ -45,15 +41,8 @@ SIM_THREADS = 1
 
 
 def build_hardware() -> ObjectRef[BuildArtifact]:
-    node = ChiselBuildNode(
-        chipyard_path="/home/ray/chipyard",
-        config="FastRTLSimRocketConfig",
-        target=BuildTarget.VERILATOR,
-        make_jobs=8,
-        timeout_seconds=4 * 3600,
-        extra_make_args={"VERILATOR_THREADS": SIM_THREADS},
-    )
-    return node.build.options(resources={"chipyard": 0.9}).chia_remote(node)
+    # TODO: Implement hardware build using ChiselBuildNode
+    return None
 
 # ---------------------------------------------------------------------------
 # Hardware simulation node
@@ -61,16 +50,8 @@ def build_hardware() -> ObjectRef[BuildArtifact]:
 
 def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact) -> ObjectRef[RunResult]:
     dramsim_ini = {p.name: p.read_bytes() for p in sorted((Path(__file__).resolve().parent / "dramsim_ini").iterdir())}
-    node = VerilatorRunNode()
-    return node.run.options(resources={"verilator_run": SIM_THREADS}).chia_remote(
-        node, artifact, elf.binary_content, elf.binary_name, "/home/ray/accel_sim",
-        plusargs={"+loadmem": elf.binary_name},
-        timeout_cycles=3_000_000,
-        timeout_seconds=3600,
-        dramsim_ini_files=dramsim_ini,
-        verbose=False,
-    )
-
+    # TODO: Implmenent simulation using VerilatorRunNode
+    return None
 
 # ---------------------------------------------------------------------------
 # LLM node
@@ -78,9 +59,8 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact) 
 
 
 def prompt_llm(llm: AntigravityLLM, prompt: str, chipyard_bash: BashTool) -> ObjectRef[QueryResult]:
-    """Send *prompt* on *llm*'s conversation, on an antigravity_creds worker.
-    ``get`` re-raises agy's rate-limit, auth and billing errors."""
-    return llm.prompt.options(resources={"antigravity_creds": 1}).chia_remote(llm, prompt, [chipyard_bash])
+    # TODO: Implement LLM prompt handling using AntigravityLLM
+    return None
 
 # ---------------------------------------------------------------------------
 # Chipyard git nodes
