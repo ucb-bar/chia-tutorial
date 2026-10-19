@@ -8,6 +8,11 @@ Run commands from the `scale` folder.
 source load-env.sh
 ```
 
+Increase vCPU quota by running:
+```bash
+./increase-quota.sh
+```
+
 ## 2. Adjust values
 
 Increase these starting values under `TUTORIAL` in `settings.yaml`:
@@ -27,17 +32,7 @@ Leave `FIXED` settings unchanged.
 chia up cluster.yaml
 python run.py
 ```
-
-After increasing cluster counts, add workers without tearing down the cluster:
-In a new terminal, first run `source load-env.sh` (step 1), then run:
-
-```bash
-chia up --add cluster.yaml
-```
-
-Do not start a second loop while one is running.
-Before changing worker setup commands or VM sizes, run `chia down cluster.yaml`
-using the old configuration, then edit and bring it up again. `--add` keeps existing workers.
+There should be a out/run_... value printed out, save this! We will use this to check our progress.
 
 ## 4. Check progress
 
@@ -53,7 +48,27 @@ Results stay on the head in `~/scale/out/`.
 Status shows geometric-mean benchmark speedup versus baseline when results are available;
 quick-suite speedups are marked preliminary.
 
-## 5. Shut down
+## 5. Scale up cluster
+
+After increasing cluster counts, add workers without tearing down the cluster:
+In a new terminal, first run `source load-env.sh` (step 1), then run:
+
+```bash
+chia up --add cluster.yaml
+```
+
+Do not start a second loop while one is running.
+Before changing worker setup commands or VM sizes, run `chia down cluster.yaml`
+using the old configuration, then edit and bring it up again. `--add` keeps existing workers.
+
+## 6. Check progress
+
+```bash
+python status.py out/run_...
+```
+We should now see the run progressing faster!
+
+## 7. Shut down
 
 ```bash
 chia down cluster.yaml
