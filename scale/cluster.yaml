@@ -8,7 +8,8 @@ auth:
     ssh_proxy_command: >-
         ssh -i ${HOME}/.ssh/google_compute_engine -o IdentitiesOnly=yes
         -o StrictHostKeyChecking=accept-new -W %h:%p
-        chia-dev.${CHIA_HEAD_ZONE}.${CHIA_TUT_PROJECT}
+        ${CHIA_HEAD_IP}
+        # chia-dev.${CHIA_HEAD_ZONE}.${CHIA_TUT_PROJECT}
 
 initialization_commands:
     - sudo cloud-init status --wait
