@@ -67,7 +67,7 @@ class NativeClusterTests(unittest.TestCase):
                            ssh_proxy_command="ssh dev-alias -W %h:%p")
         with patch.object(runner, "load_raw_config", return_value=raw), \
                 patch.object(runner.subprocess, "run") as execute, \
-                patch.object(sys, "argv", ["scale/run.py", "--agents", "2", "--iterations", "3"]):
+                patch.object(sys, "argv", ["scale/run.py", "--agents", "2", "--design-iterations", "3"]):
             runner.main()
         self.assertEqual(execute.call_count, 3)
         mkdir, sync, launch = [call.args[0] for call in execute.call_args_list]
@@ -80,7 +80,7 @@ class NativeClusterTests(unittest.TestCase):
         ssh_command = shlex.split(sync[sync.index("-e") + 1])
         self.assertEqual(ssh_command, mkdir[:-2])
         self.assertIn('export PATH="$HOME/miniforge3/envs/chia_env/bin:$PATH"', launch[-1])
-        self.assertIn("cd scale && python accel_loop.py --address 10.0.0.42:6395 --agents 2 --iterations 3", launch[-1])
+        self.assertIn("cd scale && python accel_loop.py --address 10.0.0.42:6395 --agents 2 --design-iterations 3", launch[-1])
         self.assertNotIn("state.json", str(execute.call_args_list))
 
     def test_runner_does_not_require_a_jump_host_or_explicit_key(self):

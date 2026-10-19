@@ -1,4 +1,4 @@
-"""Three independent memcpy co-design loops, sharing only validated designs.
+"""Independent memcpy co-design loops, sharing only validated designs.
 
 Run on the head, or use `python scale/run.py ...` from this machine.
 No submodule edits/resets or revision changes are permitted in any mode.
@@ -43,7 +43,7 @@ def load_settings(path):
     settings = yaml.safe_load(Path(path).read_text())
     if settings.get("model_effort") not in ("default", "low", "medium", "high", "xhigh", "max"):
         raise ValueError("model_effort must be default, low, medium, high, xhigh, or max")
-    positive = ["agents", "iterations_per_agent", "build_jobs", "simulation_threads", "compile_slots", "simulation_slots", "quick_cases_per_kind", "max_case_bytes", "cases_per_binary", "batch_work_bytes", "benchmark_repeats", "max_attempts", "debug_feedback_max_chars", "compile_timeout_seconds", "build_timeout_seconds", "simulation_timeout_seconds", "simulation_timeout_cycles", "model_timeout_seconds", "metrics_interval_seconds"]
+    positive = ["agents", "design_iterations_per_agent", "build_jobs", "simulation_threads", "quick_cases_per_kind", "max_case_bytes", "cases_per_binary", "batch_work_bytes", "benchmark_repeats", "max_attempts", "debug_feedback_max_chars", "compile_timeout_seconds", "build_timeout_seconds", "simulation_timeout_seconds", "simulation_timeout_cycles", "model_timeout_seconds", "metrics_interval_seconds"]
     for name in positive:
         if type(settings[name]) is not int or settings[name] < 1:
             raise ValueError(f"{name} must be a positive integer")
@@ -59,8 +59,6 @@ def load_settings(path):
         raise ValueError("batch_work_bytes cannot fit the largest individual benchmark")
     if settings["quick_cases_per_kind"] < 2 or len(settings["strategies"]) < settings["agents"]:
         raise ValueError("Need >= 2 quick cases per kind and one strategy per agent")
-    if settings["simulation_slots"] < settings["simulation_threads"]:
-        raise ValueError("Simulation CPU budget cannot fit one simulation")
     if type(settings["model_rate_limit_retries"]) is not int or settings["model_rate_limit_retries"] < 0:
         raise ValueError("model_rate_limit_retries must be a nonnegative integer")
     for name in ["model_backoff_seconds", "model_max_backoff_seconds"]:
@@ -96,6 +94,29 @@ def json_file(path, value):
     Path(path).write_text(json.dumps(value, indent=2, default=str) + "\n")
 
 
+def collect_tasks(tasks, finish):
+    """Submit everything to Ray, then drain it even if submission/evaluation fails.
+
+    Ray alone limits concurrency. Draining prevents stale work overlapping a
+    debugger's next attempt and preserves the other batches' diagnostic logs.
+    """
+    pending, results, first_error = [], [], None
+    try:
+        for task in tasks:
+            pending.append(task)
+    except Exception as error:
+        first_error = error
+    for task in pending:
+        try:
+            results.append(finish(task))
+        except Exception as error:
+            if first_error is None:
+                first_error = error
+    if first_error is not None:
+        raise first_error
+    return results
+
+
 def preflight(settings):
     if version("chialoops") != "2.0.0":
         raise RuntimeError("The loop requires chialoops==2.0.0")
@@ -106,7 +127,7 @@ def preflight(settings):
     if len(builders) < settings["agents"] or compiler is None or model is None:
         raise RuntimeError("Missing builder, compiler, or model-client workers")
     resources = ray.cluster_resources()
-    for name, required in [("riscv_build", settings["compile_slots"]), ("verilator_run", settings["simulation_slots"]), ("antigravity_creds", settings["agents"])]:
+    for name, required in [("riscv_build", 1), ("verilator_run", settings["simulation_threads"]), ("antigravity_creds", settings["agents"])]:
         if resources.get(name, 0) < required:
             raise RuntimeError(f"Requested {required} {name} slots, available {resources.get(name, 0)}")
     builders = builders[:settings["agents"]]
@@ -172,8 +193,6 @@ def placement_check(settings, builders):
 class Engine:
     def __init__(self, settings, directory, physical):
         self.settings, self.directory, self.physical = settings, directory, physical
-        self.compiler_slots = threading.BoundedSemaphore(settings["compile_slots"])
-        self.simulator_slots = threading.BoundedSemaphore(settings["simulation_slots"] // settings["simulation_threads"])
         self.events_lock = threading.Lock()
         self.stop_metrics = threading.Event()
         self.reused_baseline = False
@@ -215,23 +234,28 @@ class Engine:
     def evaluate(self, body, cases, build, cache, directory, label):
         groups = case_batches(cases, self.settings)
         json_file(directory / "batches.json", [[c.name for c in group] for group in groups])
-        def compile_one(item):
-            index, group = item
-            source = render(body, group, self.settings)
-            digest = hashlib.sha256(source.encode()).hexdigest()
-            if digest not in cache:
-                with self.compiler_slots:
-                    elf = get(nodes.compile_software(source, f"batch_{index:04d}", self.settings))
-                if not elf.success:
-                    (directory / f"batch_{index:04d}.compile.stdout.txt").write_text(elf.stdout)
-                    (directory / f"batch_{index:04d}.compile.stderr.txt").write_text(elf.stderr)
-                    raise EvaluationError("software compile", "Software compile failed:\n" + elf.stderr[-20000:] + elf.stdout[-10000:])
-                cache[digest] = elf
-            return index, group, cache[digest]
+        def compile_tasks():
+            for index, group in enumerate(groups):
+                source = render(body, group, self.settings)
+                digest = hashlib.sha256(source.encode()).hexdigest()
+                sources.append((index, group, digest))
+                if digest not in submitted:
+                    submitted.add(digest)
+                    yield index, digest, nodes.compile_software(source, f"batch_{index:04d}", self.settings)
+        def finish_compile(task):
+            index, digest, ref = task
+            elf = get(ref)
+            if not elf.success:
+                (directory / f"batch_{index:04d}.compile.stdout.txt").write_text(elf.stdout)
+                (directory / f"batch_{index:04d}.compile.stderr.txt").write_text(elf.stderr)
+                raise EvaluationError("software compile", "Software compile failed:\n" + elf.stderr[-20000:] + elf.stdout[-10000:])
+            cache[digest] = elf
+        sources, submitted = [], set(cache)
         compiled, compile_error = [], None
         try:
-            with self.stage(label, "software_compile"), ThreadPoolExecutor(max_workers=min(len(groups), self.settings["compile_slots"])) as pool:
-                compiled = list(pool.map(compile_one, enumerate(groups)))
+            with self.stage(label, "software_compile"):
+                collect_tasks(compile_tasks(), finish_compile)
+                compiled = [(index, group, cache[digest]) for index, group, digest in sources]
         except Exception as error:
             compile_error = error
         # A debugger must NEVER edit this checkout while its previous build runs.
@@ -247,23 +271,25 @@ class Engine:
         if compile_error is not None:
             raise compile_error
         artifact_ref = ray.put(artifact)
-        def run_one(item):
-            index, group, elf = item
-            with self.simulator_slots:
+        def simulation_tasks():
+            for index, group, elf in compiled:
                 started = time.monotonic()
-                result = get(nodes.simulate(artifact_ref, elf, self.settings))
-                elapsed = time.monotonic() - started
+                yield index, group, started, nodes.simulate(artifact_ref, elf, self.settings)
+        def finish_simulation(task):
+            index, group, started, ref = task
+            result = get(ref)
+            elapsed = time.monotonic() - started
             (directory / f"batch_{index:04d}.log").write_text(result.log)
-            json_file(directory / f"batch_{index:04d}.timing.json", dict(cases=len(group), wall_seconds=elapsed, returncode=result.returncode))
+            json_file(directory / f"batch_{index:04d}.timing.json", dict(cases=len(group), wall_seconds=elapsed, returncode=result.returncode,
+                      note="Submission-to-collection time, including Ray queue wait; not simulation execution time alone."))
             if result.returncode:
                 (directory / f"batch_{index:04d}.stderr.txt").write_text(result.out)
             try:
                 return parse_results(group, result.log, result.returncode)
             except ValueError as error:
                 raise EvaluationError("simulation", str(error) + "\n" + result.log[-20000:] + result.out[-5000:]) from error
-        workers = min(len(compiled), self.settings["simulation_slots"] // self.settings["simulation_threads"])
-        with self.stage(label, "simulation"), ThreadPoolExecutor(max_workers=workers) as pool:
-            rows = [row for group in pool.map(run_one, compiled) for row in group]
+        with self.stage(label, "simulation"):
+            rows = [row for group in collect_tasks(simulation_tasks(), finish_simulation) for row in group]
         json_file(directory / "results.json", rows)
         return rows
 
@@ -358,7 +384,7 @@ def run_agent(index, builder, source_info, coordinator, engine, quick, full, bas
     baseline = {r["name"]: r["cycles"] for r in baseline_rows if r["kind"] == "eval"}
     passed = 0
     try:
-        for iteration in range(settings["iterations_per_agent"]):
+        for iteration in range(settings["design_iterations_per_agent"]):
             iteration_start = time.monotonic()
             label = f"agent_{index}/iter_{iteration:03d}"
             directory = engine.directory / label
@@ -437,7 +463,8 @@ def main():
     parser.add_argument("--settings", default=str(ROOT / "settings.yaml"))
     parser.add_argument("--address")
     parser.add_argument("--agents", type=int)
-    parser.add_argument("--iterations", type=int)
+    parser.add_argument("--design-iterations", "--iterations", dest="design_iterations", type=int,
+                        help="Design iterations per agent (--iterations is an alias)")
     parser.add_argument("--preflight", action="store_true", help="Read-only cluster/environment checks; no model calls or source edits")
     parser.add_argument("--placement-check", action="store_true", help="Verify parallel builder/tool placement and rejection of submodule writes")
     parser.add_argument("--list-cases", action="store_true", help="Offline suite counts")
@@ -447,13 +474,13 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     settings = load_settings(args.settings)
     if args.agents is not None:
-        if not 1 <= args.agents <= settings["agents"]:
-            parser.error("--agents must be between 1 and settings.yaml agents")
+        if not 1 <= args.agents <= len(settings["strategies"]):
+            parser.error("--agents must be between 1 and the number of configured strategies")
         settings["agents"] = args.agents
-    if args.iterations is not None:
-        if args.iterations < 1:
-            parser.error("--iterations must be positive")
-        settings["iterations_per_agent"] = args.iterations
+    if args.design_iterations is not None:
+        if args.design_iterations < 1:
+            parser.error("--design-iterations must be positive")
+        settings["design_iterations_per_agent"] = args.design_iterations
     quick, full = load_cases(settings, "quick"), load_cases(settings, "full")
     print(json.dumps(dict(quick=len(quick), configured_suite=len(full), available_cases=len(load_cases(settings, "all")), tests=sum(c.kind == "test" for c in full), benchmarks=sum(c.kind == "eval" for c in full), quick_batches=len(case_batches(quick, settings)), suite_batches=len(case_batches(full, settings)))), flush=True)
     if args.list_cases:

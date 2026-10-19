@@ -5,7 +5,7 @@ or custom cloud bootstrap is needed. Credentials are never copied to the head.
 
 Examples: python scale/run.py --preflight
           python scale/run.py --baseline-only
-          python scale/run.py --iterations 2
+          python scale/run.py --design-iterations 2
 """
 from pathlib import Path
 import shlex

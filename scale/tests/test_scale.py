@@ -1,5 +1,5 @@
 """Offline tests. No cloud, model calls, or third-party checkout mutations."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 import json
 import math
@@ -16,12 +16,13 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from accel_loop import batches, case_batches, load_settings, Engine, EvaluationError, reuse_baseline
+from accel_loop import batches, case_batches, collect_tasks, load_settings, Engine, EvaluationError, reuse_baseline
 from coordinator import Coordinator, Design
-from nodes import EDIT_ROOT, SourceTool, editable, source_path, validate_patch, workspace, inspect_builder
+from nodes import EDIT_ROOT, SourceTool, compile_software, editable, simulate, source_path, validate_patch, workspace, inspect_builder
 from suite import Case, body_from, category, fingerprint, load_cases, parse_results, render, score, validate_offload
 from build_worker import target_settings
 from model_client import ScaleAntigravityLLM
+from prompts import software
 
 
 class SuiteTests(unittest.TestCase):
@@ -71,6 +72,54 @@ class SuiteTests(unittest.TestCase):
             path.write_text(json.dumps(settings))
             with self.assertRaisesRegex(ValueError, "model_effort"):
                 load_settings(path)
+
+    def test_five_distinct_strategies_with_three_agents_by_default(self):
+        self.assertEqual(self.settings["agents"], 3)
+        strategies = self.settings["strategies"]
+        self.assertEqual(len(strategies), 5)
+        self.assertEqual(len(set(strategies)), 5)
+        self.assertTrue(all(isinstance(s, str) and s.strip() for s in strategies))
+        parent = Design("baseline", "/unused", self.body, "", 1.0, "fixture")
+        prompts = [software(parent, strategy, dict(quick=64, full=1024)) for strategy in strategies]
+        self.assertEqual(len(set(prompts)), 5)
+        for strategy, prompt in zip(strategies, prompts):
+            self.assertIn("Your independent strategy: " + strategy, prompt)
+        with tempfile.TemporaryDirectory(prefix="scale-five-agents-") as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text(json.dumps(dict(self.settings, agents=5)))
+            self.assertEqual(load_settings(path)["agents"], 5)
+
+    def test_design_iterations_are_positive_and_shared_slots_are_not_run_settings(self):
+        self.assertEqual(self.settings["design_iterations_per_agent"], 1)
+        for removed in ("iterations_per_agent", "compile_slots", "simulation_slots"):
+            self.assertNotIn(removed, self.settings)
+        with tempfile.TemporaryDirectory(prefix="scale-design-iterations-") as directory:
+            path = Path(directory) / "settings.json"
+            for value in (0, -1, True, "2"):
+                path.write_text(json.dumps(dict(self.settings, design_iterations_per_agent=value)))
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "design_iterations_per_agent"):
+                    load_settings(path)
+
+    def test_design_iterations_cli_and_legacy_alias_without_cloud_calls(self):
+        for flag in ("--design-iterations", "--iterations"):
+            with self.subTest(flag=flag):
+                result = subprocess.run([sys.executable, str(ROOT / "accel_loop.py"),
+                                         flag, "2", "--list-cases"], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+        result = subprocess.run([sys.executable, str(ROOT / "accel_loop.py"),
+                                 "--design-iterations", "0", "--list-cases"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--design-iterations must be positive", result.stderr)
+
+    def test_cli_accepts_five_agents_and_rejects_missing_strategy_without_cloud_calls(self):
+        result = subprocess.run([sys.executable, str(ROOT / "accel_loop.py"),
+                                 "--agents", "5", "--list-cases"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["configured_suite"], 1024)
+        result = subprocess.run([sys.executable, str(ROOT / "accel_loop.py"),
+                                 "--agents", "6", "--list-cases"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("number of configured strategies", result.stderr)
 
     def test_pinned_upstream_enumeration(self):
         subprocess.run([sys.executable, str(ROOT / "benchmarks/generate_cases.py"), "--verify"], check=True)
@@ -336,6 +385,30 @@ class BaselineTests(unittest.TestCase):
 
 
 class EngineTests(unittest.TestCase):
+    def test_all_work_is_submitted_before_waiting_and_errors_drain_remaining_work(self):
+        submitted, finished = [], []
+        def tasks():
+            for index in range(6):
+                submitted.append(index)
+                yield index
+        def finish(index):
+            self.assertEqual(submitted, list(range(6)), "Do not limit submissions in the driver")
+            finished.append(index)
+            if index == 0:
+                raise RuntimeError("first task failed")
+        with self.assertRaisesRegex(RuntimeError, "first task failed"):
+            collect_tasks(tasks(), finish)
+        self.assertEqual(finished, list(range(6)), "Drain other tasks before starting a debug attempt")
+
+    def test_submission_error_still_drains_previously_submitted_tasks(self):
+        finished = []
+        def tasks():
+            yield "already running"
+            raise RuntimeError("submission failed")
+        with self.assertRaisesRegex(RuntimeError, "submission failed"):
+            collect_tasks(tasks(), finished.append)
+        self.assertEqual(finished, ["already running"])
+
     def test_failed_software_compile_preserves_unabridged_logs(self):
         settings = load_settings(ROOT / "settings.yaml")
         cases = load_cases(settings, "quick")[:1]
@@ -352,9 +425,85 @@ class EngineTests(unittest.TestCase):
             self.assertEqual((root / "batch_0000.compile.stdout.txt").read_text(), elf.stdout)
             self.assertEqual((root / "batch_0000.compile.stderr.txt").read_text(), elf.stderr)
 
-    def test_three_evaluations_share_budgets_cache_exact_sources_and_reject_failed_hardware(self):
+    def test_remote_tasks_reserve_ray_resources_without_loop_slot_settings(self):
         settings = load_settings(ROOT / "settings.yaml")
-        settings.update(compile_slots=2, simulation_slots=2, cases_per_binary=1)
+        with patch("nodes.RiscvBuildNode") as compiler, patch("nodes.VerilatorRunNode") as simulator:
+            compile_software("source", "batch", settings)
+            compiler.return_value.build.options.assert_called_once_with(
+                num_cpus=1, resources={"riscv_build": 1}, max_retries=0)
+            settings["simulation_threads"] = 2
+            simulate("artifact", SimpleNamespace(binary_content=b"elf", binary_name="batch"), settings)
+            simulator.return_value.run.options.assert_called_once_with(
+                num_cpus=2, resources={"verilator_run": 2}, max_retries=0)
+
+    def test_simulation_failure_drains_all_batches_and_keeps_their_logs(self):
+        settings = load_settings(ROOT / "settings.yaml")
+        settings["cases_per_binary"] = 1
+        cases = load_cases(settings, "quick")[:3]
+        body = body_from((ROOT / "memcpy_rocc.c").read_text())
+        artifact = SimpleNamespace(success=True)
+        submitted, resolved = [], []
+        compile_calls = []
+        def compile_fake(source, name, cfg):
+            elf = SimpleNamespace(success=True, source=source)
+            compile_calls.append(elf)
+            return elf
+        def simulate_fake(build, elf, cfg):
+            index = len(submitted)
+            case = cases[index]
+            result = SimpleNamespace(returncode=1 if index == 0 else 0, out="diagnostic",
+                                     log=f'{case.kind.upper()} {case.name} PASS bytes={case.length} cycles=10 ret=1 mismatches=0\nDONE\n')
+            submitted.append(result)
+            return result
+        def get_fake(ref):
+            if hasattr(ref, "source"):
+                self.assertEqual(len(compile_calls), len(cases))
+            elif hasattr(ref, "returncode"):
+                self.assertEqual(len(submitted), len(cases))
+                resolved.append(ref)
+            return ref
+        with tempfile.TemporaryDirectory(prefix="scale-drain-simulations-") as directory:
+            root = Path(directory)
+            engine = Engine(settings, root, {})
+            with patch("accel_loop.get", side_effect=get_fake), \
+                    patch("accel_loop.ray.put", side_effect=lambda value: value), \
+                    patch("accel_loop.nodes.compile_software", side_effect=compile_fake), \
+                    patch("accel_loop.nodes.simulate", side_effect=simulate_fake):
+                with self.assertRaises(EvaluationError) as error:
+                    engine.evaluate(body, cases, artifact, {}, root, "failure")
+            self.assertEqual(error.exception.stage, "simulation")
+            self.assertEqual(resolved, submitted)
+            for index, result in enumerate(submitted):
+                self.assertEqual((root / f"batch_{index:04d}.log").read_text(), result.log)
+            self.assertFalse((root / "results.json").exists())
+
+    def test_failed_compile_drains_other_compiles_and_awaits_hardware_before_debugging(self):
+        settings = load_settings(ROOT / "settings.yaml")
+        settings["cases_per_binary"] = 1
+        cases = load_cases(settings, "quick")[:2]
+        body = body_from((ROOT / "memcpy_rocc.c").read_text())
+        failed = SimpleNamespace(success=False, stdout="", stderr="bad software")
+        good, hardware = SimpleNamespace(success=True), SimpleNamespace(success=True)
+        resolved, cache = [], {}
+        def get_fake(ref):
+            resolved.append(ref)
+            return ref
+        with tempfile.TemporaryDirectory(prefix="scale-drain-compiles-") as directory:
+            root = Path(directory)
+            engine = Engine(settings, root, {})
+            with patch("accel_loop.get", side_effect=get_fake), \
+                    patch("accel_loop.nodes.compile_software", side_effect=[failed, good]), \
+                    patch("accel_loop.nodes.simulate") as simulation:
+                with self.assertRaises(EvaluationError) as error:
+                    engine.evaluate(body, cases, hardware, cache, root, "failure")
+            self.assertEqual(error.exception.stage, "software compile")
+            self.assertEqual([id(ref) for ref in resolved], [id(failed), id(good), id(hardware)])
+            self.assertEqual(list(cache.values()), [good])
+            simulation.assert_not_called()
+
+    def test_three_evaluations_share_ray_capacity_cache_sources_and_reject_failed_hardware(self):
+        settings = load_settings(ROOT / "settings.yaml")
+        settings.update(cases_per_binary=1)
         cases = load_cases(settings, "quick")[:2]
         body = body_from((ROOT / "memcpy_rocc.c").read_text())
         active, maximum = dict(compile=0, sim=0), dict(compile=0, sim=0)
@@ -389,7 +538,13 @@ class EngineTests(unittest.TestCase):
                 target = root / f'agent{index}_{len(list(root.glob("agent*")))}'
                 target.mkdir()
                 return engine.evaluate(changed_body, cases, artifact, caches[index], target, f"agent{index}")
-            with patch("accel_loop.get", side_effect=lambda ref: ref), patch("accel_loop.ray.put", side_effect=lambda value: value), patch("accel_loop.nodes.compile_software", side_effect=compile_fake), patch("accel_loop.nodes.simulate", side_effect=simulate_fake):
+            # Fake Ray workers, not loop-level caps: all three pipelines enqueue
+            # freely, and only the shared worker pools bound actual execution.
+            with ThreadPoolExecutor(max_workers=2) as compiler_workers, ThreadPoolExecutor(max_workers=2) as simulator_workers, \
+                    patch("accel_loop.get", side_effect=lambda ref: ref.result() if isinstance(ref, Future) else ref), \
+                    patch("accel_loop.ray.put", side_effect=lambda value: value), \
+                    patch("accel_loop.nodes.compile_software", side_effect=lambda *args: compiler_workers.submit(compile_fake, *args)), \
+                    patch("accel_loop.nodes.simulate", side_effect=lambda *args: simulator_workers.submit(simulate_fake, *args)):
                 with ThreadPoolExecutor(max_workers=3) as pool:
                     rows = list(pool.map(evaluate, range(3)))
                 self.assertEqual([len(r) for r in rows], [2, 2, 2])
