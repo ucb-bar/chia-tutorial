@@ -1,6 +1,58 @@
 Scaled RoCC memcpy loop (CHIA / chialoops 2.0.0)
 ================================================
 
+HOW TO SCALE THE LOOP: EDIT THESE NUMBERS
+=======================================
+Start here. The two files to edit are scale/settings.yaml (loop settings) and
+scale/cluster.yaml (cloud resources). Search for "TUTORIAL" in either file.
+Replace the existing numbers with your own; <N> below means fill in a number,
+not a literal YAML value. The defaults are a starting point, not requirements.
+
+What you want          File / setting                       Current value
+---------------------  -----------------------------------  -------------
+More parallel agents   settings.yaml: agents                 3
+More search iterations settings.yaml: iterations_per_agent   1 per agent
+More hardware builders cluster.yaml: parallel_gcp.count      3 VMs
+Larger builder VMs     cluster.yaml: parallel_gcp.machine_type c4-standard-32
+Faster hardware builds settings.yaml: build_jobs             24 per builder
+More simulator VMs     cluster.yaml: benchmark_gcp.count      2 VMs
+More concurrent sims   settings.yaml: simulation_slots       48 total
+Larger JVM heap        settings.yaml: java_heap_gb           8 GiB per builder
+More test cases        settings.yaml: case_limit             1024; 0 = all 4488
+More timing samples    settings.yaml: benchmark_repeats      1; use 3 for final checks
+More disk space        cluster.yaml: disk_size_gb            builder 150 / sim 100 / head 50 GB
+
+IMPORTANT: some numbers MUST change together.
+
+1. To run <N> parallel agents, set settings.yaml agents: <N> and provide at
+   least <N> strategies. In cluster.yaml, provide at least <N> builders:
+   parallel_gcp.count and available_node_types.chipyard.num_workers must match,
+   with one compatible_ips entry per builder (@parallel_gcp:0, :1, ...).
+   Set available_node_types.antigravity.resources.antigravity_creds to at
+   least <N>. Increasing --agents alone cannot exceed settings.yaml agents.
+
+2. To use <M> simulator VMs, update benchmark_gcp.count, verilator_run.num_workers,
+   and its compatible_ips list together. Each VM currently supplies 24 CPU and
+   verilator_run slots. Set simulation_slots <= <M> * 24. With the default
+   simulation_threads: 1, 48 slots permits at most 48 simultaneous simulations
+   across ALL agents, not 48 per agent. More threads consume more slots per run.
+
+3. Larger VM types do not automatically increase loop parallelism. Adjust the
+   role's SCALE_WORKER_CPUS and resource tokens too. Keep build_jobs <= builder
+   CPU budget; compile_slots <= riscv_build tokens. On the shared head, budget
+   for Ray's 1 CPU plus compiler and model-container CPUs; leave OS headroom.
+
+4. Check GCP regional CPU/disk quotas and model-provider limits BEFORE scaling
+   up. More local model slots do not increase your account's quota. Resource
+   changes require reprovisioning/restarting the affected infrastructure; editing
+   YAML alone does not resize running VMs. Smaller disks require replacement.
+   Cluster teardown deletes boot disks: preserve needed results first.
+
+Changing case counts, repeat counts, or the timing protocol requires a matching
+new baseline. More cases/repeats improve coverage but take longer; extra VMs
+do not guarantee that every individual simulation will finish within 15 minutes.
+See "Resource/settings reference (all editable knobs)" below for the full list.
+
 Scope
 -----
 All tutorial implementation and outputs are under scale/. accel/ is unchanged.
@@ -108,8 +160,8 @@ No automatic model switch, paid-credit opt-in, or quota purchase is performed.
 Candidates that send a dummy RoCC command then call software memcpy are rejected;
 the software baseline remains available only as the frozen comparison reference.
 
-Resource/settings change log
----------------------------
+Resource/settings reference (all editable knobs)
+-----------------------------------------------
 cluster.yaml:
   gcp_nodes.project / zone            Your project and per-role zones.
   gcp_nodes.*.machine_type / count    Physical VM sizes and counts.
