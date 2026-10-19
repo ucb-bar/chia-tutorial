@@ -51,5 +51,9 @@ chia job submit --working-dir . -- python hello-world.py
 ## Tear down the cluster
 
 ```
+<<<<<<< HEAD
 chia down –add cluster.yaml -y
+=======
+chia down cluster.yaml -y
+>>>>>>> 889bed7 (Fix readme bugs part 2)
 ```
