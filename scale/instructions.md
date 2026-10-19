@@ -24,8 +24,6 @@ Edit these before starting; allocation knobs are marked `TUTORIAL` in the YAML.
 | `settings.yaml` | `agents` | Parallel optimization searches |
 | `settings.yaml` | `iterations_per_agent` | Designs explored per agent |
 | `settings.yaml` | `case_limit` | Test/benchmark coverage; `0` selects all available cases |
-| `settings.yaml` | `benchmark_repeats` | Timed repetitions per benchmark |
-| `settings.yaml` | `build_jobs` / `java_heap_gb` | CPU parallelism and maximum Java heap per hardware build |
 | `settings.yaml` | `compile_slots` / `simulation_slots` | Concurrent compilations/simulations across all agents |
 | `cluster.yaml` | `gcp_nodes.*.count` | Number of builder or simulator VMs |
 | `cluster.yaml` | `gcp_nodes.*.machine_type` | CPU and RAM per VM |
@@ -34,7 +32,7 @@ Edit these before starting; allocation knobs are marked `TUTORIAL` in the YAML.
 More agents need matching builders, strategy prompts, and model-client slots.
 VM counts must match worker counts and IP references; loop slots must fit the
 cluster's CPU/resource budgets. See `README.txt` for the coupled settings.
-Changing coverage or timing repetitions requires a new matching baseline.
+Changing coverage requires a new matching baseline. Benchmarks use one timed repetition.
 Editing cluster YAML does not resize existing VMs; resource changes require
 reprovisioning. Download results before replacing VMs or disks.
 

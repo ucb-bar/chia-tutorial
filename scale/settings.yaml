@@ -19,7 +19,7 @@ max_case_bytes: 16384         # Retain large-copy coverage in the available corp
 case_limit: 1024              # TUTORIAL: fixed subset; 0 selects all 4,488 available cases.
 cases_per_binary: 8           # TUTORIAL: maximum, not a fixed batch size.
 batch_work_bytes: 98304       # TUTORIAL: cap sum((length + 128 guard bytes) * invocations).
-benchmark_repeats: 1          # Fast iteration timing; use 3 with case_limit: 0 for final checks.
+benchmark_repeats: 1          # One timed copy per benchmark.
 benchmark_warmups: 1
 max_attempts: 5               # Initial design + up to four debugging attempts.
 compile_timeout_seconds: 300
