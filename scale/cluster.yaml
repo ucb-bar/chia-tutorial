@@ -17,9 +17,9 @@ initialization_commands:
 
 available_node_types:
     chipyard:
-        resources: {chipyard: 1}
-        num_workers: 3  # TUTORIAL: builder workers; match the VM count below.
-        compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"]
+        resources: {chipyard: 1} # TUTORIAL: CPUs per worker available for use
+        num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
+        compatible_ips: ["@parallel_gcp:0"] # TUTORIAL: add the correct IPs here
         worker_setup_commands: ["source /home/ray/chipyard/env.sh"]
         docker:
             image: ghcr.io/ucb-bar/chia-chisel-build:latest
@@ -29,9 +29,9 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     verilator_run:
-        resources: {verilator_run: 1}
-        num_workers: 3  # TUTORIAL: simulator workers; match the VM count below.
-        compatible_ips: ["@benchmark_gcp:0", "@benchmark_gcp:1", "@benchmark_gcp:2"]
+        resources: {verilator_run: 1} # TUTORIAL: CPUs per worker available for use
+        num_workers: 1  # TUTORIAL: simulator workers; match the VM count below.
+        compatible_ips: ["@benchmark_gcp:0"] # TUTORIAL: add the correct IPs here 
         docker:
             image: ghcr.io/ucb-bar/chia-verilator-run:latest
             container_name: scale-verilator
@@ -40,7 +40,7 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     riscv_cross:
-        resources: {riscv_build: 1}
+        resources: {riscv_build: 1} # TUTORIAL: number of build CPUs available 
         num_workers: 1
         compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
@@ -51,7 +51,7 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536"]
 
     antigravity:
-        resources: {antigravity_creds: 1}
+        resources: {antigravity_creds: 1} # TUTORIAL: number of antigravity instances available at once. 
         num_workers: 1
         compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
@@ -72,8 +72,8 @@ gcp_nodes:
     project: ${CHIA_TUT_PROJECT}
     zone: us-west4-c
     parallel_gcp:
-        machine_type: c4-standard-32  # TUTORIAL: builder VM size.
-        count: 3  # TUTORIAL: builder VM count.
+        machine_type: c4-standard-32
+        count: 1  # TUTORIAL: builder VM count.
         image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
         ssh_user: ubuntu
         ssh_private_key: ${HOME}/.ssh/google_compute_engine
@@ -95,8 +95,8 @@ gcp_nodes:
 
     benchmark_gcp:
         zone: us-central1-a
-        machine_type: c4-standard-32  # TUTORIAL: simulator VM size.
-        count: 3  # TUTORIAL: simulator VM count.
+        machine_type: c4-standard-32
+        count: 1  # TUTORIAL: simulator VM count.
         image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
         ssh_user: ubuntu
         ssh_private_key: ${HOME}/.ssh/google_compute_engine
