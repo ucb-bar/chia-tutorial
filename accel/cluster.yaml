@@ -9,7 +9,7 @@ auth:
 available_node_types:
 
     chipyard:
-        resources: {"chipyard": 1, "verilator_run": 8}
+        resources: {"chipyard": 1}
         num_workers: 1
         compatible_ips: ["${THIS_MACHINE}"]
         worker_setup_commands:
@@ -19,6 +19,18 @@ available_node_types:
             container_name: "accel-chipyard-${USER}"
             pull_before_run: True
             pull_timeout: 7200  # the image is large; the default 600 s is too short
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+
+    verilator_run:
+        resources: {"verilator_run": 8}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
+            container_name: "accel-verilator-run-${USER}"
+            pull_before_run: True
             run_options:
                 - --ulimit nofile=65536:65536
                 - --shm-size=10.24gb

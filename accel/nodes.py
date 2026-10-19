@@ -17,8 +17,6 @@ from chia.chipyard.state_def import BuildArtifact, BuildTarget, RiscvBuildArtifa
 from chia.chipyard.verilator_run_node import VerilatorRunNode
 from chia.models.antigravity import AntigravityLLM
 
-from results import Case
-
 logger = logging.getLogger("accel.nodes")
 
 # ---------------------------------------------------------------------------

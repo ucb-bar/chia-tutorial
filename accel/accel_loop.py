@@ -86,7 +86,8 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         logger.info("[%s] body unchanged since the last compile: reusing the ELFs", tag)
     else:
         build_cache.software_body_hash = software_body_hash
-        build_cache.elfs = {c.name: compile_software(source, c) for c in CASES}
+        # TODO: Call the software compile nodes in parallel
+        build_cache.elfs = {}
     elf_refs = build_cache.elfs
 
     # 2. Dispatch hardware build if the RTL diff changed
