@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+from queue import Queue
 import time
 
 import ray
@@ -101,8 +102,8 @@ def prepare_builders(settings):
     """Choose isolated workspaces and refuse to discard existing source changes."""
     alive = [n for n in ray.nodes() if n["Alive"]]
     builders = sorted((n for n in alive if n["Resources"].get("chipyard", 0) >= 1 and n["Resources"].get("CPU", 0) >= 1), key=lambda n: n["NodeManagerAddress"])
-    if len(builders) < settings["agents"]:
-        raise RuntimeError("Need one builder worker per agent")
+    if not builders:
+        raise RuntimeError("Need at least one builder worker")
     builders = builders[:settings["agents"]]
     checks = [nodes.inspect_builder.options(scheduling_strategy=nodes.pinned(n["NodeID"])).chia_remote(settings["chipyard_path"]) for n in builders]
     info = [get(ref) for ref in checks]
@@ -326,8 +327,26 @@ def main():
         coordinator = Coordinator(directory, baseline)
         count = 0
         if not args.baseline_only:
+            available_builders = Queue()
+            for builder in builders:
+                available_builders.put(builder)
+            LOG.info("%d agents sharing %d builders", settings["agents"], len(builders))
+
+            def start_agent(index):
+                waiting = directory / f"agent_{index}" / "waiting_for_builder"
+                waiting.parent.mkdir(parents=True, exist_ok=True)
+                waiting.touch()
+                LOG.info("agent_%d waiting for builder", index)
+                builder = available_builders.get()
+                try:
+                    waiting.unlink()
+                    LOG.info("agent_%d acquired builder %s", index, builder["NodeID"])
+                    return run_agent(index, builder, coordinator, settings, directory, quick, full, build, rows)
+                finally:
+                    available_builders.put(builder)
+
             with ThreadPoolExecutor(max_workers=settings["agents"]) as pool:
-                futures = [pool.submit(run_agent, i, node, coordinator, settings, directory, quick, full, build, rows) for i, node in enumerate(builders)]
+                futures = [pool.submit(start_agent, i) for i in range(settings["agents"])]
                 count = sum(f.result() for f in as_completed(futures))
         best = coordinator.snapshot()
         json_file(directory / "run_summary.json", dict(validated_candidates=count, wall_seconds=time.monotonic() - start,

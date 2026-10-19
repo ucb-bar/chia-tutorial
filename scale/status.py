@@ -72,7 +72,8 @@ def report(root):
     for index in range(settings["agents"]):
         directory = latest(root / f"agent_{index}", "iter_[0-9]*")
         if directory is None:
-            print(f"agent_{index} | not started")
+            state = "waiting for builder" if (root / f"agent_{index}/waiting_for_builder").exists() else "not started"
+            print(f"agent_{index} | {state}")
             continue
         iteration = int(directory.name.split("_")[-1]) + 1
         parts = [f"agent_{index}", f"iteration {iteration}/{iterations}"]
