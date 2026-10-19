@@ -267,16 +267,17 @@ if ($LASTEXITCODE -ne 0) {
 $QuotaRegions = if ($env:QUOTA_REGIONS) { $env:QUOTA_REGIONS } else { 'us-west4=100 us-central1=100' }
 $QuotaFamilies = if ($env:QUOTA_FAMILIES) { $env:QUOTA_FAMILIES } else { 'C4' }
 
-# The quota commands are in gcloud's beta component. (Don't probe it with
-# `gcloud beta ...`: when beta is missing that asks to install it, invisibly here.)
-Log "Installing gcloud's beta component (for the quota commands)"
-gcloud components install beta --quiet *> $null
-Assert-Ok "installing gcloud's beta component (needed for quota requests)"
+# `gcloud quotas` is GA since gcloud 579.0.0, so no beta component is needed. (On
+# Windows, `gcloud components install` refuses to run unattended with the bundled
+# Python.)
+
+# --billing-project: without it, Cloud Quotas charges these calls to gcloud's own
+# shared client project, whose daily "Quota Increase Requests" limit runs out.
 
 # Current limit of a quota for a region/family ('' = the quota has no such dimension).
 function Get-QuotaLimit([string]$QuotaId, [string]$Region, [string]$Family) {
-    $json = gcloud beta quotas info describe $QuotaId --service=compute.googleapis.com `
-                "--project=$Project" --format=json 2>$null | Out-String
+    $json = gcloud quotas info describe $QuotaId --service=compute.googleapis.com `
+                "--project=$Project" "--billing-project=$Project" --format=json 2>$null | Out-String
     if ($LASTEXITCODE -ne 0 -or -not $json.Trim()) { return 0 }
     foreach ($info in ($json | ConvertFrom-Json).dimensionsInfos) {
         $dims = $info.dimensions
@@ -299,11 +300,14 @@ function Request-Quota([string]$QuotaId, [long]$Value, [string]$Region, [string]
     $pref += '-cpus'
     $extra = @()
     if ($Region) { $extra += "--dimensions=region=$Region$(if ($Family) { ",vm_family=$Family" })" }
-    gcloud beta quotas preferences update $pref "--project=$Project" `
+    $out = gcloud quotas preferences update $pref "--project=$Project" "--billing-project=$Project" `
         --service=compute.googleapis.com "--quota-id=$QuotaId" "--preferred-value=$Value" @extra `
         "--email=$Account" --allow-missing --quiet `
-        "--justification=CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" *> $null
+        "--justification=CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" 2>&1 |
+        ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) {
+        # gcloud's own error, e.g. "ERROR: (gcloud.quotas.preferences.update) ...".
+        $out | Where-Object { $_ -match '^ERROR' } | Select-Object -First 1 | ForEach-Object { Write-Host "  $_" }
         Write-Host "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
     }
 }

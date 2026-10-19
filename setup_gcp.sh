@@ -230,15 +230,13 @@ gcloud compute machine-types describe "$DEV_TYPE" --zone "$DEV_ZONE" >/dev/null 
 QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 us-central1=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 
-# The quota commands are in gcloud's beta component. (Don't probe it with
-# `gcloud beta ...`: when beta is missing that asks to install it, invisibly here.)
-log "Installing gcloud's beta component (for the quota commands)"
-gcloud components install beta --quiet >/dev/null 2>&1 \
-    || die "could not install gcloud's beta component (needed for quota requests)"
+# `gcloud quotas` is GA since gcloud 579.0.0, so no beta component is needed.
 
+# --billing-project: without it, Cloud Quotas charges these calls to gcloud's own
+# shared client project, whose daily "Quota Increase Requests" limit runs out.
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
-    gcloud beta quotas info describe "$1" --service=compute.googleapis.com \
-        --project="$PROJECT_ID" --flatten=dimensionsInfos \
+    gcloud quotas info describe "$1" --service=compute.googleapis.com \
+        --project="$PROJECT_ID" --billing-project="$PROJECT_ID" --flatten=dimensionsInfos \
         --format='csv[no-heading](dimensionsInfos.dimensions.region,dimensionsInfos.dimensions.vm_family,dimensionsInfos.details.value)' \
         2>/dev/null | awk -F, -v r="$2" -v f="$3" '$1==r && $2==f { v=$3 } END { print v+0 }'
 }
@@ -254,7 +252,7 @@ request_quota() {  # quota-id value region family
     echo "REQUEST  $label: limit $current -> $value"
     pref="chia-tut${region:+-$region}$(printf '%s' "${family:+-$family}" | tr 'A-Z' 'a-z')-cpus"
     [ -n "$region" ] && dims=(--dimensions="region=$region${family:+,vm_family=$family}")
-    gcloud beta quotas preferences update "$pref" --project="$PROJECT_ID" \
+    gcloud quotas preferences update "$pref" --project="$PROJECT_ID" --billing-project="$PROJECT_ID" \
         --service=compute.googleapis.com --quota-id="$id" --preferred-value="$value" \
         ${dims[@]+"${dims[@]}"} --email="$ACCOUNT" --allow-missing --quiet \
         --justification="CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" \
