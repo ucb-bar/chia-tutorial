@@ -165,9 +165,11 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
                 for name, elf in elfs.items()}
     # BOARDS: one row per case. VerilatorRunNode does not report, so the driver
     # does: "submitted" now, then done/failed as each simulation comes back.
+    # took = dispatch to result, so it includes waiting for a verilator_run slot.
     kinds = {c.name: c.kind for c in CASES}
+    submitted = time.time()
     for name in run_refs:
-        report("sims", name, kind=kinds[name], attempt=tag, state="submitted", cycles="")
+        report("sims", name, kind=kinds[name], attempt=tag, state="submitted", cycles="", took="")
     by_ref = {ref: name for name, ref in run_refs.items()}
     runs: dict[str, RunResult] = {}
     pending = list(by_ref)
@@ -177,7 +179,8 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         run = runs[name] = get(ready)
         cycles = _CYCLES_RE.search(run.out)
         report("sims", name, state="done" if run.success else "failed",
-               cycles=int(cycles.group(1)) if cycles else "")
+               cycles=int(cycles.group(1)) if cycles else "",
+               took=f"{time.time() - submitted:.0f}s")
     sim = SimResults()
     for case in CASES:
         run = runs[case.name]
