@@ -1,3 +1,4 @@
 cache/
+out/
 profiling/out/
 __pycache__/

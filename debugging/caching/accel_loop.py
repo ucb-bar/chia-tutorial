@@ -38,6 +38,7 @@ from nodes import (
     prompt_llm,
     run_simulation,
 )
+import results
 from results import (
     BASELINE_DIR,
     CASES,
@@ -55,6 +56,13 @@ from results import (
     write_eval_csv,
     write_tests_csv,
 )
+
+# Everything this section produces stays in debugging/: the iterations, the
+# baseline and the designs, not just the cache and the profiles.
+OUT_DIR = _Path(__file__).resolve().parents[1] / "out"
+BASELINE_DIR = OUT_DIR / "baseline"
+results.OUT_DIR = OUT_DIR
+results.BASELINE_DIR = BASELINE_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger("accel")
