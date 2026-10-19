@@ -176,7 +176,7 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
 # add_info puts these fields in that bar's tooltip.
 @ChiaFunction()
 def evaluation(body: str | None, iter_out_dir: IterDir, tag: str, build_cache: BuildCache,
-               debug_iterations: int, parent: Design) -> EvaluationResult:
+               parent: Design) -> EvaluationResult:
     elfs_before, build_before = build_cache.elfs, build_cache.build
     result = evaluate_design(body, iter_out_dir, tag, build_cache)
     sim = result.sim
@@ -185,7 +185,7 @@ def evaluation(body: str | None, iter_out_dir: IterDir, tag: str, build_cache: B
         "parent": parent.name,
         "parent_avg_speedup": parent.avg_speedup,
         "status": result.stage,
-        "debug_iterations": debug_iterations,
+        "attempt": tag,             # evaluation_result0 = first try, 1-4 = after a debug answer
         # evaluate_design keeps the same ELFs / simulator when the C body /
         # the chipyard diff did not change since the last attempt
         "binaries_reused": bool(elfs_before) and build_cache.elfs is elfs_before,
@@ -318,7 +318,7 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
                 break
             body = agent_prompt.parse_body(cli) or body
         evaluation_result = evaluation(body, iter_out_dir, f"evaluation_result{n}", build_cache,
-                                       debug_iterations=n, parent=parent)   # PROFILING: was evaluate_design
+                                       parent=parent)   # PROFILING: was evaluate_design
         summary["attempts"].append({"evaluation_result": n, "stage": evaluation_result.stage, "detail": evaluation_result.detail})
         logger.info("[evaluation_result%d] %s: %s", n, evaluation_result.stage, evaluation_result.detail)
         if evaluation_result.stage == "passed":
