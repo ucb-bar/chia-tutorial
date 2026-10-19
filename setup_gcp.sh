@@ -276,6 +276,9 @@ STARTUP="$TUT_HOME/startup.sh"
 cat > "$STARTUP" <<'EOF'
 #!/bin/bash
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
+# graphviz: the "dot" binary that `chia viz-profile --format svg` shells out to.
+# The pip package is only the Python wrapper, so pip cannot supply it.
+command -v dot >/dev/null || { apt-get update -qq && apt-get install -y -qq graphviz; }
 EOF
 
 create_vm() {  # name zone type cpu-platform disk-type disk-size [extra flags...]
