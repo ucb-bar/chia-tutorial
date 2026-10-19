@@ -19,13 +19,6 @@ from chia.models.antigravity import AntigravityLLM
 
 logger = logging.getLogger("accel.nodes")
 
-# LOGGING: where the simulations' logs go. By default a folder on the head;
-# accel_loop.py --log-to-storage switches to the machine that advertises
-# PERSISTENT_STORAGE (the storage VM of cluster_storage.yaml), where log dir is
-# a path on that machine.
-SIM_LOG_DIR = str(Path(__file__).resolve().parents[1] / "logs" / "sims")
-SIM_LOG_RESOURCE = None
-
 # ---------------------------------------------------------------------------
 # Software compile node
 # ---------------------------------------------------------------------------
@@ -70,9 +63,11 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact, 
     # the DRAMSim config lives with their example, not next to this copy
     _accel = Path(__file__).resolve().parents[2] / "accel"
     dramsim_ini = {p.name: p.read_bytes() for p in sorted((_accel / "dramsim_ini").iterdir())}
-    # LOGGING: the node chia_logs each run into its own file in SIM_LOG_DIR, on the
-    # machine with SIM_LOG_RESOURCE (None: the head). See the settings below.
-    node = VerilatorRunNode(log_dir=SIM_LOG_DIR, logging_resource=SIM_LOG_RESOURCE)
+    # LOGGING: the node chia_logs each run into its own file in log_dir, on the
+    # machine that advertises PERSISTENT_STORAGE (the storage VM of
+    # cluster_storage.yaml). log_dir is a path on that machine.
+    node = VerilatorRunNode(log_dir=os.path.expanduser("~/chia_logs/sims"),
+                            logging_resource="PERSISTENT_STORAGE")
     return node.run.options(resources={"verilator_run": SIM_THREADS}).chia_remote(
         node, artifact, elf.binary_content, elf.binary_name, "/home/ray/accel_sim",
         plusargs={"+loadmem": elf.binary_name},
