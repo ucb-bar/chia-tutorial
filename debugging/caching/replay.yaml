@@ -2,12 +2,15 @@
 #
 # The git nodes (reset_chipyard, apply_diff, collect_diff) are deliberately not
 # here: they change the checkout, so they must really run.
+#
+# cache: false so a replay never writes: a call that runs for real cannot
+# overwrite the recorded result under the same tag. Recording is cache.yaml.
 
 cache:
-  RiscvBuildNode.build:  {cache: true, tags: ["sw_.*"]}
-  ChiselBuildNode.build: {cache: true, tags: ["hw_.*"]}
-  VerilatorRunNode.run:  {cache: true, tags: ["sim_.*"]}
-  AntigravityLLM.prompt: {cache: true, tags: ["llm_.*"]}
+  RiscvBuildNode.build:  {cache: false, tags: ["sw_.*"]}
+  ChiselBuildNode.build: {cache: false, tags: ["hw_.*"]}
+  VerilatorRunNode.run:  {cache: false, tags: ["sim_.*"]}
+  AntigravityLLM.prompt: {cache: false, tags: ["llm_.*"]}
 
 bypass:
   RiscvBuildNode.build:  {bypass: false, tags: ["sw_.*"]}
