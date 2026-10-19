@@ -314,7 +314,10 @@ def main() -> None:
     })
     # Every ChiaFunction call (compiles, builds, simulations, LLM calls, git
     # ops) is timed into out/profile_<timestamp>/ChiaProfileCollector.log.
-    start_collector(log_dir=str(OUT_DIR / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"))
+    # profiles belong to this section, not to accel/out
+    _profiles = _Path(__file__).resolve().parents[1] / "profiling" / "out"
+    _profiles.mkdir(parents=True, exist_ok=True)
+    start_collector(log_dir=str(_profiles / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"))
 
     # ----- CACHING -------------------------------------------------------
     # Started after ray.init() and after start_collector(): get_profiler()
