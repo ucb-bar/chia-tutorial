@@ -35,7 +35,7 @@ Quick: deterministic, evenly spaced samples from each kind sorted by size,
 alignment and direction. Default 32 per kind = 64; a subset of configured/full.
 Cases are adaptively batched: at most 8 per binary and 96 KiB estimated work,
 where work = sum((length + 128 guards) * invocations). Large copies use smaller
-batches. The wall-clock limit stays 900 seconds per simulator, not per suite.
+batches. The wall-clock limit is 1200 seconds per simulator, not per suite.
 
 Bare-metal differences and limitations
 -------------------------------------
@@ -59,7 +59,7 @@ Bare-metal differences and limitations
 - No glibc IFUNC comparisons, OS fault detection, or official glibc score.
 - Performance is relative to the SAME frozen harness, case list, repetition
   settings, compiler, Chipyard revision/state, and software memcpy baseline.
-  The aggregate is the geometric mean of per-benchmark baseline/candidate
+  The aggregate is the arithmetic mean of per-benchmark baseline/candidate
   cycle ratios. Every correctness case AND benchmark must pass before promotion.
 - SCALE_HOST_TEST supplies synthetic cycle values ONLY for native correctness
   tests. These values must NEVER be reported as accelerator performance.

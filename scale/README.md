@@ -25,6 +25,18 @@ again in a new shell or after replacing the head VM. Keep using the same shell
 for downloading results and stopping the cluster.
 The console prints the results directory on the head: `~/scale/out/run_...`.
 
+To monitor it, open another terminal on the head and use that directory:
+
+```bash
+watch -n 5 'python ~/scale/status.py ~/scale/out/run_...'
+```
+
+This shows each agent's design iteration, debug attempt, latest saved quick/full
+profile, and reported case pass/fail counts. Counts update when the driver saves
+batch logs, not continuously inside a simulation; they can lag completed work.
+It reads saved files only, so it does not prove that a stalled run is still alive.
+The final summaries, not these progress counts, determine validation.
+
 ### Scaling knobs
 
 Editable scaling knobs and strategy prompts are at the top of `settings.yaml`.
@@ -80,16 +92,26 @@ baseline, test cases, and logs stay with the results.
 Open the run directory printed by the loop, now under `scale/out/`:
 
 - `best.json`: winning design, its directory, and speedup.
-- `run_summary.json`: validated candidates and optimization throughput.
+- `run_summary.json`: validated candidate count, total wall time, and scoring method.
 - `agent_*/iter_*/summary.json`: each agent's success or failure.
-- Winning iteration's `hardware.patch` and `memcpy_body.c`: the implementation.
-- `timing_summary.json`: wall time and failed simulations; batch timings include queue wait and result collection.
-- `metrics_summary.json`: elapsed time and sampled peak disk usage.
+- Winning directory's `hardware.patch` and `memcpy_body.c`: the implementation (`best.json` points directly to the successful attempt).
+- `attempt_*/failure.txt` and profile logs within each iteration: failure details.
 
-A score of `6.36` means a **6.36x geometric-mean simulated-cycle speedup** across
-the configured benchmarks, not faster wall-clock execution. A passing run does
+A score of `6.36` means a **6.36x arithmetic-mean simulated-cycle speedup** across
+the configured benchmarks, matching the original loop's scoring method. It does
+not measure faster wall-clock execution. Older scale runs used geometric-mean
+scoring and are not directly comparable. A passing run does
 not mean every agent succeeded. The current 1,024-case suite is a subset of the
 4,488 available cases; do not report it as validation against all cases.
+
+Each run measures a fresh baseline. The driver keeps parallel design loops,
+batched upstream cases, and model backoff. Hardware builds call CHIA's
+`ChiselBuildNode` directly, as in the original accelerator loop; there is no
+custom build process or filesystem sandbox. Agents use CHIA's standard
+`BashTool`; there is no custom editing tool or file-state fingerprinting.
+Saved patches and iteration resets cover Chipyard's Scala source directory.
+VM telemetry, per-stage timing, placement-check commands, and cross-run baseline
+reuse are not included.
 
 ## 4. Stop worker charges
 

@@ -3,8 +3,7 @@
 Bring up the cluster with `chia up scale/cluster.yaml`; no runtime state file
 or custom cloud bootstrap is needed. Credentials are never copied to the head.
 
-Examples: python scale/run.py --preflight
-          python scale/run.py --baseline-only
+Examples: python scale/run.py --baseline-only
           python scale/run.py --design-iterations 2
 """
 from pathlib import Path

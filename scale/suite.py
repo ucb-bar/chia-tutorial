@@ -1,10 +1,9 @@
 """Frozen upstream vectors, quick/full profiles, and strict result checking."""
 import csv
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import hashlib
 import json
-import math
 from pathlib import Path
 import re
 
@@ -155,11 +154,4 @@ def score(rows, baseline):
     ratios = [baseline[name] / cycles for name, cycles in current.items() if cycles > 0]
     if len(ratios) != len(current) or any(value <= 0 for value in ratios):
         raise ValueError("Invalid benchmark cycles")
-    return math.exp(sum(math.log(value) for value in ratios) / len(ratios))
-
-
-def fingerprint(settings, cases, environment):
-    relevant = {k: settings.get(k) for k in ("hardware_config", "simulation_threads", "benchmark_repeats", "benchmark_warmups", "cases_per_binary", "batch_work_bytes")}
-    data = dict(settings=relevant, cases=[asdict(c) for c in cases], environment=environment,
-                harness=hashlib.sha256((ROOT / "memcpy_rocc.c").read_bytes()).hexdigest())
-    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    return sum(ratios) / len(ratios)

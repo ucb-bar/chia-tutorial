@@ -23,7 +23,6 @@ model_effort: medium         # Explicit medium effort; default omits --effort.
 # Leave the defaults below unchanged when experimenting with scaling.
 chipyard_path: /home/ray/chipyard
 hardware_config: FastRTLSimRocketConfig
-java_heap_gb: 8               # SBT/Chisel JVM heap per builder.
 simulation_threads: 1         # Ray CPUs requested by each simulation.
 quick_cases_per_kind: 32      # Subset of the upstream tests AND benchmarks.
 max_case_bytes: 16384         # Retain large-copy coverage in the available corpus.

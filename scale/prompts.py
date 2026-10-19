@@ -1,5 +1,4 @@
 """Keep Angela's software -> hardware -> evaluate -> debug sequence."""
-from pathlib import Path
 import re
 from suite import body_from
 
@@ -10,9 +9,9 @@ Copy exactly len non-overlapping bytes for all alignments, leave src unchanged,
 return 1 only after all writes are visible to ordinary core loads. Use rocc.h
 custom0..custom3 macros consistently. You may change ONLY the function body.
 
-Your chipyard_source tools read/list/search source and write complete files.
-Hardware writes are restricted to generators/chipyard/src/main/scala/*.scala.
-All third-party submodules are read-only. NEVER change submodules, git revisions,
+Use chipyard_bash to read and edit files in your dedicated builder checkout.
+Edit hardware under generators/chipyard/src/main/scala/; only that directory is
+saved in design patches and reset between iterations. Do not change submodules, git revisions,
 build scripts, the frozen harness, benchmark vectors, scoring, or output logs.
 Read generators/rocket-chip/src/main/scala/tile/LazyRoCC.scala and
 generators/chipyard/src/main/scala/config/fragments/RoCCFragments.scala.
@@ -23,7 +22,7 @@ Do not special-case tests, bypass the accelerator, or return fabricated output.
 The accelerator MUST perform the copy. Never call memcpy/memmove or add a CPU
 copy loop after a dummy RoCC command. Return a real RoCC interface, not the
 software baseline as a placeholder. No preprocessor directives in the body.
-Use chipyard_source for Chipyard files: the CLI's local filesystem is the
+Use chipyard_bash for Chipyard files: the CLI's local filesystem is the
 model container, NOT the builder. Do not search that local filesystem for Chipyard.
 The compiler's rocc.h provides these exact public macro signatures:
 ROCC_INSTRUCTION_SS(X, rs1, rs2, funct)
@@ -42,17 +41,15 @@ No new includes, globals, or helper functions outside the body.
 
 
 def software(parent, strategy, counts):
-    harness = Path(__file__).with_name("memcpy_rocc.c").read_text()
-    return (RULES + f"\nYour independent strategy: {strategy}\n"
+    return (f"Your independent strategy: {strategy}\n"
             f"Suite sizes: {counts}. Full validation, not quick results, decides promotion.\n"
             f"Starting design {parent.name}, full-suite speedup {parent.score:.4f}x.\n"
             f"Current software body:\n{parent.body}\nCurrent hardware patch:\n{parent.patch[-60000:]}\n"
-            f"Frozen harness (case table is filled by the loop):\n{harness}\n"
             "First design the software interface. Explain your choices and return the software body.")
 
 
 def hardware():
-    return (RULES + "\nNow implement the hardware half using chipyard_source tools. "
+    return ("Now implement the hardware half using chipyard_bash. "
             "The selected parent patch is already applied to your dedicated builder. "
             "Implement exactly the interface from your preceding software answer. "
             "If you revise that interface, return an updated software body; otherwise omit body markers.")
@@ -93,7 +90,7 @@ def concise_feedback(feedback, max_chars=4000):
 
 
 def debug(stage, feedback, attempt, max_chars=4000):
-    return RULES + f"\nDebug attempt {attempt}: failure at {stage}. Form a concrete hypothesis, fix it, and return an updated body if needed.\n{concise_feedback(feedback, max_chars)}"
+    return f"Debug attempt {attempt}: failure at {stage}. Form a concrete hypothesis, fix it, and return an updated body if needed.\n{concise_feedback(feedback, max_chars)}"
 
 
 def answer_body(answer, previous=None):
