@@ -1,8 +1,8 @@
 # TUTORIAL SCALING KNOBS - CHANGE THESE VALUES
 # VM sizes/counts live in cluster.yaml; Ray detects their CPU capacity.
-agents: 3                     # Default active agents; five strategies below, subject to cluster capacity.
+agents: 1                     # Default active agents; five strategies below, subject to cluster capacity.
 design_iterations_per_agent: 1 # Designs per agent; each can have up to four debug retries.
-test_cases: 1024              # Total test + benchmark cases; 0 selects all 4,488.
+test_cases: 17              # Total test + benchmark cases; 0 selects all 4,488.
 # One optimization prompt per agent; the first `agents` entries are used.
 strategies:
   - Minimize setup and command overhead for small copies and unaligned tails.
@@ -41,5 +41,4 @@ model_timeout_seconds: 3600
 model_rate_limit_retries: 2   # Additional attempts for genuinely failed 429s.
 model_backoff_seconds: 30     # Wait 30s, then 60s (or provider delay if longer).
 model_max_backoff_seconds: 120 # Stop if the provider asks for a longer wait; never retry early.
-metrics_interval_seconds: 5
 ray_address: auto
