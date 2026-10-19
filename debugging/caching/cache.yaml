@@ -1,5 +1,7 @@
-# Record everything: every tagged call's result is written to the cache.
-# Nothing is replayed (bypass is empty) — this is the real run.
+# Record: every tagged call's result is written to the cache. Nothing replayed.
+#
+# Keys are the qualified function name (chialoops >= 2.0.1): RiscvBuildNode.build
+# and ChiselBuildNode.build are both "build", and a bare key would hit both.
 
 cache:
   RiscvBuildNode.build:  {cache: true, tags: ["sw_.*"]}

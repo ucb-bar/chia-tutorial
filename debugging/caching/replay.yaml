@@ -1,5 +1,7 @@
-# Replay everything that was recorded. The git nodes are deliberately absent:
-# a reset or an apply must really happen, or the checkout is wrong.
+# Replay: the same calls are served from the cache instead of running.
+#
+# The git nodes (reset_chipyard, apply_diff, collect_diff) are deliberately not
+# here: they change the checkout, so they must really run.
 
 cache:
   RiscvBuildNode.build:  {cache: true, tags: ["sw_.*"]}

@@ -173,23 +173,30 @@ The Python lives **in `accel/`**, as new files: `accel_loop.py` sets
 
 ## 8. Where our code lives
 
-Everything of ours is in `debugging/`; `accel/` is never edited.
+One subfolder per block; `accel/` is never edited.
 
 ```
 debugging/
-  README.md                 this plan
-  debug_render_profile.py   render a profile: html + svg + csv        [A1]
-  debug_timing.py           their baseline, with phase markers        [A2]
-  debug_nodes.py            their four dispatches, each with a tag    [C]
-  debug_baseline.py         baseline only: record / replay            [C]
-  debug_record.py           baseline + N iterations: record / replay  [C]
-  debug_cache.yaml          baseline: cache, no bypass
-  debug_cache_replay.yaml   baseline: cache + replay
-  debug_record.yaml         full loop: cache every node type
-  debug_record_replay.yaml  full loop: cache + replay every node type
-  cache/                    the recorded results (git-ignored)
+  README.md
+  cache/                     recorded results (git-ignored)
+  caching/
+    tagging.py               puts a _chia_tag on accel's own dispatches
+    cache.yaml               record: write every tagged call
+    replay.yaml              replay: serve them back
+    run.py                   accel's loop, with the cache attached
+  profiling/
+    debug_render_profile.py  render a profile: html + svg + csv
+    debug_timing.py          their baseline with phase markers
 ```
 
-`accel/` is not a package, so each driver puts it on `sys.path` and keeps
-`runtime_env["working_dir"]` pointing at `accel/` — that is how the workers
-import `nodes`, `results` and `accel_loop`, exactly as `accel_loop.py` does.
+No new loop and no wrappers: `caching/run.py` calls `accel_loop.run_baseline()`
+and `accel_loop.run_iteration()` — the two calls their own `main()` makes —
+and `tagging.install()` adds the tag inside `@ChiaFunction.options()/.chia_remote`,
+so their `nodes.py` dispatches tag themselves:
+
+```python
+node.build.options(resources={"chipyard": 0.9}).chia_remote(node)   # -> hw_0001
+```
+
+`accel/` is not a package, so each runner puts it on `sys.path` and keeps
+`runtime_env["working_dir"]` pointing at it, exactly as `accel_loop.py` does.
