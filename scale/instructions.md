@@ -15,10 +15,28 @@ This measures the baseline, runs the agents configured in `scale/settings.yaml`,
 builds and tests their designs, and selects the best passing result.
 The console prints the remote results directory: `/home/ubuntu/scale/out/run_...`.
 
-To change agents, iterations, model, test count, or timeouts, edit
-`scale/settings.yaml` before starting. Cloud allocation sizes live in
-`scale/cluster.yaml`; editable knobs are marked `TUTORIAL`.
-Timeouts apply per operation, not to the entire loop.
+### Scaling knobs
+
+Edit these before starting; allocation knobs are marked `TUTORIAL` in the YAML.
+
+| File under `scale/` | Knob | What it scales |
+|---|---|---|
+| `settings.yaml` | `agents` | Parallel optimization searches |
+| `settings.yaml` | `iterations_per_agent` | Designs explored per agent |
+| `settings.yaml` | `case_limit` | Test/benchmark coverage; `0` selects all available cases |
+| `settings.yaml` | `benchmark_repeats` | Timed repetitions per benchmark |
+| `settings.yaml` | `build_jobs` / `java_heap_gb` | CPU parallelism and maximum Java heap per hardware build |
+| `settings.yaml` | `compile_slots` / `simulation_slots` | Concurrent compilations/simulations across all agents |
+| `cluster.yaml` | `gcp_nodes.*.count` | Number of builder or simulator VMs |
+| `cluster.yaml` | `gcp_nodes.*.machine_type` | CPU and RAM per VM |
+| `cluster.yaml` | `disk_size_gb` inside each role's `disks` | Disk capacity per VM |
+
+More agents need matching builders, strategy prompts, and model-client slots.
+VM counts must match worker counts and IP references; loop slots must fit the
+cluster's CPU/resource budgets. See `README.txt` for the coupled settings.
+Changing coverage or timing repetitions requires a new matching baseline.
+Editing cluster YAML does not resize existing VMs; resource changes require
+reprovisioning. Download results before replacing VMs or disks.
 
 ## 2. Download results
 
