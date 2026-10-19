@@ -70,7 +70,7 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact, 
         timeout_cycles=3_000_000,
         timeout_seconds=3600,
         dramsim_ini_files=dramsim_ini,
-        verbose=False,
+        verbose=True,                        # PROFILING: prints the cycle count, which the node reports via add_info
         _chia_tag=tag,                       # CACHING: the key for this call
     )
 
