@@ -1,24 +1,26 @@
-"""Run accel's own loop with a CHIA cache attached.
+"""accel's own loop, with a CHIA cache attached.
 
-No new loop and no wrappers: this calls accel_loop.run_baseline() and
-accel_loop.run_iteration(), the same two calls their main() makes. The only
-additions are the four lines of cache/bypass setup and tagging.install(),
-which puts a _chia_tag on their dispatches (see tagging.py).
+This runs THEIR entry point — accel_loop.main() — so the flow, the arguments,
+the profiler and the teardown are all theirs:
 
-    # record: everything runs for real, the cache fills
-    chia job submit --chia-cluster ../../accel/cluster.yaml -- \\
-        python "$(pwd)/run.py" --iterations 3
+    python run.py --iterations 3        ==  python ../../accel/accel_loop.py --iterations 3
+    python run.py --baseline-only       ==  ... --baseline-only
 
-    # replay: builds, simulations and LLM answers come from the cache
-    ... python "$(pwd)/run.py" --iterations 3 --replay
+Two things are added around it:
+
+  tagging.install()   puts a _chia_tag on their dispatches, which is what the
+                      cache keys on (accel/nodes.py passes none)
+  _attach_cache()     starts the cache + bypass, on the first call into the
+                      loop — i.e. after their ray.init() and start_collector(),
+                      which must come first (get_profiler() latches whether a
+                      collector exists the first time anything calls it)
+
+    --replay serves the recorded builds, simulations and LLM answers back.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
 import sys
-import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -26,23 +28,19 @@ ACCEL = HERE.parents[1] / "accel"
 sys.path.insert(0, str(ACCEL))
 sys.path.insert(0, str(HERE))
 
-import chia
-import ray
-
 from chia.base.ChiaFunction import get
 from chia.base.bypass import Bypass, get_active_bypass
-from chia.base.cache import get_active_cache, start_cache, stop_cache
-from chia.base.tools.BashTool import BashTool
-from chia.trace.profiler import get_profiler, start_collector, stop_collector
+from chia.base.cache import get_active_cache, start_cache
 
 import accel_loop
 import tagging
-from results import BASELINE_DIR
 
-CACHE_DIR = HERE.parents[0] / "cache"            # debugging/cache
-PROFILE_DIR = HERE.parents[0] / "profiling" / "out"   # debugging/profiling/out
+CACHE_DIR = HERE.parents[0] / "cache"
+CACHE_SIZE_GB = 64
 FUNCS = ("ChiselBuildNode.build", "RiscvBuildNode.build",
          "VerilatorRunNode.run", "AntigravityLLM.prompt")
+
+_attached = False
 
 
 def cache_provider(tag, data_path, *args, **kwargs):
@@ -56,73 +54,44 @@ def cache_hit_cond(tag, data_path, *args, **kwargs):
     return get(get_active_cache().has.chia_remote(tag))
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--iterations", type=int, default=3)
-    ap.add_argument("--replay", action="store_true")
-    ap.add_argument("--cache-size", type=int, default=64, help="budget in GB")
-    args = ap.parse_args()
-    config = HERE / ("replay.yaml" if args.replay else "cache.yaml")
-
-    ray.init(address="auto", runtime_env={
-        "working_dir": str(ACCEL),
-        "py_modules": [list(chia.__path__)[0]],
-        "excludes": ["out/", "__pycache__", ".mypy_cache"],
-    })
-
-    # FIRST, before start_cache/Bypass: get_profiler() caches whether a
-    # collector exists the first time anything calls it, and start_cache()
-    # makes chia calls. Start it late and the driver's profiler stays disabled
-    # for the whole job — no dispatch events, no log_event, only worker-local
-    # ones.
-    out = PROFILE_DIR / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"
-    out.mkdir(parents=True, exist_ok=True)
-    start_collector(log_dir=str(out))
-
+def _attach_cache(config: Path) -> None:
+    """Start the cache and the bypass. Called from inside their loop, so Ray is
+    up and their collector is already running."""
+    global _attached
+    if _attached:
+        return
+    _attached = True
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache = start_cache(size=args.cache_size, units="GB",
+    cache = start_cache(size=CACHE_SIZE_GB, units="GB",
                         cache_dir_path=str(CACHE_DIR), yaml_path=str(config))
     Bypass(yaml_path=str(config))
     for func in FUNCS:
         get_active_bypass().set_provider(func, cache_provider)
         get_active_bypass().set_cond(func, cache_hit_cond)
+    print(f"cache {CACHE_DIR}: {get(cache.size_bytes.chia_remote()) / 1e6:.0f} MB "
+          f"({config.name})", flush=True)
+
+
+def main() -> None:
+    replay = "--replay" in sys.argv
+    if replay:
+        sys.argv.remove("--replay")          # their argparse does not know it
+    config = HERE / ("replay.yaml" if replay else "cache.yaml")
+
     for line in tagging.install():
         print(f"  tagging {line}")
 
-    phases: list[tuple[str, float]] = []
+    # Attach the cache on the way into the loop, then hand over to their code.
+    for name in ("run_baseline", "run_iteration"):
+        original = getattr(accel_loop, name)
 
-    def mark(name: str) -> None:
-        phases.append((name, time.time()))
-        get_profiler().log_event("phase", name=name)
+        def attached(*args, _original=original, **kwargs):
+            _attach_cache(config)
+            return _original(*args, **kwargs)
 
-    try:
-        print(f"cache {CACHE_DIR}: {get(cache.size_bytes.chia_remote()) / 1e6:.0f} MB "
-              f"({config.name})")
-        mark("start")
+        setattr(accel_loop, name, attached)
 
-        summary_path = BASELINE_DIR / "summary.json"
-        if not (summary_path.exists()
-                and json.loads(summary_path.read_text()).get("status") == "passed"):
-            accel_loop.run_baseline()
-        mark("baseline")
-
-        chipyard_bash = BashTool(name="chipyard_bash", work_dir="/home/ray/chipyard",
-                                 timeout_seconds=300,
-                                 task_options={"resources": {"chipyard": 0.01}})
-        for n in range(args.iterations):
-            accel_loop.run_iteration(chipyard_bash)
-            mark(f"iteration_{n + 1}")
-    finally:
-        stop_collector()
-        size = get(cache.size_bytes.chia_remote())
-        stop_cache()
-
-    print(f"\n{'phase':<16}{'seconds':>10}")
-    for (_, ts), (name, nxt) in zip(phases, phases[1:]):
-        print(f"{name:<16}{nxt - ts:>10.1f}")
-    print(f"{'TOTAL':<16}{phases[-1][1] - phases[0][1]:>10.1f}")
-    print(f"\ncache holds {size / 1e6:.0f} MB in {CACHE_DIR}")
-    print(f"profile: {out}")
+    accel_loop.main()
 
 
 if __name__ == "__main__":

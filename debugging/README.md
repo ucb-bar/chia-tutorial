@@ -190,10 +190,11 @@ debugging/
     debug_timing.py          their baseline with phase markers
 ```
 
-No new loop and no wrappers: `caching/run.py` calls `accel_loop.run_baseline()`
-and `accel_loop.run_iteration()` — the two calls their own `main()` makes —
-and `tagging.install()` adds the tag inside `@ChiaFunction.options()/.chia_remote`,
-so their `nodes.py` dispatches tag themselves:
+No new loop and no wrappers: `caching/run.py` calls **their** entry point,
+`accel_loop.main()`, so the flow, the arguments, the profiler and the teardown
+are theirs. It only attaches the cache on the way in, and `tagging.install()`
+adds the tag inside `@ChiaFunction.options()/.chia_remote`, so their `nodes.py`
+dispatches tag themselves:
 
 ```python
 node.build.options(resources={"chipyard": 0.9}).chia_remote(node)   # -> hw_0001
