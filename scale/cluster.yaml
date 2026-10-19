@@ -17,7 +17,7 @@ initialization_commands:
 
 available_node_types:
     chipyard:
-        resources: {chipyard: 1} # TUTORIAL: CPUs per worker available for use
+        resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker
         num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
         compatible_ips: ["@parallel_gcp:0"] # TUTORIAL: add the correct IPs here
         worker_setup_commands: ["source /home/ray/chipyard/env.sh"]
@@ -29,7 +29,7 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     verilator_run:
-        resources: {verilator_run: 1} # TUTORIAL: CPUs per worker available for use
+        resources: {verilator_run: 1} # TUTORIAL: verilator instances available per worker
         num_workers: 1  # TUTORIAL: simulator workers; match the VM count below.
         compatible_ips: ["@benchmark_gcp:0"] # TUTORIAL: add the correct IPs here 
         docker:
