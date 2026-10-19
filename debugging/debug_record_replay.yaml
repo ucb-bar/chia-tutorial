@@ -1,0 +1,14 @@
+# Replay everything that was recorded. The git nodes are deliberately absent:
+# a reset or an apply must really happen, or the checkout is wrong.
+
+cache:
+  RiscvBuildNode.build:  {cache: true, tags: ["sw_.*"]}
+  ChiselBuildNode.build: {cache: true, tags: ["hw_.*"]}
+  VerilatorRunNode.run:  {cache: true, tags: ["sim_.*"]}
+  AntigravityLLM.prompt: {cache: true, tags: ["llm_.*"]}
+
+bypass:
+  RiscvBuildNode.build:  {bypass: true, tags: ["sw_.*"]}
+  ChiselBuildNode.build: {bypass: true, tags: ["hw_.*"]}
+  VerilatorRunNode.run:  {bypass: true, tags: ["sim_.*"]}
+  AntigravityLLM.prompt: {bypass: true, tags: ["llm_.*"]}

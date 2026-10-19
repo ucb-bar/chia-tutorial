@@ -1,0 +1,23 @@
+# Run 2: same cache, and replay the expensive halves from it.
+#
+# Drop the VerilatorRunNode.run entry to keep the simulations running for real
+# while the Chisel build is still served from the cache.
+
+cache:
+  RiscvBuildNode.build:
+    cache: true
+    tags: ["sw_.*"]
+  ChiselBuildNode.build:
+    cache: true
+    tags: ["hw_.*"]
+  VerilatorRunNode.run:
+    cache: true
+    tags: ["sim_.*"]
+
+bypass:
+  ChiselBuildNode.build:
+    bypass: true
+    tags: ["hw_.*"]
+  VerilatorRunNode.run:
+    bypass: true
+    tags: ["sim_.*"]

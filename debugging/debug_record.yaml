@@ -1,0 +1,10 @@
+# Record everything: every tagged call's result is written to the cache.
+# Nothing is replayed (bypass is empty) — this is the real run.
+
+cache:
+  RiscvBuildNode.build:  {cache: true, tags: ["sw_.*"]}
+  ChiselBuildNode.build: {cache: true, tags: ["hw_.*"]}
+  VerilatorRunNode.run:  {cache: true, tags: ["sim_.*"]}
+  AntigravityLLM.prompt: {cache: true, tags: ["llm_.*"]}
+
+bypass: {}
