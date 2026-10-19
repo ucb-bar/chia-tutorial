@@ -10,7 +10,8 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
+from threading import Lock
 import time
 
 import ray
@@ -98,21 +99,25 @@ def collect_tasks(tasks, finish):
     return results
 
 
-def prepare_builders(settings):
-    """Choose isolated workspaces and refuse to discard existing source changes."""
-    alive = [n for n in ray.nodes() if n["Alive"]]
-    builders = sorted((n for n in alive if n["Resources"].get("chipyard", 0) >= 1 and n["Resources"].get("CPU", 0) >= 1), key=lambda n: n["NodeManagerAddress"])
+def prepare_builders(settings, known=None):
+    """Validate new builder VMs only; never inspect an active agent's checkout."""
+    known = known or {}
+    alive = {n["NodeManagerAddress"]: n for n in ray.nodes() if n["Alive"]
+             and n["Resources"].get("chipyard", 0) >= 1 and n["Resources"].get("CPU", 0) >= 1}
+    builders = [alive[ip] for ip in sorted(alive) if ip not in known][:max(0, settings["agents"] - len(known))]
     if not builders:
-        raise RuntimeError("Need at least one builder worker")
-    builders = builders[:settings["agents"]]
+        if not known:
+            raise RuntimeError("Need at least one builder worker")
+        return []
     checks = [nodes.inspect_builder.options(scheduling_strategy=nodes.pinned(n["NodeID"])).chia_remote(settings["chipyard_path"]) for n in builders]
     info = [get(ref) for ref in checks]
     for value in info:
         if value["dirty"]:
             raise RuntimeError("Builder workspace is not clean; refusing to discard existing changes: " + value["dirty"])
-    if any((i["commit"], i["submodules"]) != (info[0]["commit"], info[0]["submodules"]) for i in info):
+    revision = next(iter(known.values()))["revision"] if known else (info[0]["commit"], info[0]["submodules"])
+    if any((i["commit"], i["submodules"]) != revision for i in info):
         raise RuntimeError("Builders have different source revisions")
-    return builders
+    return [dict(n, revision=revision) for n in builders]
 
 
 def evaluate_design(settings, body, cases, build, cache, directory, label):
@@ -328,6 +333,8 @@ def main():
         count = 0
         if not args.baseline_only:
             available_builders = Queue()
+            known = {n["NodeManagerAddress"]: n for n in builders}
+            discovery_lock = Lock()
             for builder in builders:
                 available_builders.put(builder)
             LOG.info("%d agents sharing %d builders", settings["agents"], len(builders))
@@ -337,7 +344,21 @@ def main():
                 waiting.parent.mkdir(parents=True, exist_ok=True)
                 waiting.touch()
                 LOG.info("agent_%d waiting for builder", index)
-                builder = available_builders.get()
+                while True:
+                    try:
+                        builder = available_builders.get(timeout=10)
+                        break
+                    except Empty:
+                        with discovery_lock:
+                            try:
+                                new = prepare_builders(settings, known)
+                            except Exception as error:
+                                LOG.warning("Builder discovery: %s", error)
+                                continue
+                            for node in new:
+                                known[node["NodeManagerAddress"]] = node
+                                available_builders.put(node)
+                                LOG.info("Discovered builder %s", node["NodeManagerAddress"])
                 try:
                     waiting.unlink()
                     LOG.info("agent_%d acquired builder %s", index, builder["NodeID"])
