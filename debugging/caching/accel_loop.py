@@ -201,6 +201,7 @@ def finish(iter_out_dir: IterDir, summary: dict, body: str | None, last: Evaluat
 def run_baseline() -> dict:
     """Clean chipyard + the harness's own (software) body; no LLM."""
     iter_out_dir = IterDir(BASELINE_DIR)
+    _RUN_DIRS.append(iter_out_dir.path.name)          # PROFILING: names the profile
     logger.info("Generating the baseline in %s", iter_out_dir.path)
     logger.info("chipyard reset: %s", get(git_reset()))
     body = read_body(TEMPLATE_C_PATH.read_text())
@@ -217,6 +218,7 @@ def run_baseline() -> dict:
 def run_iteration(chipyard_bash: BashTool) -> dict:
     parent = best_design()
     iter_out_dir = next_iter_dir()
+    _RUN_DIRS.append(iter_out_dir.path.name)          # PROFILING: names the profile
     logger.info("=== %s: starting from %s (avg speedup %.3f) ===",
                 iter_out_dir.path.name, parent.name, parent.avg_speedup)
     summary: dict = {"name": iter_out_dir.path.name, "parent": parent.name,
@@ -299,6 +301,32 @@ def _label(iter_out_dir) -> str:
     return _TAG_LABEL or iter_out_dir.path.name
 
 
+# ----- PROFILING: one profile per run, named after what the run produced ----
+# The collector runs for the whole job, so the profile can only be named once
+# the run knows its output dirs: profile_iter_7, profile_iter_1-3,
+# profile_baseline_iter_1-3. A run that produced nothing keeps its timestamp.
+_RUN_DIRS: list[str] = []
+
+
+def _profile_name(dirs: list[str]) -> str | None:
+    iters = [int(d.split("_")[1]) for d in dirs if d.startswith("iter_")]
+    parts = ["baseline"] if "baseline" in dirs else []
+    if iters:
+        parts.append(f"iter_{iters[0]}" if len(iters) == 1 else f"iter_{iters[0]}-{iters[-1]}")
+    return "profile_" + "_".join(parts) if parts else None
+
+
+def _rename_profile(profile_dir: Path) -> None:
+    name = _profile_name(_RUN_DIRS)
+    if name is None or not profile_dir.exists():
+        return
+    target = profile_dir.with_name(name)
+    if target.exists():                   # e.g. a stopped run reused the name
+        target = profile_dir.with_name(f"{name}_{profile_dir.name.removeprefix('profile_')}")
+    profile_dir.rename(target)
+    logger.info("profile: %s", target)
+
+
 # ----- CACHING: how a replayed call is served -----------------------------
 def cache_provider(tag, data_path, *args, **kwargs):
     """Return what the recorded run wrote under this tag."""
@@ -335,11 +363,12 @@ def main() -> None:
         "excludes": ["out/", "__pycache__", ".mypy_cache"],
     })
     # Every ChiaFunction call (compiles, builds, simulations, LLM calls, git
-    # ops) is timed into out/profile_<timestamp>/ChiaProfileCollector.log.
-    # profiles belong to this section, not to accel/out
+    # ops) is timed into debugging/profiling/out/profile_<timestamp>/
+    # ChiaProfileCollector.log, renamed to profile_iter_<n> when the run ends.
     _profiles = _Path(__file__).resolve().parents[1] / "profiling" / "out"
     _profiles.mkdir(parents=True, exist_ok=True)
-    start_collector(log_dir=str(_profiles / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"))
+    profile_dir = _profiles / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"
+    start_collector(log_dir=str(profile_dir))
 
     # ----- CACHING -------------------------------------------------------
     global _TAG_LABEL
@@ -384,6 +413,7 @@ def main() -> None:
         logger.info("Best design: %s (avg speedup %.3f)", best.name, best.avg_speedup)
     finally:
         stop_collector()
+        _rename_profile(profile_dir)
 
 
 if __name__ == "__main__":
