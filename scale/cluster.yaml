@@ -18,9 +18,12 @@ initialization_commands:
 available_node_types:
     chipyard:
         resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker.
-        num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
-        compatible_ips: ["@parallel_gcp:0"] # TUTORIAL: add the correct IPs here.
-        worker_setup_commands: ["source /home/ray/chipyard/env.sh"]
+        num_workers: 3  # TUTORIAL: builder workers; match the VM count below.
+        compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"] # TUTORIAL: add the correct IPs here.
+        worker_setup_commands:
+            - source /home/ray/chipyard/env.sh
+            - /home/ray/anaconda3/bin/python -m venv /tmp/chia-env
+            - source /tmp/chia-env/bin/activate
         docker:
             image: ghcr.io/ucb-bar/chia-chisel-build:latest
             container_name: scale-chipyard
@@ -73,7 +76,7 @@ gcp_nodes:
     zone: us-west4-c
     parallel_gcp:
         machine_type: c4-standard-32
-        count: 1  # TUTORIAL: builder VM count.
+        count: 3  # TUTORIAL: builder VM count.
         image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
         ssh_user: ubuntu
         ssh_private_key: ${HOME}/.ssh/google_compute_engine

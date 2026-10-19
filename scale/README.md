@@ -1,17 +1,11 @@
 # Run the accelerator loop
 
-Start from the repository root, then enter `scale` below. Run the remaining
-commands from that folder.
+Run commands from the `scale` folder.
 
 ## 1. Load the environment
 
 ```bash
-cd scale
-conda activate chia_env
-python -m pip install --upgrade 'chialoops==2.0.0'
-source "${TUT_HOME:-$HOME/.chia-tutorial}/env.sh"
-export CHIA_HEAD_IP="$(gcloud compute instances list --project "$CHIA_TUT_PROJECT" --filter='name=chia-dev' --format='value(networkInterfaces[0].networkIP)')"
-export CHIA_HEAD_ZONE="$(gcloud compute instances list --project "$CHIA_TUT_PROJECT" --filter='name=chia-dev' --format='value(zone.basename())')"
+source load-env.sh
 ```
 
 ## 2. Adjust values
@@ -25,6 +19,7 @@ test_cases: 17  # Increase to run more test and benchmark cases.
 
 For more agents, provide enough builders in `cluster.yaml`: update the
 builder VM `count`, builder `num_workers`, and matching `compatible_ips` entries.
+The provided cluster has three builders, supporting up to three agents as-is.
 Leave `FIXED` settings unchanged.
 
 ## 3. Start and run
@@ -41,6 +36,8 @@ chia up --add cluster.yaml
 ```
 
 Do not start a second loop while one is running.
+Before changing worker setup commands or VM sizes, run `chia down cluster.yaml`
+using the old configuration, then edit and bring it up again. `--add` keeps existing workers.
 
 ## 4. Check progress
 
