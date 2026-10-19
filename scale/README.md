@@ -19,7 +19,6 @@ test_cases: 17  # Increase to run more test and benchmark cases.
 
 For more agents, provide enough builders in `cluster.yaml`: update the
 builder VM `count`, builder `num_workers`, and matching `compatible_ips` entries.
-The provided cluster has three builders, supporting up to three agents as-is.
 Leave `FIXED` settings unchanged.
 
 ## 3. Start and run
@@ -41,11 +40,17 @@ using the old configuration, then edit and bring it up again. `--add` keeps exis
 
 ## 4. Check progress
 
-On the head, from its `~/scale` folder, use the run directory printed by the loop:
+From your local `scale` folder, use the run directory printed by the loop.
+In a new terminal, first run `source load-env.sh` (step 1) to load the head's SSH address.
 
 ```bash
 python status.py out/run_...
 ```
+
+The script reads results from the head over SSH when the directory is not local.
+Results stay on the head in `~/scale/out/`.
+Status shows geometric-mean benchmark speedup versus baseline when results are available;
+quick-suite speedups are marked preliminary.
 
 ## 5. Shut down
 
