@@ -14,7 +14,7 @@ from pathlib import Path as _Path
 # Their modules (results, agent_prompt) live in accel/; ours (nodes.py with the
 # tags) sit next to this file and win because this directory comes first.
 _ACCEL = _Path(__file__).resolve().parents[2] / "accel"
-sys.path.insert(0, str(_ACCEL))
+sys.path.append(str(_ACCEL))   # append, so OUR nodes.py (this dir) wins
 
 import chia
 import ray
