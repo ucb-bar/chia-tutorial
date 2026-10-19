@@ -68,10 +68,3 @@ python status.py out/run_...
 ```
 We should now see the run progressing faster!
 
-## 7. Shut down
-
-```bash
-chia down cluster.yaml
-```
-
-Run after the loop finishes. Worker VMs are deleted; the existing head remains.
