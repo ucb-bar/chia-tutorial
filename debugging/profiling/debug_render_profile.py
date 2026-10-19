@@ -33,8 +33,12 @@ def main() -> None:
         sys.exit(f"no such log: {log}")
 
     for fmt in ("html", "svg"):
-        subprocess.run([sys.executable, "-m", "chia.cli.main", "viz-profile",
-                        str(log), "--format", fmt], check=True)
+        # svg needs the graphviz "dot" binary; the GCP image does not ship it
+        # (apt-get install graphviz). A missing dot must not lose the html.
+        r = subprocess.run([sys.executable, "-m", "chia.cli.main", "viz-profile",
+                            str(log), "--format", fmt])
+        if r.returncode != 0:
+            print(f"  ({fmt} render failed — for svg, is graphviz installed?)")
     subprocess.run([sys.executable, "-m", "chia.cli.main", "viz-profile",
                     str(log), "--format", "table",
                     "--output", str(log.parent / "profile_table.csv")], check=True)

@@ -70,6 +70,15 @@ def main() -> None:
         "excludes": ["out/", "__pycache__", ".mypy_cache"],
     })
 
+    # FIRST, before start_cache/Bypass: get_profiler() caches whether a
+    # collector exists the first time anything calls it, and start_cache()
+    # makes chia calls. Start it late and the driver's profiler stays disabled
+    # for the whole job — no dispatch events, no log_event, only worker-local
+    # ones.
+    out = PROFILE_DIR / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"
+    out.mkdir(parents=True, exist_ok=True)
+    start_collector(log_dir=str(out))
+
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache = start_cache(size=args.cache_size, units="GB",
                         cache_dir_path=str(CACHE_DIR), yaml_path=str(config))
@@ -79,10 +88,6 @@ def main() -> None:
         get_active_bypass().set_cond(func, cache_hit_cond)
     for line in tagging.install():
         print(f"  tagging {line}")
-
-    out = PROFILE_DIR / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"
-    out.mkdir(parents=True, exist_ok=True)
-    start_collector(log_dir=str(out))
 
     phases: list[tuple[str, float]] = []
 
