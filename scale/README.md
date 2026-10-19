@@ -7,6 +7,9 @@ and do not launch a second loop while one is running.
 ## 1. Run
 
 ```bash
+source "${TUT_HOME:-$HOME/.chia-tutorial}/env.sh"
+export CHIA_HEAD_IP="$(gcloud compute instances list --project "$CHIA_TUT_PROJECT" --filter='name=chia-dev' --format='value(networkInterfaces[0].networkIP)')"
+export CHIA_HEAD_ZONE="$(gcloud compute instances list --project "$CHIA_TUT_PROJECT" --filter='name=chia-dev' --format='value(zone.basename())')"
 chia up scale/cluster.yaml       # Skip if the cluster is already running.
 python scale/run.py
 ```
@@ -15,8 +18,11 @@ This measures the baseline, runs the agents configured in `scale/settings.yaml`,
 builds and tests their designs, and selects the best passing result.
 By default, three agents each explore one design against a 1,024-case suite.
 The existing `chia-dev` VM is the head; CHIA creates only builder/simulator VMs.
-In `scale/cluster.yaml`, set its internal IP and the SSH alias printed by
-`setup_gcp.sh`. Use the existing configured GCP/CHIA environment.
+The first three commands load your existing setup and find your head VM's internal
+IP and zone. CHIA substitutes these values and your setup project into
+`cluster.yaml`; no IP, project, or SSH-alias edits are needed. Run these commands
+again in a new shell or after replacing the head VM. Keep using the same shell
+for downloading results and stopping the cluster.
 The console prints the results directory on the head: `~/scale/out/run_...`.
 
 ### Scaling knobs
@@ -31,24 +37,25 @@ unchanged. VM allocation knobs are marked `TUTORIAL` in `cluster.yaml`.
 | `settings.yaml` | `strategies` | One optimization prompt per agent; edit to explore different approaches |
 | `settings.yaml` | `design_iterations_per_agent` | Designs explored per agent, not debug retries (formerly `iterations_per_agent`) |
 | `settings.yaml` | `test_cases` | Total test + benchmark cases; `0` selects all available cases |
-| `cluster.yaml` | `gcp_nodes.*.count` | Number of builder or simulator VMs |
+| `cluster.yaml` | `gcp_nodes.*.count` and the corresponding `num_workers` | Number of builder or simulator VMs and workers |
 | `cluster.yaml` | `gcp_nodes.*.machine_type` | CPU and RAM per VM |
-| `cluster.yaml` | Worker `resources` and `SCALE_WORKER_CPUS` | Shared task slots and Ray CPU capacity; keep these within the VM's capacity |
 
-More agents need matching builders, strategy prompts, and model-client slots.
+More agents need matching builders and strategy prompts, not model-client slots.
 Five strategy prompts are supplied; the default remains three agents. Agent 0
 uses the first prompt, agent 1 the second, and so on; only the first `agents`
 entries are used.
-Use `python scale/run.py --agents 5` only after providing five builders and
-five model-client slots with sufficient CPU budgets and cloud quota.
-Keep `parallel_gcp.count`, `chipyard.num_workers`, and its `compatible_ips`
-list in sync; do the same for `benchmark_gcp` and `verilator_run`. Model-client
-slots are `antigravity.resources.antigravity_creds`.
+Use `python scale/run.py --agents 5` after providing five builders and sufficient
+cloud quota. When changing VM counts, set the corresponding `num_workers` to the
+same number and add/remove the corresponding `compatible_ips` entries.
 
 All agents share the compiler and simulation workers: Ray schedules queued work
-using the CPU and resource capacities in `cluster.yaml`, with no extra per-run
-or per-agent concurrency caps. Hardware builds retain isolated per-agent workspaces.
-There are no `compile_slots` or `simulation_slots` settings to keep in sync.
+using automatically detected CPUs, with no extra per-run or per-agent caps.
+Hardware builds retain isolated per-agent workspaces and use their builder's
+detected CPU count for build parallelism. The fixed `resources` labels only route
+jobs to suitable containers; they are not tutorial concurrency knobs. Model
+requests run remotely and do not reserve local CPU slots.
+There are no CPU exports, `build_jobs`, or compile/simulation slot settings to
+keep in sync when changing VM sizes.
 Each design gets one initial evaluation plus up to four debug retries
 (`max_attempts: 5`); these are separate from `design_iterations_per_agent`.
 
@@ -61,10 +68,10 @@ reprovisioning. Download results before replacing VMs or disks.
 After the loop finishes:
 
 ```bash
-rsync -az chia-dev.us-west4-c.chia-codesign26oak-1967:scale/out/ scale/out/
+rsync -az "chia-dev.${CHIA_HEAD_ZONE}.${CHIA_TUT_PROJECT}:scale/out/" scale/out/
 ```
 
-Use your setup script's SSH alias if different. This copies all saved runs
+This uses your setup script's SSH alias and copies all saved runs
 without copying credentials. Keep the complete run directory so its settings,
 baseline, test cases, and logs stay with the results.
 

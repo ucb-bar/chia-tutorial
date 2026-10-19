@@ -1,30 +1,15 @@
-# Start with: chia up scale/cluster.yaml (using chialoops==2.0.0).
-# Stop with: chia down scale/cluster.yaml (deletes worker VMs and boot disks).
-# Reuse setup_gcp.sh's chia-dev head; CHIA manages only the five worker VMs.
-# Workers: 160 C4 vCPUs; disks total 450 GB west / 200 GB central.
-# Quota budget: global CPUs 200; C4 CPUs 100 and Hyperdisk 500 GB per region.
-# This starts infrastructure only, not the optimization loop or model login.
-# TUTORIAL: set the existing dev head's internal IP and SSH alias below.
-# Recreate the cluster after changing existing VM sizes or worker resources.
-# Smaller disks require replacement; this file does not shrink running disks.
-# Measure peak usage during a full hardware build before reducing sizes further.
-# When changing a zone, update its disk_type zone below and check region quotas.
 cluster_name: scale
 provider:
-    head_ip: &dev_head 10.182.0.14  # TUTORIAL: existing chia-dev VM's internal IP.
+    head_ip: ${CHIA_HEAD_IP}
 connection: vpc
 auth:
-    ssh_user: ${USER}  # setup_gcp.sh creates this user on chia-dev.
+    ssh_user: ${USER}
     ssh_private_key: ${HOME}/.ssh/google_compute_engine
-    # Use setup_gcp.sh's gcloud SSH alias to reach the head and private workers.
-    # TUTORIAL: update the alias when changing the dev VM's zone or project.
-    # Ray traffic stays inside the VPC; GCP credentials stay on this client.
     ssh_proxy_command: >-
         ssh -i ${HOME}/.ssh/google_compute_engine -o IdentitiesOnly=yes
         -o StrictHostKeyChecking=accept-new -W %h:%p
-        chia-dev.us-west4-c.chia-codesign26oak-1967
+        chia-dev.${CHIA_HEAD_ZONE}.${CHIA_TUT_PROJECT}
 
-# CHIA 2.0.0's cloud setup runner ignores ProxyCommand. Initialization uses it.
 initialization_commands:
     - sudo cloud-init status --wait
     - command -v docker >/dev/null || (curl -fsSL https://get.docker.com | sudo sh)
@@ -32,10 +17,9 @@ initialization_commands:
 
 available_node_types:
     chipyard:
-        resources: {chipyard: 1}  # One exclusive hardware build per builder.
-        num_workers: 3  # TUTORIAL: match parallel_gcp.count and IP references.
+        resources: {chipyard: 1}
+        num_workers: 3  # TUTORIAL: builder workers; match the VM count below.
         compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"]
-        worker_env_commands: ["export SCALE_WORKER_CPUS=24"]
         worker_setup_commands: ["source /home/ray/chipyard/env.sh"]
         docker:
             image: ghcr.io/ucb-bar/chia-chisel-build:latest
@@ -45,10 +29,9 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     verilator_run:
-        resources: {verilator_run: 24}  # TUTORIAL: simulation slots per VM.
-        num_workers: 2  # TUTORIAL: match benchmark_gcp.count and IP references.
-        compatible_ips: ["@benchmark_gcp:0", "@benchmark_gcp:1"]
-        worker_env_commands: ["export SCALE_WORKER_CPUS=24"]
+        resources: {verilator_run: 1}
+        num_workers: 3  # TUTORIAL: simulator workers; match the VM count below.
+        compatible_ips: ["@benchmark_gcp:0", "@benchmark_gcp:1", "@benchmark_gcp:2"]
         docker:
             image: ghcr.io/ucb-bar/chia-verilator-run:latest
             container_name: scale-verilator
@@ -57,10 +40,9 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     riscv_cross:
-        resources: {riscv_build: 4}  # TUTORIAL: compiler slots on the head VM.
+        resources: {riscv_build: 1}
         num_workers: 1
-        compatible_ips: [*dev_head]
-        worker_env_commands: ["export SCALE_WORKER_CPUS=4"]
+        compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
             image: ghcr.io/ucb-bar/chia-riscv-cross:latest
             container_name: scale-riscv
@@ -69,10 +51,9 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536"]
 
     antigravity:
-        resources: {antigravity_creds: 3}  # TUTORIAL: three agent-client slots.
+        resources: {antigravity_creds: 1}
         num_workers: 1
-        compatible_ips: [*dev_head]
-        worker_env_commands: ["export SCALE_WORKER_CPUS=3"]
+        compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
             image: ghcr.io/ucb-bar/chia-antigravity:latest
             container_name: scale-antigravity
@@ -82,32 +63,30 @@ available_node_types:
                 - --ulimit nofile=65536:65536
                 - --shm-size=4gb
                 - "--user $(id -u):$(id -g)"
-                # Model OAuth is separate from GCP authentication; log in with agy.
                 - "-v /home/${USER}/.gemini:/home/ray/.gemini"
             run_setup_commands:
                 - echo "user:x:$(id -u):$(id -g)::/home/ray:/bin/bash" >> /etc/passwd
                 - mkdir -p /home/ray/agy_workspace
 
 gcp_nodes:
-    project: chia-codesign26oak-1967  # TUTORIAL: your GCP project.
-    zone: us-west4-c  # TUTORIAL: builders' zone (96 C4 vCPUs).
-    parallel_gcp: &builder_vm
+    project: ${CHIA_TUT_PROJECT}
+    zone: us-west4-c
+    parallel_gcp:
         machine_type: c4-standard-32  # TUTORIAL: builder VM size.
-        count: 3  # TUTORIAL: independent builders; update chipyard above too.
+        count: 3  # TUTORIAL: builder VM count.
         image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
         ssh_user: ubuntu
         ssh_private_key: ${HOME}/.ssh/google_compute_engine
         skip_default_setup: true
         setup_timeout: 1800
         ssh_timeout: 300
-        setup_commands: []  # Docker is installed by initialization_commands above.
-        # C4 requires Hyperdisk + gVNIC. TUTORIAL: disk size is set here.
+        setup_commands: []
         disks:
             - boot: true
               auto_delete: true
               initialize_params:
                   source_image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
-                  disk_size_gb: 150  # TUTORIAL: builder disk; 3 x 150 = 450 GB west.
+                  disk_size_gb: 150
                   disk_type: zones/us-west4-c/diskTypes/hyperdisk-balanced
         network_interfaces:
             - network: global/networks/default
@@ -115,21 +94,30 @@ gcp_nodes:
               access_configs: [{name: External NAT, type_: ONE_TO_ONE_NAT}]
 
     benchmark_gcp:
-        <<: *builder_vm
-        zone: us-central1-a  # TUTORIAL: second region; sims use 64 C4 vCPUs.
+        zone: us-central1-a
         machine_type: c4-standard-32  # TUTORIAL: simulator VM size.
-        count: 2  # TUTORIAL: update verilator_run above too.
+        count: 3  # TUTORIAL: simulator VM count.
+        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+        ssh_user: ubuntu
+        ssh_private_key: ${HOME}/.ssh/google_compute_engine
+        skip_default_setup: true
+        setup_timeout: 1800
+        ssh_timeout: 300
+        setup_commands: []
         disks:
             - boot: true
               auto_delete: true
               initialize_params:
                   source_image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
-                  disk_size_gb: 100  # TUTORIAL: simulator disk; 2 x 100 = 200 GB central.
+                  disk_size_gb: 100
                   disk_type: zones/us-central1-a/diskTypes/hyperdisk-balanced
+        network_interfaces:
+            - network: global/networks/default
+              nic_type: GVNIC
+              access_configs: [{name: External NAT, type_: ONE_TO_ONE_NAT}]
 
-# CHIA runs these on the already-created dev head; no head VM is provisioned.
 head_setup_commands:
-    - test -x "$HOME/miniforge3/bin/conda"  # Installed by setup_gcp.sh.
+    - test -x "$HOME/miniforge3/bin/conda"
     - >-
       test -x "$HOME/miniforge3/envs/chia_env/bin/python" ||
       "$HOME/miniforge3/bin/conda" create -y -n chia_env python=3.10.19 pip
@@ -140,15 +128,12 @@ head_env_commands:
 head_start_ray_commands:
     - >-
       ray start --head --port=6395
-      --dashboard-port=8095 --include-dashboard=True --num-cpus=1
+      --dashboard-port=8095 --include-dashboard=True
       --object-store-memory=1073741824 --temp-dir=/tmp/ray_scale
       --min-worker-port=0 --max-worker-port=0 --dashboard-agent-listen-port=0
 worker_start_ray_commands:
-    # Some images bundle an older CHIA; use the same release on every worker.
     - python -m pip install 'chialoops==2.0.0'
-    # TUTORIAL: CPU budgets are set per worker above; leave room for the OS.
-    # Ephemeral worker ports avoid collisions between host-network containers.
     - >-
-      ray start --address=$RAY_HEAD_IP:6395 --num-cpus=$SCALE_WORKER_CPUS
+      ray start --address=$RAY_HEAD_IP:6395
       --object-store-memory=4294967296 --min-worker-port=0 --max-worker-port=0
       --dashboard-agent-listen-port=0

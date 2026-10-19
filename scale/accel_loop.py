@@ -43,7 +43,7 @@ def load_settings(path):
     settings = yaml.safe_load(Path(path).read_text())
     if settings.get("model_effort") not in ("default", "low", "medium", "high", "xhigh", "max"):
         raise ValueError("model_effort must be default, low, medium, high, xhigh, or max")
-    positive = ["agents", "design_iterations_per_agent", "build_jobs", "simulation_threads", "quick_cases_per_kind", "max_case_bytes", "cases_per_binary", "batch_work_bytes", "benchmark_repeats", "max_attempts", "debug_feedback_max_chars", "compile_timeout_seconds", "build_timeout_seconds", "simulation_timeout_seconds", "simulation_timeout_cycles", "model_timeout_seconds", "metrics_interval_seconds"]
+    positive = ["agents", "design_iterations_per_agent", "simulation_threads", "quick_cases_per_kind", "max_case_bytes", "cases_per_binary", "batch_work_bytes", "benchmark_repeats", "max_attempts", "debug_feedback_max_chars", "compile_timeout_seconds", "build_timeout_seconds", "simulation_timeout_seconds", "simulation_timeout_cycles", "model_timeout_seconds", "metrics_interval_seconds"]
     for name in positive:
         if type(settings[name]) is not int or settings[name] < 1:
             raise ValueError(f"{name} must be a positive integer")
@@ -121,21 +121,13 @@ def preflight(settings):
     if version("chialoops") != "2.0.0":
         raise RuntimeError("The loop requires chialoops==2.0.0")
     alive = [n for n in ray.nodes() if n["Alive"]]
-    builders = sorted((n for n in alive if n["Resources"].get("chipyard", 0) >= 1), key=lambda n: n["NodeManagerAddress"])
-    compiler = next((n for n in alive if n["Resources"].get("riscv_build", 0) >= 1), None)
+    builders = sorted((n for n in alive if n["Resources"].get("chipyard", 0) >= 1 and n["Resources"].get("CPU", 0) >= 1), key=lambda n: n["NodeManagerAddress"])
+    compiler = next((n for n in alive if n["Resources"].get("riscv_build", 0) >= 1 and n["Resources"].get("CPU", 0) >= 1), None)
     model = next((n for n in alive if n["Resources"].get("antigravity_creds", 0) >= 1), None)
-    if len(builders) < settings["agents"] or compiler is None or model is None:
-        raise RuntimeError("Missing builder, compiler, or model-client workers")
-    resources = ray.cluster_resources()
-    for name, required in [("riscv_build", 1), ("verilator_run", settings["simulation_threads"]), ("antigravity_creds", settings["agents"])]:
-        if resources.get(name, 0) < required:
-            raise RuntimeError(f"Requested {required} {name} slots, available {resources.get(name, 0)}")
+    simulator = next((n for n in alive if n["Resources"].get("verilator_run", 0) >= 1 and n["Resources"].get("CPU", 0) >= settings["simulation_threads"]), None)
+    if len(builders) < settings["agents"] or compiler is None or model is None or simulator is None:
+        raise RuntimeError("Missing builder, compiler, simulator, or model-client workers that can fit a task")
     builders = builders[:settings["agents"]]
-    if any(n["Resources"].get("CPU", 0) < settings["build_jobs"] for n in builders):
-        raise RuntimeError("build_jobs exceeds a builder's Ray CPU budget")
-    for n in alive:
-        if "verilator_run" in n["Resources"] and settings["simulation_threads"] > min(n["Resources"]["CPU"], n["Resources"]["verilator_run"]):
-            raise RuntimeError("A simulation cannot fit on a simulator worker")
     checks = [nodes.inspect_builder.options(scheduling_strategy=nodes.pinned(n["NodeID"])).chia_remote(settings["chipyard_path"]) for n in builders]
     info = [get(ref) for ref in checks]
     for value in info:
@@ -312,7 +304,7 @@ def run_baseline(engine, builder, quick, full, identity):
     directory = engine.directory / "baseline"
     directory.mkdir()
     body = body_from((ROOT / "memcpy_rocc.c").read_text())
-    build = nodes.hardware.options(num_cpus=engine.settings["build_jobs"], scheduling_strategy=nodes.pinned(builder["NodeID"]), max_retries=0).chia_remote(engine.settings)
+    build = nodes.build_hardware(engine.settings, builder)
     cache = {}
     quick_dir, full_dir = directory / "quick", directory / "full"
     quick_dir.mkdir(); full_dir.mkdir()
@@ -364,7 +356,7 @@ def ask(llm, tool, prompt, directory, label, engine):
     name = label.split('/')[-1]
     (directory / f"{name}.txt").write_text(prompt + "\n\nPENDING\n")
     def call():
-        return get(llm.prompt.options(num_cpus=1, resources={"antigravity_creds": 1},
+        return get(llm.prompt.options(num_cpus=0, resources={"antigravity_creds": nodes.ROLE_TAG},
                    scheduling_strategy=nodes.pinned(llm._scale_node_id), max_retries=0).chia_remote(llm, prompt, [tool]))
     def log_retry(attempt, seconds, error):
         json_file(directory / f"{name}.retry_{attempt}.json", dict(attempt=attempt, wait_seconds=seconds, error=str(error)))
@@ -413,7 +405,7 @@ def run_agent(index, builder, source_info, coordinator, engine, quick, full, bas
                         render(body, quick[:1], settings)  # Reject invalid bodies BEFORE starting a hardware build.
                         if patch != cached_patch:
                             cached_patch = patch
-                            build = nodes.hardware.options(num_cpus=settings["build_jobs"], scheduling_strategy=nodes.pinned(node_id), max_retries=0).chia_remote(settings)
+                            build = nodes.build_hardware(settings, builder)
                         (attempt_dir / "memcpy_body.c").write_text(body)
                         (attempt_dir / "hardware.patch").write_text(patch)
                         for profile, cases in [("quick", quick), ("full", full)]:

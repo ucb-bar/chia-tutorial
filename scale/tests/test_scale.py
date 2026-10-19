@@ -12,13 +12,13 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from accel_loop import batches, case_batches, collect_tasks, load_settings, Engine, EvaluationError, reuse_baseline
+from accel_loop import ask, batches, case_batches, collect_tasks, load_settings, Engine, EvaluationError, preflight, reuse_baseline
 from coordinator import Coordinator, Design
-from nodes import EDIT_ROOT, SourceTool, compile_software, editable, simulate, source_path, validate_patch, workspace, inspect_builder
+from nodes import EDIT_ROOT, ROLE_TAG, SourceTool, build_hardware, compile_software, editable, simulate, source_path, validate_patch, workspace, inspect_builder
 from suite import Case, body_from, category, fingerprint, load_cases, parse_results, render, score, validate_offload
 from build_worker import target_settings
 from model_client import ScaleAntigravityLLM
@@ -91,7 +91,7 @@ class SuiteTests(unittest.TestCase):
 
     def test_design_iterations_are_positive_and_shared_slots_are_not_run_settings(self):
         self.assertEqual(self.settings["design_iterations_per_agent"], 1)
-        for removed in ("iterations_per_agent", "compile_slots", "simulation_slots"):
+        for removed in ("iterations_per_agent", "compile_slots", "simulation_slots", "build_jobs"):
             self.assertNotIn(removed, self.settings)
         with tempfile.TemporaryDirectory(prefix="scale-design-iterations-") as directory:
             path = Path(directory) / "settings.json"
@@ -385,6 +385,69 @@ class BaselineTests(unittest.TestCase):
 
 
 class EngineTests(unittest.TestCase):
+    def test_preflight_accepts_five_agents_with_one_model_role_tag(self):
+        settings = dict(load_settings(ROOT / "settings.yaml"), agents=5)
+        builders = [dict(Alive=True, NodeID=f"{i + 1:056x}", NodeManagerAddress=f"10.0.0.{i + 1}",
+                         Resources=dict(CPU=2, chipyard=1)) for i in range(5)]
+        workers = builders + [
+            dict(Alive=True, NodeID=f"{6:056x}", NodeManagerAddress="10.0.0.6", Resources=dict(CPU=8, riscv_build=1)),
+            dict(Alive=True, NodeID=f"{7:056x}", NodeManagerAddress="10.0.0.6", Resources=dict(CPU=0, antigravity_creds=1)),
+            dict(Alive=True, NodeID=f"{8:056x}", NodeManagerAddress="10.0.0.7", Resources=dict(CPU=64, verilator_run=1)),
+        ]
+        info = dict(dirty="", landlock_abi=3, submodules="", required_sources=True,
+                    commit="fixture", protected_state="fixture")
+        environment = dict(chia="2.0.0", ray="offline-test", harness=True, agy=True)
+        with patch("accel_loop.ray.nodes", return_value=workers), \
+                patch("accel_loop.ray.__version__", "offline-test"), \
+                patch("accel_loop.get", side_effect=lambda ref: ref), \
+                patch("accel_loop.nodes.inspect_builder") as inspect, \
+                patch("accel_loop.nodes.environment_info") as inspect_environment:
+            inspect.options.return_value.chia_remote.return_value = info
+            inspect_environment.options.return_value.chia_remote.return_value = environment
+            selected, *_ = preflight(settings)
+            self.assertEqual(len(selected), 5)
+            self.assertNotIn("build_jobs", settings)
+            with self.assertRaisesRegex(RuntimeError, "Missing"):
+                preflight(dict(settings, simulation_threads=65))
+
+    def test_hardware_build_parallelism_follows_builder_cpu_capacity(self):
+        settings = load_settings(ROOT / "settings.yaml")
+        with patch("nodes.hardware") as hardware, patch("nodes.pinned", return_value="placement"):
+            for cpus in (2, 32, 64):
+                with self.subTest(cpus=cpus):
+                    hardware.reset_mock()
+                    builder = dict(NodeID="builder", Resources=dict(CPU=cpus, chipyard=1))
+                    build_hardware(settings, builder)
+                    hardware.options.assert_called_once_with(num_cpus=cpus, scheduling_strategy="placement", max_retries=0)
+                    submitted = hardware.options.return_value.chia_remote.call_args.args[0]
+                    self.assertEqual(submitted["build_jobs"], cpus)
+                    self.assertNotIn("build_jobs", settings, "Do not mutate shared agent settings")
+
+    def test_five_parallel_model_requests_do_not_reserve_local_cpu_slots(self):
+        settings = dict(load_settings(ROOT / "settings.yaml"), agents=5)
+        answer = SimpleNamespace(result="answer", stderr="", stream_result="transcript")
+        llm = SimpleNamespace(prompt=Mock(), _scale_node_id="model")
+        barrier = threading.Barrier(5)
+        def respond(*args):
+            barrier.wait(timeout=5)
+            return answer
+        llm.prompt.options.return_value.chia_remote.side_effect = respond
+        with tempfile.TemporaryDirectory(prefix="scale-model-scheduling-") as directory:
+            root = Path(directory)
+            engine = Engine(settings, root, {})
+            def request(index):
+                target = root / f"agent_{index}"
+                target.mkdir()
+                return ask(llm, "tool", "prompt", target, f"agent_{index}/software", engine)
+            with patch("accel_loop.get", side_effect=lambda ref: ref), \
+                    patch("accel_loop.nodes.pinned", return_value="placement"), \
+                    ThreadPoolExecutor(max_workers=5) as pool:
+                self.assertEqual(list(pool.map(request, range(5))), [answer] * 5)
+        self.assertEqual(llm.prompt.options.call_count, 5)
+        for call in llm.prompt.options.call_args_list:
+            self.assertEqual(call.kwargs, dict(num_cpus=0, resources={"antigravity_creds": ROLE_TAG},
+                                               scheduling_strategy="placement", max_retries=0))
+
     def test_all_work_is_submitted_before_waiting_and_errors_drain_remaining_work(self):
         submitted, finished = [], []
         def tasks():
@@ -430,11 +493,11 @@ class EngineTests(unittest.TestCase):
         with patch("nodes.RiscvBuildNode") as compiler, patch("nodes.VerilatorRunNode") as simulator:
             compile_software("source", "batch", settings)
             compiler.return_value.build.options.assert_called_once_with(
-                num_cpus=1, resources={"riscv_build": 1}, max_retries=0)
+                num_cpus=1, resources={"riscv_build": ROLE_TAG}, max_retries=0)
             settings["simulation_threads"] = 2
             simulate("artifact", SimpleNamespace(binary_content=b"elf", binary_name="batch"), settings)
             simulator.return_value.run.options.assert_called_once_with(
-                num_cpus=2, resources={"verilator_run": 2}, max_retries=0)
+                num_cpus=2, resources={"verilator_run": ROLE_TAG}, max_retries=0)
 
     def test_simulation_failure_drains_all_batches_and_keeps_their_logs(self):
         settings = load_settings(ROOT / "settings.yaml")

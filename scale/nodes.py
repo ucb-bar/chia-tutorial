@@ -20,6 +20,8 @@ from chia.chipyard.riscv_build_node import RiscvBuildNode
 from chia.chipyard.verilator_run_node import VerilatorRunNode
 
 EDIT_ROOT = "generators/chipyard/src/main/scala/"
+# Role resources select the right image; CPU requests, not these tags, limit work.
+ROLE_TAG = 0.001
 
 
 def editable(path):
@@ -204,7 +206,7 @@ def hardware(settings):
 
 def compile_software(source, name, settings):
     node = RiscvBuildNode(timeout_seconds=settings["compile_timeout_seconds"])
-    return node.build.options(num_cpus=1, resources={"riscv_build": 1}, max_retries=0).chia_remote(
+    return node.build.options(num_cpus=1, resources={"riscv_build": ROLE_TAG}, max_retries=0).chia_remote(
         node, source.encode(), name, "/tmp/scale_sw", target="verilator", include_dump=True,
         extra_cflags="-fno-builtin-memcpy")
 
@@ -212,7 +214,7 @@ def compile_software(source, name, settings):
 def simulate(artifact, elf, settings):
     node = VerilatorRunNode()
     ini = {p.name: p.read_bytes() for p in (Path(__file__).parent / "dramsim_ini").iterdir()}
-    return node.run.options(num_cpus=settings["simulation_threads"], resources={"verilator_run": settings["simulation_threads"]}, max_retries=0).chia_remote(
+    return node.run.options(num_cpus=settings["simulation_threads"], resources={"verilator_run": ROLE_TAG}, max_retries=0).chia_remote(
         node, artifact, elf.binary_content, elf.binary_name, "/tmp/scale_sim",
         plusargs={"+loadmem": elf.binary_name}, timeout_cycles=settings["simulation_timeout_cycles"],
         timeout_seconds=settings["simulation_timeout_seconds"], dramsim_ini_files=ini, verbose=False)
@@ -220,6 +222,12 @@ def simulate(artifact, elf, settings):
 
 def pinned(node_id):
     return NodeAffinitySchedulingStrategy(node_id, soft=False)
+
+
+def build_hardware(settings, builder):
+    jobs = int(builder["Resources"]["CPU"])
+    return hardware.options(num_cpus=jobs, scheduling_strategy=pinned(builder["NodeID"]), max_retries=0).chia_remote(
+        dict(settings, build_jobs=jobs))
 
 
 @ChiaFunction(num_cpus=0)

@@ -1,5 +1,5 @@
 # TUTORIAL SCALING KNOBS - CHANGE THESE VALUES
-# VM sizes/counts and shared Ray resources live in cluster.yaml.
+# VM sizes/counts live in cluster.yaml; Ray detects their CPU capacity.
 agents: 3                     # Default active agents; five strategies below, subject to cluster capacity.
 design_iterations_per_agent: 1 # Designs per agent; each can have up to four debug retries.
 test_cases: 1024              # Total test + benchmark cases; 0 selects all 4,488.
@@ -23,9 +23,8 @@ model_effort: medium         # Explicit medium effort; default omits --effort.
 # Leave the defaults below unchanged when experimenting with scaling.
 chipyard_path: /home/ray/chipyard
 hardware_config: FastRTLSimRocketConfig
-build_jobs: 24                # Keep <= builder Ray CPUs (24 in cluster.yaml).
 java_heap_gb: 8               # SBT/Chisel JVM heap per builder.
-simulation_threads: 1         # Also consumes this many verilator_run slots.
+simulation_threads: 1         # Ray CPUs requested by each simulation.
 quick_cases_per_kind: 32      # Subset of the upstream tests AND benchmarks.
 max_case_bytes: 16384         # Retain large-copy coverage in the available corpus.
 cases_per_binary: 8           # Maximum, not a fixed batch size.

@@ -13,19 +13,34 @@ sys.path.insert(0, str(ROOT))
 
 from chia.cluster.config import (assign_nodes, build_config, load_raw_config,
                                  parse_gcp_nodes, _expand_node_placeholders)
-from chia.cluster.node_setup import build_head_script
+from chia.cluster.node_setup import build_head_script, build_worker_script
 import run as runner
 
 
 class NativeClusterTests(unittest.TestCase):
+    HEAD_ENV = dict(CHIA_HEAD_IP="10.0.0.10", CHIA_HEAD_ZONE="us-east1-b", CHIA_TUT_PROJECT="scale-offline-test")
+
     def config(self):
-        return load_raw_config(str(ROOT / "cluster.yaml"))
+        with patch.dict(os.environ, self.HEAD_ENV):
+            return load_raw_config(str(ROOT / "cluster.yaml"))
+
+    def test_head_address_project_and_ssh_alias_come_from_each_users_environment(self):
+        for ip, zone, project in [("10.0.0.10", "us-east1-b", "student-one"),
+                                  ("10.1.2.3", "us-west4-c", "student-two")]:
+            with self.subTest(project=project), patch.dict(os.environ, dict(
+                    CHIA_HEAD_IP=ip, CHIA_HEAD_ZONE=zone, CHIA_TUT_PROJECT=project)):
+                raw = load_raw_config(str(ROOT / "cluster.yaml"))
+                self.assertEqual(raw["provider"]["head_ip"], ip)
+                self.assertEqual(raw["gcp_nodes"]["project"], project)
+                self.assertIn(f"chia-dev.{zone}.{project}", raw["auth"]["ssh_proxy_command"])
+                for role in ("riscv_cross", "antigravity"):
+                    self.assertEqual(raw["available_node_types"][role]["compatible_ips"], [ip])
 
     def test_existing_head_is_not_provisioned_as_a_cloud_worker(self):
         raw = self.config()
         nodes, project, zone, network, subnet = parse_gcp_nodes(copy.deepcopy(raw))
         self.assertEqual(set(nodes), {"parallel_gcp", "benchmark_gcp"})
-        self.assertEqual(sum(node.count for node in nodes.values()), 5)
+        self.assertEqual(sum(node.count for node in nodes.values()), 6)
         head = raw["provider"]["head_ip"]
         for name in ("riscv_cross", "antigravity"):
             self.assertEqual(raw["available_node_types"][name]["compatible_ips"], [head])
@@ -33,29 +48,47 @@ class NativeClusterTests(unittest.TestCase):
         self.assertNotIn("SCALE_HEAD", str(raw))
         self.assertFalse((ROOT / "up.py").exists())
 
-    def test_native_head_setup_and_all_seven_worker_assignments(self):
+    def test_native_head_setup_and_all_eight_worker_assignments(self):
         raw = self.config()
         parse_gcp_nodes(raw)
         raw = _expand_node_placeholders(raw, {
             "parallel_gcp": ["10.182.0.21", "10.182.0.22", "10.182.0.23"],
-            "benchmark_gcp": ["10.128.0.21", "10.128.0.22"],
+            "benchmark_gcp": ["10.128.0.21", "10.128.0.22", "10.128.0.23"],
         })
         config = build_config(raw)
         assignments = assign_nodes(config)
-        self.assertEqual(len(assignments), 7)
-        self.assertEqual(len({node.ip for node in assignments}), 6)
+        self.assertEqual(len(assignments), 8)
+        self.assertEqual(len({node.ip for node in assignments}), 7)
         self.assertEqual(config.head_ray_address, f"{config.head_ip}:6395")
         script = "\n".join(build_head_script(config))
         self.assertIn("create -y -n chia_env python=3.10.19", script)
         self.assertIn("python -m pip install 'chialoops==2.0.0'", script)
         self.assertIn("ray start --head --port=6395", script)
         self.assertNotIn("/home/ubuntu", script)
+        self.assertNotIn("--num-cpus", script)
+        for assignment in assignments:
+            worker_script = "\n".join(build_worker_script(config, assignment))
+            self.assertNotIn("SCALE_WORKER_CPUS", worker_script)
+            self.assertNotIn("--num-cpus", worker_script)
+            self.assertIn("--resources=", worker_script)
+            self.assertEqual(list(assignment.resources.values()), [1])
+
+    def test_plain_vm_and_worker_counts_agree(self):
+        text = (ROOT / "cluster.yaml").read_text()
+        self.assertNotRegex(text, r"(?:^|\s)[&*][A-Za-z_]")
+        self.assertNotIn("<<:", text)
+        raw = self.config()
+        for role, group in (("chipyard", "parallel_gcp"), ("verilator_run", "benchmark_gcp")):
+            worker = raw["available_node_types"][role]
+            self.assertEqual(worker["num_workers"], raw["gcp_nodes"][group]["count"])
+            self.assertEqual(len(worker["compatible_ips"]), worker["num_workers"])
+        self.assertEqual(raw["available_node_types"]["antigravity"]["resources"], {"antigravity_creds": 1})
 
     def test_native_up_dry_run_needs_no_cloud_credentials_or_runtime_state(self):
         chia = Path(sys.executable).parent / "chia"
         result = subprocess.run([str(chia), "up", "--dry-run", str(ROOT / "cluster.yaml")],
                                 capture_output=True, text=True,
-                                env=dict(os.environ, CLOUDSDK_CONFIG="/nonexistent/scale-native-test"))
+                                env=dict(os.environ, **self.HEAD_ENV, CLOUDSDK_CONFIG="/nonexistent/scale-native-test"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Dry run complete. No changes made.", result.stderr)
         self.assertNotIn("head_gcp", result.stdout)
