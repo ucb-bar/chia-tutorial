@@ -1,12 +1,12 @@
 # TUTORIAL: fill in these values; VM sizes/counts live in cluster.yaml.
-agents: 2                     # One dedicated builder/model session each; cluster has capacity for 3.
+agents: 3                     # One dedicated builder/model session each; match cluster capacity.
 iterations_per_agent: 1        # Start small; each iteration can have debug retries.
 strategies:
   - Minimize setup and command overhead for small copies and unaligned tails.
   - Maximize bulk throughput using pipelined requests and multiple outstanding operations.
   - Improve cache-line transfers, ordering, and completion latency.
-model: claude-sonnet-4-6      # Sonnet 4.6 Thinking; verify availability with `agy models`.
-model_effort: default        # TUTORIAL: omit --effort; Sonnet uses its fixed Thinking preset.
+model: gemini-4-argon-medium  # Enterprise model; verify project access with `agy models`.
+model_effort: medium         # TUTORIAL: explicit medium effort; default omits --effort.
 chipyard_path: /home/ray/chipyard
 hardware_config: FastRTLSimRocketConfig
 build_jobs: 24                # Keep <= builder Ray CPUs (24 in cluster.yaml).
@@ -16,12 +16,13 @@ compile_slots: 4              # Keep <= riscv_build tokens in cluster.yaml.
 simulation_slots: 48          # Keep <= total verilator_run tokens in cluster.yaml.
 quick_cases_per_kind: 32      # Subset of the upstream tests AND benchmarks.
 max_case_bytes: 16384         # Retain large-copy coverage in the available corpus.
-case_limit: 1024              # TUTORIAL: fixed subset; 0 selects all 4,488 available cases.
+test_cases: 1024              # TUTORIAL: total test + benchmark cases; 0 selects all 4,488.
 cases_per_binary: 8           # TUTORIAL: maximum, not a fixed batch size.
 batch_work_bytes: 98304       # TUTORIAL: cap sum((length + 128 guard bytes) * invocations).
 benchmark_repeats: 1          # One timed copy per benchmark.
 benchmark_warmups: 1
 max_attempts: 5               # Initial design + up to four debugging attempts.
+debug_feedback_max_chars: 4000 # TUTORIAL: error excerpt sent to AI; full logs stay on disk.
 compile_timeout_seconds: 300
 build_timeout_seconds: 14400
 simulation_timeout_seconds: 1200 # TUTORIAL: 20-minute wall-clock limit per simulation batch.

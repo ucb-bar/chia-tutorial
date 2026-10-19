@@ -24,8 +24,8 @@ Profiles
 --------
 Available: every manifest vector with length <= settings.yaml:max_case_bytes.
 At 16384 bytes: 1304 correctness cases + 3184 benchmark cases = 4488.
-Configured/full: case_limit: 1024 selects 512 correctness + 512 benchmark
-vectors; case_limit: 0 uses all available vectors. The same frozen subset is
+Configured/full: test_cases: 1024 selects 512 correctness + 512 benchmark
+vectors; test_cases: 0 uses all available vectors. The same frozen subset is
 used for baseline and candidates. Selection round-robins deterministic size-
 band, byte-tail, aligned/unaligned, address-order, and page-crossing buckets.
 The 1024-case configuration preserves every category present in the available

@@ -1,5 +1,6 @@
 """Keep Angela's software -> hardware -> evaluate -> debug sequence."""
 from pathlib import Path
+import re
 from suite import body_from
 
 
@@ -57,8 +58,42 @@ def hardware():
             "If you revise that interface, return an updated software body; otherwise omit body markers.")
 
 
-def debug(stage, feedback, attempt):
-    return RULES + f"\nDebug attempt {attempt}: failure at {stage}. Form a concrete hypothesis, fix it, and return an updated body if needed.\n{feedback[-40000:]}"
+def concise_feedback(feedback, max_chars=4000):
+    """Keep diagnostic lines and nearby source context, not build boilerplate.
+
+    This changes model input only. Original failure text and raw build/simulation
+    logs remain in the attempt directory; validation and scoring are unchanged.
+    """
+    lines = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", feedback or "").splitlines()
+    if not lines:
+        return "No diagnostic text was returned. Full logs are in the attempt directory."[:max_chars]
+    diagnostic = re.compile(
+        r"^\s*\[error\]|\b(?:fatal\s+)?error\s*:|\bassertion failed\b|"
+        r"\bexception\b|^\s*(?:TEST|EVAL)\s+\S+\s+FAIL\b|"
+        r"\btimed?\s*out\b|\btimeout\b|\bout of memory\b|\bpermission denied\b|"
+        r"\bno space left\b|\bundefined reference\b|\bno such file\b", re.I)
+    focus = [i for i, line in enumerate(lines) if diagnostic.search(line)]
+    indices = {0}
+    for i in focus[:12]:
+        indices.update(range(max(0, i - 1), min(len(lines), i + 3)))
+    if not focus:
+        indices.update(range(max(1, len(lines) - 12), len(lines)))
+    selected, seen = [], set()
+    for i in sorted(indices):
+        line = lines[i].rstrip()
+        # Context can land on a huge echoed make/Java command. Do not let that
+        # crowd out the compiler diagnostic we selected the context for.
+        if i and len(line) > 500 and not diagnostic.search(line):
+            continue
+        if line and line not in seen:
+            seen.add(line)
+            selected.append(line[:500] + (" ... [line shortened]" if len(line) > 500 else ""))
+    note = "\n[Condensed feedback; full failure text and logs are in the attempt directory.]"
+    return "\n".join(selected)[:max(0, max_chars - len(note))] + note[:max_chars]
+
+
+def debug(stage, feedback, attempt, max_chars=4000):
+    return RULES + f"\nDebug attempt {attempt}: failure at {stage}. Form a concrete hypothesis, fix it, and return an updated body if needed.\n{concise_feedback(feedback, max_chars)}"
 
 
 def answer_body(answer, previous=None):

@@ -10,20 +10,21 @@ not a literal YAML value. The defaults are a starting point, not requirements.
 
 What you want          File / setting                       Current value
 ---------------------  -----------------------------------  -------------
-More parallel agents   settings.yaml: agents                 2 (cluster capacity: 3)
+More parallel agents   settings.yaml: agents                 3 (cluster capacity: 3)
 More search iterations settings.yaml: iterations_per_agent   1 per agent
-Different AI model     settings.yaml: model                  claude-sonnet-4-6 (Thinking)
-AI reasoning effort    settings.yaml: model_effort           default (fixed Thinking preset)
+Different AI model     settings.yaml: model                  gemini-4-argon-medium (Enterprise)
+AI reasoning effort    settings.yaml: model_effort           medium
 More hardware builders cluster.yaml: parallel_gcp.count      3 VMs
 Larger builder VMs     cluster.yaml: parallel_gcp.machine_type c4-standard-32
 Faster hardware builds settings.yaml: build_jobs             24 per builder
 More simulator VMs     cluster.yaml: benchmark_gcp.count      2 VMs
 More concurrent sims   settings.yaml: simulation_slots       48 total
 Larger JVM heap        settings.yaml: java_heap_gb           8 GiB per builder
-More test cases        settings.yaml: case_limit             1024; 0 = all 4488
-More timing samples    settings.yaml: benchmark_repeats      1; use 3 for final checks
+More test cases        settings.yaml: test_cases             1024; 0 = all 4488
+Timing samples         settings.yaml: benchmark_repeats      1 timed copy
 Longer sim timeout     settings.yaml: simulation_timeout_seconds 1200 (20 min per batch)
-More disk space        cluster.yaml: disk_size_gb            builder 150 / sim 100 / head 50 GB
+Shorter debug feedback settings.yaml: debug_feedback_max_chars 4000 characters
+More disk space        cluster.yaml: disk_size_gb            builder 150 / sim 100 GB
 
 IMPORTANT: some numbers MUST change together.
 
@@ -72,7 +73,7 @@ FULL here means the entire CONFIGURED suite, not necessarily all available
 upstream cases. Current iteration settings select 1,024 of 4,488 available
 vectors (512 tests + 512 benchmarks), with one warmup and one timed copy.
 Treat improvements on this subset as provisional. For final validation, set
-case_limit: 0 and benchmark_repeats: 3, then recompute the matching baseline.
+test_cases: 0, keep benchmark_repeats: 1, and recompute the matching baseline.
 Do not describe a 1,024-case pass as a full 4,488-case pass.
 
 No third-party submodule changes
@@ -105,12 +106,15 @@ Use an existing chialoops==2.0.0 environment, or create one:
   scale/.venv/bin/python -m pip install 'chialoops==2.0.0'
   PY=scale/.venv/bin/python
 
-Before provisioning, authenticate your GCP account (see setup_gcp.sh in the
-repository root) and fill in your project/regions/resources in cluster.yaml.
-That script is the broader tutorial bootstrap and also creates a separate dev
-VM; it is not necessary to run the whole script just to authenticate for scale.
-The example project ID is not a credential and must be replaced for your setup.
-  $PY scale/up.py                         # Creates paid GCP resources.
+Use the GCP/CHIA environment already configured by setup_gcp.sh (including its
+CLOUDSDK_CONFIG). Its existing chia-dev VM is the head; no new head VM is created.
+Fill in provider.head_ip with that VM's internal IP and update auth's gcloud SSH
+alias for your project/zone. The dev user matches the client USER; its model
+login is mounted from /home/<user>/.gemini. The existing google_compute_engine
+key stays on the client; the setup script's SSH alias supplies the public route.
+Head environment setup lives in cluster.yaml's native head_setup_commands.
+  chia up scale/cluster.yaml               # Creates five paid worker VMs.
+  chia up --add scale/cluster.yaml         # Add workers to an already-running cluster.
 
   $PY scale/accel_loop.py --list-cases       # Offline suite counts.
   $PY -m unittest discover -s scale/tests -v
@@ -118,22 +122,37 @@ The example project ID is not a credential and must be replaced for your setup.
   $PY scale/run.py --placement-check        # Real concurrent MCP placement check.
   $PY scale/run.py --baseline-only          # Real build + quick/full simulation, no model.
   $PY scale/run.py --agents 1 --iterations 1 # Single-agent integration run first.
-  $PY scale/run.py --agents 2 --iterations 1 # Two asynchronous optimization agents.
+  $PY scale/run.py --agents 3 --iterations 1 # Three asynchronous optimization agents.
 
 After a FULL baseline passes, avoid repeating its simulations in later runs:
-  $PY scale/run.py --agents 1 --baseline-run /home/ubuntu/scale/out/run_<id>
+  $PY scale/run.py --agents 1 --baseline-run /home/<head-user>/scale/out/run_<id>
 The loop rechecks every saved full-suite log and the harness/settings/source/
 compiler fingerprint. A quick-only, incomplete, or incompatible run is rejected.
 Only baseline measurements are reused; candidates still need their own builds
 and complete quick/full validation. Model login state and identical-builder
 counts do not affect measurement compatibility.
 
-run.py uploads only tutorial source to /home/ubuntu/scale on the existing head.
+run.py reads connection/auth/port settings from cluster.yaml and uploads only
+tutorial source to ~/scale on that head. No runtime state file is required.
 It excludes .runtime/, .venv/, out/, and __pycache__/. No GCP/SSH/model credentials are
 copied. The loop must execute on the head, not over a public Ray connection.
 The entire scale driver is locked to avoid concurrent baseline/agent runs.
 
-Model login is separate from GCP authentication. On the head, interactively run:
+After downloading results (see instructions.md), stop the cluster with:
+  chia down scale/cluster.yaml
+This removes the managed worker VMs/disks, not the setup-created chia-dev VM.
+Results under the dev user's ~/scale/out remain. The dev VM still incurs charges.
+Do not tear down or change heads during an active loop. Older deployments have
+a separate scale-labeled head: archive its /home/ubuntu/scale/out first, because
+native chia down deletes ALL scale-labeled VMs, including that legacy head.
+This source change does not migrate running clusters or their saved results.
+
+Model login is separate from VM provisioning credentials. The current run uses
+the Enterprise project login for chia-codesign26oak-1967, location global, and
+Gemini 4 Argon at medium effort. Verify model access in your own project
+before using it; requests can incur project-billed token charges. The older
+personal Starter login's weekly allowance is not an Enterprise allowance.
+On the head, interactively run:
   stty rows 55 cols 120
   docker exec -it -e TERM=xterm-256color -e LINES=55 -e COLUMNS=120 scale-antigravity-0 agy
 Select Google OAuth, open the displayed link on a separate browser-equipped
@@ -143,18 +162,25 @@ If restarting login, use the new link/code, not an earlier session's code.
 Verify your available model and edit settings.yaml:model if needed. File-presence
 preflight is not proof that OAuth tokens are valid; the model call surfaces real
 authentication, billing and rate-limit errors without inventing an answer.
-The cluster has three client/builder slots; the default loop uses two agents.
+The cluster has three client/builder slots; the default loop uses three agents.
 Local client slots do not guarantee account-side concurrency or quota.
 
 Model throttling and retries
 ----------------------------
-The default model is Claude Sonnet 4.6 Thinking (claude-sonnet-4-6).
+The default model is Enterprise Gemini 4 Argon (gemini-4-argon-medium),
+with model_effort: medium. Its model ID and --effort both select medium.
 model_effort: default omits --effort on every call, including debugging/retries.
-The deployed agy 1.4.2 reports Sonnet effort as "not adjustable": its fixed
-Thinking preset is NOT verified medium or high. Explicit --effort medium was
-rejected before generation; use default for Sonnet on this backend.
+The previous personal Sonnet 4.6 endpoint had a fixed Thinking preset and
+rejected --effort; that restriction does not apply to the configured Gemini model.
 For models that support adjustment, low/medium/high/xhigh/max pass --effort
 explicitly. Effort is not a token cap; provider support must be checked.
+Debug feedback selects compiler errors, failed cases, assertions, and nearby
+source context rather than sending build-command boilerplate. It is capped at
+debug_feedback_max_chars (4,000 by default), not a model-token budget. If no
+recognized diagnostic is found, it sends the first line and a short log tail.
+The cap applies only to the failure excerpt, not to the whole prompt/history.
+Uncondensed failure.txt and raw build/simulation logs remain in each attempt;
+failed software compilations also save batch_*.compile.stdout/stderr.txt.
 Verify available IDs with agy models; model-group quota belongs to the login.
 Baseline-only builds/simulations make ZERO model calls. Optimization uses AI to
 design the software interface, implement hardware through source tools, and
@@ -185,10 +211,12 @@ the software baseline remains available only as the frozen comparison reference.
 Resource/settings reference (all editable knobs)
 -----------------------------------------------
 cluster.yaml:
+  provider.head_ip / auth             Existing dev head IP and setup SSH alias/key.
   gcp_nodes.project / zone            Your project and per-role zones.
   gcp_nodes.*.machine_type / count    Physical VM sizes and counts.
   gcp_nodes.*.disks                   Hyperdisk size and zone-specific type.
-    Builders 3 x 150 GB west = 450 GB; sims 2 x 100 + head 50 central = 250 GB.
+    Builders 3 x 150 GB west = 450 GB; sims 2 x 100 GB central = 200 GB.
+    The existing dev head is outside gcp_nodes and is not resized or deleted.
     Existing deployed 300 GB disks are NOT shrunk automatically.
   available_node_types.*.num_workers / compatible_ips
     Match VM counts and explicit placement references.
@@ -203,7 +231,7 @@ settings.yaml:
   java_heap_gb                       Maximum Java/SBT heap per builder.
   compile_slots / simulation_slots    GLOBAL budgets shared by all agents.
   simulation_threads                 CPU + custom tokens consumed per simulation.
-  max_case_bytes / case_limit / quick_cases_per_kind
+  max_case_bytes / test_cases / quick_cases_per_kind
     Available length cap, configured case count (0 = all), and quick samples.
     Sampling is deterministic and balanced across correctness/benchmark kinds;
     the default 1,024 preserves all represented size-band, length-tail,
@@ -216,6 +244,7 @@ settings.yaml:
   benchmark_repeats / benchmark_warmups
     Frozen timing protocol; baseline and candidates use identical values.
   max_attempts / *_timeout_*          Retry, wall-time and simulator-cycle limits.
+  debug_feedback_max_chars           Maximum failure excerpt characters sent to AI.
   metrics_interval_seconds           Resource/peak-disk sampling frequency.
   model_rate_limit_retries            Additional attempts for genuinely failed 429s.
   model_backoff_seconds / model_max_backoff_seconds

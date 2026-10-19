@@ -43,7 +43,7 @@ def load_settings(path):
     settings = yaml.safe_load(Path(path).read_text())
     if settings.get("model_effort") not in ("default", "low", "medium", "high", "xhigh", "max"):
         raise ValueError("model_effort must be default, low, medium, high, xhigh, or max")
-    positive = ["agents", "iterations_per_agent", "build_jobs", "simulation_threads", "compile_slots", "simulation_slots", "quick_cases_per_kind", "max_case_bytes", "cases_per_binary", "batch_work_bytes", "benchmark_repeats", "max_attempts", "compile_timeout_seconds", "build_timeout_seconds", "simulation_timeout_seconds", "simulation_timeout_cycles", "model_timeout_seconds", "metrics_interval_seconds"]
+    positive = ["agents", "iterations_per_agent", "build_jobs", "simulation_threads", "compile_slots", "simulation_slots", "quick_cases_per_kind", "max_case_bytes", "cases_per_binary", "batch_work_bytes", "benchmark_repeats", "max_attempts", "debug_feedback_max_chars", "compile_timeout_seconds", "build_timeout_seconds", "simulation_timeout_seconds", "simulation_timeout_cycles", "model_timeout_seconds", "metrics_interval_seconds"]
     for name in positive:
         if type(settings[name]) is not int or settings[name] < 1:
             raise ValueError(f"{name} must be a positive integer")
@@ -51,8 +51,9 @@ def load_settings(path):
         raise ValueError("java_heap_gb must be a positive integer")
     if type(settings["benchmark_warmups"]) is not int or settings["benchmark_warmups"] < 0:
         raise ValueError("benchmark_warmups must be a nonnegative integer")
-    if type(settings["case_limit"]) is not int or settings["case_limit"] < 0 or 0 < settings["case_limit"] < 4:
-        raise ValueError("case_limit must be 0 (all) or an integer >= 4")
+    test_cases = settings.get("test_cases")
+    if type(test_cases) is not int or test_cases < 0 or 0 < test_cases < 4:
+        raise ValueError("test_cases must be 0 (all) or an integer >= 4")
     largest = (settings["max_case_bytes"] + 128) * (settings["benchmark_repeats"] + settings["benchmark_warmups"])
     if settings["batch_work_bytes"] < largest:
         raise ValueError("batch_work_bytes cannot fit the largest individual benchmark")
@@ -222,6 +223,8 @@ class Engine:
                 with self.compiler_slots:
                     elf = get(nodes.compile_software(source, f"batch_{index:04d}", self.settings))
                 if not elf.success:
+                    (directory / f"batch_{index:04d}.compile.stdout.txt").write_text(elf.stdout)
+                    (directory / f"batch_{index:04d}.compile.stderr.txt").write_text(elf.stderr)
                     raise EvaluationError("software compile", "Software compile failed:\n" + elf.stderr[-20000:] + elf.stdout[-10000:])
                 cache[digest] = elf
             return index, group, cache[digest]
@@ -291,7 +294,7 @@ def run_baseline(engine, builder, quick, full, identity):
     rows = engine.evaluate(body, full, build, cache, full_dir, "baseline/full")
     json_file(directory / "summary.json", dict(status="passed", validated_profile="full", fingerprint=identity, score=1.0,
               case_count=len(full), available_case_count=len(load_cases(engine.settings, "all")),
-              note="Full means the entire configured suite; a case_limit subset is not all available upstream cases."))
+              note="Full means the entire configured suite; a test_cases subset is not all available upstream cases."))
     (directory / "memcpy_body.c").write_text(body)
     (directory / "hardware.patch").write_text("")
     return Design("baseline", str(directory), body, "", 1.0, identity), build, rows
@@ -412,7 +415,7 @@ def run_agent(index, builder, source_info, coordinator, engine, quick, full, bas
                         summary["attempts"].append(dict(attempt=attempt, status="failed", error=feedback))
                         (attempt_dir / "failure.txt").write_text(feedback)
                         if attempt + 1 < settings["max_attempts"]:
-                            body = prompts.answer_body(ask(llm, tool, prompts.debug(getattr(error, "stage", "evaluation"), feedback, attempt + 1), directory, label + f"/debug_{attempt + 1}", engine), body)
+                            body = prompts.answer_body(ask(llm, tool, prompts.debug(getattr(error, "stage", "evaluation"), feedback, attempt + 1, settings["debug_feedback_max_chars"]), directory, label + f"/debug_{attempt + 1}", engine), body)
             except Exception as error:
                 summary["error"] = str(error)
                 LOG.exception("%s stopped", label)

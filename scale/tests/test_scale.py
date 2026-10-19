@@ -33,12 +33,24 @@ class SuiteTests(unittest.TestCase):
         cls.body = body_from((ROOT / "memcpy_rocc.c").read_text())
 
     def test_default_effort_omits_cli_override_for_sonnet(self):
-        llm = ScaleAntigravityLLM(model=self.settings["model"],
-                                 extra_cli_args=[] if self.settings["model_effort"] == "default" else ["--effort", self.settings["model_effort"]])
+        # Check the no-override option independently of the tutorial defaults.
+        effort = "default"
+        llm = ScaleAntigravityLLM(model="claude-sonnet-4-6",
+                                 extra_cli_args=[] if effort == "default" else ["--effort", effort])
         cmd = llm._build_cmd("offline command construction only")
-        self.assertEqual(self.settings["model_effort"], "default")
         self.assertNotIn("--effort", cmd)
         self.assertEqual(cmd[cmd.index("--model") + 1], "claude-sonnet-4-6")
+
+    def test_configured_model_and_effort_are_passed_to_cli(self):
+        effort = self.settings["model_effort"]
+        llm = ScaleAntigravityLLM(model=self.settings["model"],
+                                 extra_cli_args=[] if effort == "default" else ["--effort", effort])
+        cmd = llm._build_cmd("offline command construction only")
+        self.assertEqual(cmd[cmd.index("--model") + 1], self.settings["model"])
+        if effort == "default":
+            self.assertNotIn("--effort", cmd)
+        else:
+            self.assertEqual(cmd[cmd.index("--effort") + 1], effort)
 
     def test_explicit_effort_cli_option_for_adjustable_models(self):
         # Command construction only; no claim that Sonnet supports this option.
@@ -80,11 +92,25 @@ class SuiteTests(unittest.TestCase):
         self.assertEqual(self.full, load_cases(self.settings, "full"))
         self.assertEqual(len(set(self.full)), 1024)
         self.assertTrue(set(self.full) <= set(available))
-        self.assertEqual(load_cases(dict(self.settings, case_limit=0)), available)
+        self.assertEqual(load_cases(dict(self.settings, test_cases=0)), available)
         for kind in ("test", "eval"):
             chosen = [c for c in self.full if c.kind == kind]
             self.assertEqual(len(chosen), 512)
             self.assertEqual({category(c) for c in chosen}, {category(c) for c in available if c.kind == kind})
+
+    def test_test_cases_controls_suite_size_and_rejects_invalid_values(self):
+        self.assertEqual(len(load_cases(dict(self.settings, test_cases=128))), 128)
+        with tempfile.TemporaryDirectory(prefix="scale-test-cases-") as directory:
+            path = Path(directory) / "settings.json"
+            for value in [None, -1, 1, 2, 3, "1024", True]:
+                path.write_text(json.dumps(dict(self.settings, test_cases=value)))
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "test_cases"):
+                    load_settings(path)
+            settings = dict(self.settings)
+            settings.pop("test_cases")
+            path.write_text(json.dumps(settings))
+            with self.assertRaisesRegex(ValueError, "test_cases"):
+                load_settings(path)
 
     def test_adaptive_batches_cover_exact_cases_with_both_caps(self):
         groups = case_batches(self.full, self.settings)
@@ -310,6 +336,22 @@ class BaselineTests(unittest.TestCase):
 
 
 class EngineTests(unittest.TestCase):
+    def test_failed_software_compile_preserves_unabridged_logs(self):
+        settings = load_settings(ROOT / "settings.yaml")
+        cases = load_cases(settings, "quick")[:1]
+        body = body_from((ROOT / "memcpy_rocc.c").read_text())
+        elf = SimpleNamespace(success=False, stdout="compile detail\n" * 4000,
+                              stderr="file.c:1: error: unknown symbol\n" * 1000)
+        with tempfile.TemporaryDirectory(prefix="scale-compile-log-test-") as directory:
+            root = Path(directory)
+            engine = Engine(settings, root, {})
+            with patch("accel_loop.get", side_effect=lambda ref: ref), patch("accel_loop.nodes.compile_software", return_value=elf):
+                with self.assertRaises(EvaluationError) as error:
+                    engine.evaluate(body, cases, SimpleNamespace(success=True), {}, root, "failure")
+            self.assertEqual(error.exception.stage, "software compile")
+            self.assertEqual((root / "batch_0000.compile.stdout.txt").read_text(), elf.stdout)
+            self.assertEqual((root / "batch_0000.compile.stderr.txt").read_text(), elf.stderr)
+
     def test_three_evaluations_share_budgets_cache_exact_sources_and_reject_failed_hardware(self):
         settings = load_settings(ROOT / "settings.yaml")
         settings.update(compile_slots=2, simulation_slots=2, cases_per_binary=1)

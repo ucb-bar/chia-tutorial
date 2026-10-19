@@ -1,28 +1,36 @@
-"""Sync scale/ to the existing head and run the loop, without copying secrets.
+"""Sync scale/ to the head configured in cluster.yaml and run the loop.
+
+Bring up the cluster with `chia up scale/cluster.yaml`; no runtime state file
+or custom cloud bootstrap is needed. Credentials are never copied to the head.
 
 Examples: python scale/run.py --preflight
           python scale/run.py --baseline-only
           python scale/run.py --iterations 2
 """
-import json
 from pathlib import Path
 import shlex
 import subprocess
 import sys
 
+from chia.cluster.config import build_config, load_raw_config
+
 
 def main():
     folder = Path(__file__).resolve().parent
-    state = json.loads((folder / ".runtime/state.json").read_text())
-    key = folder / ".runtime/chia-key"
-    ssh = ["ssh", "-i", str(key), "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=accept-new"]
-    host = f"ubuntu@{state['public_ip']}"
-    destination = "/home/ubuntu/scale"
+    config = build_config(load_raw_config(str(folder / "cluster.yaml")))
+    auth = config.get_ssh_auth(config.head_ip)
+    ssh = ["ssh", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=accept-new"]
+    if auth.ssh_private_key:
+        ssh += ["-i", str(Path(auth.ssh_private_key).expanduser())]
+    if auth.ssh_proxy_command:
+        ssh += ["-o", f"ProxyCommand={auth.ssh_proxy_command}"]
+    host = f"{auth.ssh_user}@{config.head_ip}"
+    destination = "scale"  # Relative to the existing head user's home.
     subprocess.run(ssh + [host, f"mkdir -p {destination}"], check=True)
     subprocess.run(["rsync", "-az", "--exclude=.runtime/", "--exclude=.venv/", "--exclude=out/", "--exclude=__pycache__/",
                     "-e", shlex.join(ssh), str(folder) + "/", f"{host}:{destination}/"], check=True)
-    python = "/home/ubuntu/miniforge3/envs/chia_env/bin/python"
-    command = f"cd {destination} && " + shlex.join([python, "accel_loop.py", "--address", f"{state['private_ip']}:6395", *sys.argv[1:]])
+    command = " && ".join([*config.head_env_commands, f"cd {destination}",
+                           shlex.join(["python", "accel_loop.py", "--address", config.head_ray_address, *sys.argv[1:]])])
     subprocess.run(ssh + [host, command], check=True)
 
 

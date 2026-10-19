@@ -64,7 +64,7 @@ def load_cases(settings, profile="full"):
             cases.append(Case(**row))
     if profile == "all":
         return cases
-    limit = settings.get("case_limit", 0)
+    limit = settings.get("test_cases", 0)
     if limit and limit < len(cases):
         groups = {kind: [c for c in cases if c.kind == kind] for kind in ("test", "eval")}
         counts = {kind: min(len(group), limit // 2) for kind, group in groups.items()}
