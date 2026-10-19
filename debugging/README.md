@@ -173,32 +173,40 @@ The Python lives **in `accel/`**, as new files: `accel_loop.py` sets
 
 ## 8. Where our code lives
 
-One subfolder per block; `accel/` is never edited.
+One subfolder per block. `accel/` is never edited: we copy the two driver
+files and add the caching to the copies.
 
 ```
 debugging/
   README.md
-  cache/                     recorded results (git-ignored)
-  profiling/out/             profiles this section records (git-ignored)
+  cache/                  recorded results (git-ignored)
   caching/
-    tagging.py               puts a _chia_tag on accel's own dispatches
-    cache.yaml               record: write every tagged call
-    replay.yaml              replay: serve them back
-    run.py                   accel's loop, with the cache attached
+    accel_loop.py         their driver + the cache setup and the tags
+    nodes.py              their nodes + a _chia_tag on each dispatch
+    cache.yaml            record: write every tagged call
+    replay.yaml           replay: serve them back
   profiling/
-    debug_render_profile.py  render a profile: html + svg + csv
-    debug_timing.py          their baseline with phase markers
+    out/                  profiles this section records (git-ignored)
+    debug_render_profile.py
+    debug_timing.py
 ```
 
-No new loop and no wrappers: `caching/run.py` calls **their** entry point,
-`accel_loop.main()`, so the flow, the arguments, the profiler and the teardown
-are theirs. It only attaches the cache on the way in, and `tagging.install()`
-adds the tag inside `@ChiaFunction.options()/.chia_remote`, so their `nodes.py`
-dispatches tag themselves:
+Run ours exactly as you run theirs:
 
-```python
-node.build.options(resources={"chipyard": 0.9}).chia_remote(node)   # -> hw_0001
+```bash
+chia job submit --chia-cluster ../../accel/cluster.yaml -- \
+    python "$(pwd)/accel_loop.py" --iterations 3            # record
+    python "$(pwd)/accel_loop.py" --iterations 3 --replay   # replay
 ```
 
-`accel/` is not a package, so each runner puts it on `sys.path` and keeps
-`runtime_env["working_dir"]` pointing at it, exactly as `accel_loop.py` does.
+What the copies change (56 lines, `diff accel/accel_loop.py
+debugging/caching/accel_loop.py`):
+
+* `nodes.py` — each dispatch takes a `tag` and passes `_chia_tag=tag`
+* `accel_loop.py` — each call site passes a tag built from the iteration and
+  attempt, e.g. `hw_iter_3_evaluation_result1`
+* `accel_loop.py` — `start_cache` + `Bypass` + provider/cond in `main()`,
+  right after their `start_collector()`, and a `--replay` flag
+
+`accel/` is still the source of `results`, `agent_prompt`, `dramsim_ini` and
+`out/`, so the hill climb keeps reading the same designs.
