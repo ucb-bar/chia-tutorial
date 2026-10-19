@@ -10,8 +10,8 @@ thread count, VerilatorRunNode records simulation_cycles.
 
     chia job submit --chia-cluster cluster.yaml -- python "$(pwd)/debug_timing.py"
 
-Writes out/profile_timing_<ts>/, prints a per-function timing table, and leaves
-the html / svg / csv next to the log (see debug_render_profile.py).
+Writes out/profile_timing_<ts>/ and prints a per-function timing table; render
+the log with chia viz-profile.
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ def main() -> None:
 
     summarize(out / "ChiaProfileCollector.log")
     print(f"\nprofile: {out}")
-    print(f"render it:  python debug_render_profile.py {out}")
+    print(f"render it:  chia viz-profile {out}/ChiaProfileCollector.log --format html")
 
 
 if __name__ == "__main__":

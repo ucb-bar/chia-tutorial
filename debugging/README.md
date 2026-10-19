@@ -44,7 +44,10 @@ edits theirs.
 `accel/out/profile_<ts>/ChiaProfileCollector.log`; we render it:
 
 ```bash
-python debug_render_profile.py            # newest out/profile_*
+LOG=profiling/out/profile_20261019_030358/ChiaProfileCollector.log
+chia viz-profile $LOG --format html                                   # timeline
+chia viz-profile $LOG --format svg                                    # dependency graph
+chia viz-profile $LOG --format table                                  # time per function
 ```
 
 * `..._profile.html` — the timeline: 17 compiles at `riscv_build: 4`, the
@@ -121,7 +124,6 @@ Nobody debugs orchestration at that price.
 
 ```
 debugging/README.md        this plan
-accel/debug_render_profile.py  render a profile as html + svg + csv      [A1]
 accel/debug_timing.py          run their baseline with phase markers     [A2]
 accel/debug_phase.py           the composite-bar ChiaFunction            [A3]
 accel/debug_nodes.py           tagged wrappers around accel/nodes.py     [C]
@@ -187,7 +189,6 @@ debugging/
     replay.yaml           replay: serve them back
   profiling/
     out/                  profiles this section records (git-ignored)
-    debug_render_profile.py
     debug_timing.py
 ```
 

@@ -80,8 +80,3 @@ chia viz-profile <log> --format html     # interactive timeline
 chia viz-profile <log> --format svg      # dependency graph
 chia viz-profile <log> --format table    # CSV, exec time per function
 ```
-
-```bash
-cd ~/chia-tutorial/debugging/profiling
-python debug_render_profile.py           # newest profile, all three at once
-```
