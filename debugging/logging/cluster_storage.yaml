@@ -3,7 +3,7 @@ cluster_name: accel-memcpy
 # The accel cluster (same head, same containers) plus one GCP VM, "storage",
 # with no container. It advertises PERSISTENT_STORAGE, so chia_log writes that
 # ask for that resource land on its disk. Bring it up next to the running
-# cluster with:  chia up --add --yes cluster.yaml    (GCP_PROJECT must be set)
+# cluster with:  chia up --add --yes cluster_storage.yaml   (GCP_PROJECT must be set)
 # The head is a GCP VM, so the new VM joins over the VPC's private IPs.
 connection: vpc
 

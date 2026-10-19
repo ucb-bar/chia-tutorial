@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import json
 import logging
@@ -29,6 +30,7 @@ from chia.chipyard.state_def import BuildArtifact, RiscvBuildArtifact, RunResult
 from chia.models.antigravity import AntigravityLLM
 
 import agent_prompt
+import nodes
 from nodes import (
     build_hardware,
     compile_software,
@@ -384,10 +386,17 @@ def main() -> None:
                         help="iterations to run after the baseline exists (default 1)")
     parser.add_argument("--baseline-only", action="store_true",
                         help="(re)generate accel/out/baseline and stop")
+    # LOGGING: send the simulation logs to the PERSISTENT_STORAGE machine
+    parser.add_argument("--log-to-storage", action="store_true",
+                        help="write the simulation logs on the machine that advertises "
+                             "PERSISTENT_STORAGE (bring it up with cluster_storage.yaml)")
     parser.add_argument("--replay-iteration", type=int, metavar="N",
                         help="replay iteration N's calls, whatever this run's "
                              "output directory is called")
     args = parser.parse_args()
+    if args.log_to_storage:
+        nodes.SIM_LOG_DIR = os.path.expanduser("~/chia_logs/sims")
+        nodes.SIM_LOG_RESOURCE = "PERSISTENT_STORAGE"
 
     # working_dir makes this folder's modules importable on the workers;
     # py_modules ships the head's chia over the images' own.
