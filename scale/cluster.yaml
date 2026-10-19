@@ -13,16 +13,18 @@ auth:
 initialization_commands:
     - sudo cloud-init status --wait
     - command -v docker >/dev/null || (curl -fsSL https://get.docker.com | sudo sh)
-    - sudo usermod -aG docker "$(id -un)"
+    - id -nG "$(id -un)" | grep -qw docker || sudo usermod -aG docker "$(id -un)"
 
 available_node_types:
     chipyard:
         resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker.
-        num_workers: 3  # TUTORIAL: builder workers; match the VM count below.
+        num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
         compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"] # TUTORIAL: add the correct IPs here.
         worker_setup_commands:
             - source /home/ray/chipyard/env.sh
-            - /home/ray/anaconda3/bin/python -m venv /tmp/chia-env
+            - >-
+              test -x /tmp/chia-env/bin/python ||
+              /home/ray/anaconda3/bin/python -m venv /tmp/chia-env
             - source /tmp/chia-env/bin/activate
         docker:
             image: ghcr.io/ucb-bar/chia-chisel-build:latest
@@ -124,7 +126,9 @@ head_setup_commands:
     - >-
       test -x "$HOME/miniforge3/envs/chia_env/bin/python" ||
       "$HOME/miniforge3/bin/conda" create -y -n chia_env python=3.10.19 pip
-    - python -m pip install 'chialoops==2.0.0'
+    - >-
+      python -c "from importlib.metadata import version; assert version('chialoops') == '2.0.0'" 2>/dev/null ||
+      python -m pip install 'chialoops==2.0.0'
     - mkdir -p "$HOME/.gemini"
 head_env_commands:
     - export PATH="$HOME/miniforge3/envs/chia_env/bin:$PATH"
@@ -135,7 +139,9 @@ head_start_ray_commands:
       --object-store-memory=1073741824 --temp-dir=/tmp/ray_scale
       --min-worker-port=0 --max-worker-port=0 --dashboard-agent-listen-port=0
 worker_start_ray_commands:
-    - python -m pip install 'chialoops==2.0.0'
+    - >-
+      python -c "from importlib.metadata import version; assert version('chialoops') == '2.0.0'" 2>/dev/null ||
+      python -m pip install 'chialoops==2.0.0'
     - >-
       ray start --address=$RAY_HEAD_IP:6395
       --object-store-memory=4294967296 --min-worker-port=0 --max-worker-port=0
