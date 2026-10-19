@@ -63,8 +63,10 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact, 
     # the DRAMSim config lives with their example, not next to this copy
     _accel = Path(__file__).resolve().parents[2] / "accel"
     dramsim_ini = {p.name: p.read_bytes() for p in sorted((_accel / "dramsim_ini").iterdir())}
-    # LOGGING: the node chia_logs each run into its own file in log_dir, on the head
-    node = VerilatorRunNode(log_dir=str(Path(__file__).resolve().parents[1] / "logs" / "sims"))
+    # LOGGING: the node chia_logs each run into its own file in log_dir, on the
+    # machine with the "chipyard" resource (the chipyard container), not the head.
+    # Not verilator_run: this task holds it, and the write would wait for a slot.
+    node = VerilatorRunNode(log_dir="/home/ray/sim_logs", logging_resource="chipyard")
     return node.run.options(resources={"verilator_run": SIM_THREADS}).chia_remote(
         node, artifact, elf.binary_content, elf.binary_name, "/home/ray/accel_sim",
         plusargs={"+loadmem": elf.binary_name},
