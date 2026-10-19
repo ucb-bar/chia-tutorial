@@ -1,0 +1,7 @@
+name,status,bytes,cycles,bytes_per_cycle,speedup
+copy_256B,PASS,256,2149,0.1191,1.0
+copy_1KiB,PASS,1024,8293,0.1235,1.0
+copy_4KiB,PASS,4096,32966,0.1242,1.0
+copy_16KiB,PASS,16384,136822,0.1197,1.0
+copy_4KiB_unaligned,PASS,4093,32988,0.1241,1.0
+average,,,,,1.0

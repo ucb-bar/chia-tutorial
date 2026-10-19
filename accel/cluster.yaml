@@ -1,0 +1,92 @@
+cluster_name: accel-memcpy
+
+provider:
+    head_ip: ${THIS_MACHINE}
+
+auth:
+    ssh_user: ${USER}
+
+available_node_types:
+
+    chipyard:
+        resources: {"chipyard": 1}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        worker_setup_commands:
+            - "source /home/ray/chipyard/env.sh"
+        docker:
+            image: "ghcr.io/ucb-bar/chia-chisel-build:latest"
+            container_name: "accel-chipyard-${USER}"
+            pull_before_run: True
+            pull_timeout: 7200  # the image is large; the default 600 s is too short
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+
+    verilator_run:
+        resources: {"verilator_run": 8}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
+            container_name: "accel-verilator-run-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+
+    riscv_cross:
+        resources: {"riscv_build": 4}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-riscv-cross:latest"
+            container_name: "accel-riscv-cross-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+
+    antigravity:
+        resources: {"antigravity_creds": 1}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-antigravity:latest"
+            container_name: "accel-antigravity-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+                - "--user $(id -u):$(id -g)"
+                # agy's OAuth token and settings
+                - "-v ${HOME}/.gemini:/home/ray/.gemini"
+            run_setup_commands:
+                - echo "user:x:$(id -u):$(id -g)::/home/ray:/bin/bash" >> /etc/passwd
+                # agy's working directory (work_dir in accel_loop.py), kept empty
+                - mkdir -p /home/ray/agy_workspace
+
+# chia runs the head's commands over SSH in a login shell that has neither
+# conda nor ray on PATH. ${CONDA_PREFIX} is filled in by chia from the shell
+# that runs `chia up`, i.e. the env chia is installed in (chia_env), so the
+# head runs that env's ray and python.
+head_env_commands:
+    - export PATH="${CONDA_PREFIX}/bin:$PATH"
+
+head_start_ray_commands:
+    - >-
+      ulimit -c unlimited &&
+      ray start --head --port=6395
+      --dashboard-host=127.0.0.1 
+      --dashboard-port=8095 
+      --include-dashboard=True
+      --temp-dir=/tmp/ray_accel/${USER}
+      --dashboard-agent-listen-port=0
+
+
+# ACCEL_PORT_BASE comes from each node type's worker_setup_commands (same
+# script). CHIA_TOOL_* are inherited by the raylet, so tool servers started on
+# the node bind in its block.
+worker_start_ray_commands:
+    - >-
+      ray start --address=$RAY_HEAD_IP:6395
+      --dashboard-agent-listen-port=0
