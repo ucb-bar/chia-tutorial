@@ -3,7 +3,7 @@
 ```
 cd hello-example
 export THIS_MACHINE=$(hostname -I | awk '{print $1}')
-chia up cluster.yaml
+chia up cluster.yaml -y
 ```
 
 It will take ~10 minutes to pull the Docker containers
@@ -39,11 +39,21 @@ In cluster.yaml, add:
 ## Bring up the Antigravity node in our cluster
 
 ```
-chia up –add cluster.yaml
+chia up –-add cluster.yaml -y
 ```
 
 ## Run the "hello-world with LLM" job
 
 ```
 chia job submit --working-dir . -- python hello-world.py
+```
+
+## Tear down the cluster
+
+```
+<<<<<<< HEAD
+chia down –add cluster.yaml -y
+=======
+chia down cluster.yaml -y
+>>>>>>> 889bed7 (Fix readme bugs part 2)
 ```
