@@ -1,0 +1,14 @@
+{
+  "project": "GNU C Library",
+  "release": "glibc-2.42",
+  "commit": "d2097651cc57834dbfcaa102ddfacae0d86cfb66",
+  "mirror": "https://github.com/bminor/glibc",
+  "license": "LGPL-2.1-or-later",
+  "sha256": {
+    "benchtests/bench-memcpy.c": "02c6e27c923fe8c550ecaacb2eceffc3ea6e998c14b7a60df42801aef69abd89",
+    "string/test-memcpy.c": "8f7b57c30a71d82631c33d4e525b4cccccffc21cb590d1a430c5828c23427cdb",
+    "string/test-memcpy-support.h": "0726788192fba8ff9d28a5cc4ff6ffc9f0a0664461aa8c8b4b77fd1d6f9861cf",
+    "COPYING.LIB": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+  },
+  "cases_sha256": "cffe913deba422d362cb06c5e0d171ce22e0dea12add0f79c64cb5c121e0159c"
+}

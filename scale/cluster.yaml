@@ -1,0 +1,149 @@
+cluster_name: scale
+provider:
+    head_ip: ${CHIA_HEAD_IP}
+connection: vpc
+auth:
+    ssh_user: ${USER}
+    ssh_private_key: ${HOME}/.ssh/google_compute_engine
+    ssh_proxy_command: >-
+        ssh -i ${HOME}/.ssh/google_compute_engine -o IdentitiesOnly=yes
+        -o StrictHostKeyChecking=accept-new -W %h:%p
+        ${CHIA_HEAD_IP}
+        # chia-dev.${CHIA_HEAD_ZONE}.${CHIA_TUT_PROJECT}
+
+initialization_commands:
+    - sudo cloud-init status --wait
+    - command -v docker >/dev/null || (curl -fsSL https://get.docker.com | sudo sh)
+    - id -nG "$(id -un)" | grep -qw docker || sudo usermod -aG docker "$(id -un)"
+
+available_node_types:
+    chipyard:
+        resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker.
+        num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
+        compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"] # TUTORIAL: add the correct IPs here.
+        worker_setup_commands:
+            - source /home/ray/chipyard/env.sh
+            - >-
+              test -x /tmp/chia-env/bin/python ||
+              /home/ray/anaconda3/bin/python -m venv /tmp/chia-env
+            - source /tmp/chia-env/bin/activate
+        docker:
+            image: ghcr.io/ucb-bar/chia-chisel-build:latest
+            container_name: scale-chipyard
+            pull_before_run: true
+            pull_timeout: 7200
+            run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
+
+    verilator_run:
+        resources: {verilator_run: 1} # TUTORIAL: verilator instances available per worker.
+        num_workers: 1  # TUTORIAL: simulator workers; match the VM count below.
+        compatible_ips: ["@benchmark_gcp:0"] # TUTORIAL: add the correct IPs here.
+        docker:
+            image: ghcr.io/ucb-bar/chia-verilator-run:latest
+            container_name: scale-verilator
+            pull_before_run: true
+            pull_timeout: 3600
+            run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
+
+    riscv_cross:
+        resources: {riscv_build: 1} # TUTORIAL: number of build instances on the head node.
+        num_workers: 1
+        compatible_ips: ["${CHIA_HEAD_IP}"]
+        docker:
+            image: ghcr.io/ucb-bar/chia-riscv-cross:latest
+            container_name: scale-riscv
+            pull_before_run: true
+            pull_timeout: 3600
+            run_options: ["--ulimit nofile=65536:65536"]
+
+    antigravity:
+        resources: {antigravity_creds: 1} # TUTORIAL: number of antigravity instances available at once.
+        num_workers: 1
+        compatible_ips: ["${CHIA_HEAD_IP}"]
+        docker:
+            image: ghcr.io/ucb-bar/chia-antigravity:latest
+            container_name: scale-antigravity
+            pull_before_run: true
+            pull_timeout: 3600
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=4gb
+                - "--user $(id -u):$(id -g)"
+                - "-v /home/${USER}/.gemini:/home/ray/.gemini"
+            run_setup_commands:
+                - echo "user:x:$(id -u):$(id -g)::/home/ray:/bin/bash" >> /etc/passwd
+                - mkdir -p /home/ray/agy_workspace
+
+gcp_nodes:
+    project: ${CHIA_TUT_PROJECT}
+    zone: us-west4-c
+    parallel_gcp:
+        machine_type: c4-standard-32
+        count: 3  # TUTORIAL: builder VM count.
+        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+        ssh_user: ubuntu
+        ssh_private_key: ${HOME}/.ssh/google_compute_engine
+        skip_default_setup: true
+        setup_timeout: 1800
+        ssh_timeout: 300
+        setup_commands: []
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  source_image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+                  disk_size_gb: 150
+                  disk_type: zones/us-west4-c/diskTypes/hyperdisk-balanced
+        network_interfaces:
+            - network: global/networks/default
+              nic_type: GVNIC
+              access_configs: [{name: External NAT, type_: ONE_TO_ONE_NAT}]
+
+    benchmark_gcp:
+        zone: us-central1-a
+        machine_type: c4-standard-32
+        count: 3  # TUTORIAL: simulator VM count.
+        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+        ssh_user: ubuntu
+        ssh_private_key: ${HOME}/.ssh/google_compute_engine
+        skip_default_setup: true
+        setup_timeout: 1800
+        ssh_timeout: 300
+        setup_commands: []
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  source_image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+                  disk_size_gb: 100
+                  disk_type: zones/us-central1-a/diskTypes/hyperdisk-balanced
+        network_interfaces:
+            - network: global/networks/default
+              nic_type: GVNIC
+              access_configs: [{name: External NAT, type_: ONE_TO_ONE_NAT}]
+
+head_setup_commands:
+    - test -x "$HOME/miniforge3/bin/conda"
+    - >-
+      test -x "$HOME/miniforge3/envs/chia_env/bin/python" ||
+      "$HOME/miniforge3/bin/conda" create -y -n chia_env python=3.10.19 pip
+    - >-
+      python -c "from importlib.metadata import version; assert version('chialoops') == '2.0.0'" 2>/dev/null ||
+      python -m pip install 'chialoops==2.0.0'
+    - mkdir -p "$HOME/.gemini"
+head_env_commands:
+    - export PATH="$HOME/miniforge3/envs/chia_env/bin:$PATH"
+head_start_ray_commands:
+    - >-
+      ray start --head --port=6395
+      --dashboard-port=8095 --include-dashboard=True
+      --object-store-memory=1073741824 --temp-dir=/tmp/ray_scale
+      --min-worker-port=0 --max-worker-port=0 --dashboard-agent-listen-port=0
+worker_start_ray_commands:
+    - >-
+      python -c "from importlib.metadata import version; assert version('chialoops') == '2.0.0'" 2>/dev/null ||
+      python -m pip install 'chialoops==2.0.0'
+    - >-
+      ray start --address=$RAY_HEAD_IP:6395
+      --object-store-memory=4294967296 --min-worker-port=0 --max-worker-port=0
+      --dashboard-agent-listen-port=0
