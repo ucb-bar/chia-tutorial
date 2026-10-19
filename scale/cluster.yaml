@@ -17,9 +17,9 @@ initialization_commands:
 
 available_node_types:
     chipyard:
-        resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker
+        resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker.
         num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
-        compatible_ips: ["@parallel_gcp:0"] # TUTORIAL: add the correct IPs here
+        compatible_ips: ["@parallel_gcp:0"] # TUTORIAL: add the correct IPs here.
         worker_setup_commands: ["source /home/ray/chipyard/env.sh"]
         docker:
             image: ghcr.io/ucb-bar/chia-chisel-build:latest
@@ -29,9 +29,9 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     verilator_run:
-        resources: {verilator_run: 1} # TUTORIAL: verilator instances available per worker
+        resources: {verilator_run: 1} # TUTORIAL: verilator instances available per worker.
         num_workers: 1  # TUTORIAL: simulator workers; match the VM count below.
-        compatible_ips: ["@benchmark_gcp:0"] # TUTORIAL: add the correct IPs here 
+        compatible_ips: ["@benchmark_gcp:0"] # TUTORIAL: add the correct IPs here.
         docker:
             image: ghcr.io/ucb-bar/chia-verilator-run:latest
             container_name: scale-verilator
@@ -40,7 +40,7 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     riscv_cross:
-        resources: {riscv_build: 1} # TUTORIAL: number of build CPUs available 
+        resources: {riscv_build: 1} # TUTORIAL: number of build instances on the head node.
         num_workers: 1
         compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
@@ -51,7 +51,7 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536"]
 
     antigravity:
-        resources: {antigravity_creds: 1} # TUTORIAL: number of antigravity instances available at once. 
+        resources: {antigravity_creds: 1} # TUTORIAL: number of antigravity instances available at once.
         num_workers: 1
         compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
