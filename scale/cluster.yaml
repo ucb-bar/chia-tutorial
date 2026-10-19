@@ -1,154 +1,168 @@
+# Start with: python scale/up.py (using chialoops==2.0.0).
+# Stop with: python scale/up.py down (deletes these VMs and their boot disks).
+# Layout: 168 vCPUs, 630 GiB RAM; disks total 450 GB west / 250 GB central.
+# Quota budget: global CPUs 200; C4 CPUs 100 and Hyperdisk 500 GB per region.
+# This starts infrastructure only, not the optimization loop or model login.
+# TUTORIAL: allocation knobs are marked below; runtime addresses come from up.py.
+# Recreate the cluster after changing existing VM sizes or worker resources.
+# Smaller disks require replacement; this file does not shrink running disks.
+# Measure peak usage during a full hardware build before reducing sizes further.
+# When changing a zone, update its disk_type zone below and check region quotas.
 cluster_name: scale
-
 provider:
-    head_ip: ${THIS_MACHINE}
-
+    head_ip: ${SCALE_HEAD_IP}
+connection: vpc
 auth:
-    ssh_user: ${USER}
+    ssh_user: ubuntu
+    ssh_private_key: ${SCALE_SSH_KEY}
+    # SSH goes through the head; Ray traffic stays inside the GCP VPC.
+    ssh_proxy_command: >-
+        ssh -i ${SCALE_SSH_KEY} -o IdentitiesOnly=yes
+        -o StrictHostKeyChecking=accept-new -W %h:%p ubuntu@${SCALE_HEAD_PUBLIC_IP}
+
+# CHIA 2.0.0's cloud setup runner ignores ProxyCommand. Initialization uses it.
+initialization_commands:
+    - sudo cloud-init status --wait
+    - command -v docker >/dev/null || (curl -fsSL https://get.docker.com | sudo sh)
+    - sudo usermod -aG docker ubuntu
 
 available_node_types:
-
     chipyard:
-        resources: {"chipyard": 1}
-        num_workers: 1
-        compatible_ips: ["${THIS_MACHINE}"]
-        worker_setup_commands:
-            - "source /home/ray/chipyard/env.sh"
+        resources: {chipyard: 1}  # One exclusive hardware build per builder.
+        num_workers: 3  # TUTORIAL: match parallel_gcp.count and IP references.
+        compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"]
+        worker_env_commands: ["export SCALE_WORKER_CPUS=24"]
+        worker_setup_commands: ["source /home/ray/chipyard/env.sh"]
         docker:
-            image: "ghcr.io/ucb-bar/chia-chisel-build:latest"
-            container_name: "accel-chipyard-${USER}"
-            pull_before_run: True
-            pull_timeout: 7200  # the image is large; the default 600 s is too short
-            run_options:
-                - --ulimit nofile=65536:65536
-                - --shm-size=10.24gb
+            image: ghcr.io/ucb-bar/chia-chisel-build:latest
+            container_name: scale-chipyard
+            pull_before_run: true
+            pull_timeout: 7200
+            run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     verilator_run:
-        resources: {"verilator_run": 8}
-        num_workers: 1
-        compatible_ips: ["${THIS_MACHINE}"]
+        resources: {verilator_run: 24}  # TUTORIAL: simulation slots per VM.
+        num_workers: 2  # TUTORIAL: match benchmark_gcp.count and IP references.
+        compatible_ips: ["@benchmark_gcp:0", "@benchmark_gcp:1"]
+        worker_env_commands: ["export SCALE_WORKER_CPUS=24"]
         docker:
-            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
-            container_name: "accel-verilator-run-${USER}"
-            pull_before_run: True
-            run_options:
-                - --ulimit nofile=65536:65536
-                - --shm-size=10.24gb
+            image: ghcr.io/ucb-bar/chia-verilator-run:latest
+            container_name: scale-verilator
+            pull_before_run: true
+            pull_timeout: 3600
+            run_options: ["--ulimit nofile=65536:65536", "--shm-size=10.24gb"]
 
     riscv_cross:
-        resources: {"riscv_build": 4}
+        resources: {riscv_build: 4}  # TUTORIAL: compiler slots on the head VM.
         num_workers: 1
-        compatible_ips: ["${THIS_MACHINE}"]
+        compatible_ips: ["@head_gcp:0"]
+        worker_env_commands: ["export SCALE_WORKER_CPUS=4"]
         docker:
-            image: "ghcr.io/ucb-bar/chia-riscv-cross:latest"
-            container_name: "accel-riscv-cross-${USER}"
-            pull_before_run: True
-            run_options:
-                - --ulimit nofile=65536:65536
+            image: ghcr.io/ucb-bar/chia-riscv-cross:latest
+            container_name: scale-riscv
+            pull_before_run: true
+            pull_timeout: 3600
+            run_options: ["--ulimit nofile=65536:65536"]
 
     antigravity:
-        resources: {"antigravity_creds": 1}
+        resources: {antigravity_creds: 3}  # TUTORIAL: three agent-client slots.
         num_workers: 1
-        compatible_ips: ["${THIS_MACHINE}"]
+        compatible_ips: ["@head_gcp:0"]
+        worker_env_commands: ["export SCALE_WORKER_CPUS=3"]
         docker:
-            image: "ghcr.io/ucb-bar/chia-antigravity:latest"
-            container_name: "accel-antigravity-${USER}"
-            pull_before_run: True
+            image: ghcr.io/ucb-bar/chia-antigravity:latest
+            container_name: scale-antigravity
+            pull_before_run: true
+            pull_timeout: 3600
             run_options:
                 - --ulimit nofile=65536:65536
-                - --shm-size=10.24gb
+                - --shm-size=4gb
                 - "--user $(id -u):$(id -g)"
-                # agy's OAuth token and settings
-                - "-v ${HOME}/.gemini:/home/ray/.gemini"
+                # Model OAuth is separate from GCP authentication; log in with agy.
+                - "-v /home/ubuntu/.gemini:/home/ray/.gemini"
             run_setup_commands:
                 - echo "user:x:$(id -u):$(id -g)::/home/ray:/bin/bash" >> /etc/passwd
-                # agy's working directory (work_dir in accel_loop.py), kept empty
                 - mkdir -p /home/ray/agy_workspace
 
-    parallel_worker:
-        resources: {"gem5": 2}
-        num_workers: 1
-        docker:
-            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
-            container_name: "scale-worker-${USER}"
-            pull_timeout: 3600
-            pull_before_run: True
-            run_options:
-                - --ulimit nofile=65536:65536
-                - --shm-size=10.24gb
-        compatible_ips: ["@parallel_gcp:0", "@parallel_gcp:1", "@parallel_gcp:2"]
-
-    benchmark_worker:
-        resources: {"verilator_run": 2}
-        num_workers: 1
-        docker:
-            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
-            container_name: "scale-benchmark-worker-${USER}"
-            pull_timeout: 3600
-            pull_before_run: True
-            run_options:
-                - --ulimit nofile=65536:65536
-                - --shm-size=10.24gb
-        compatible_ips: ["@benchmark_gcp:0", "@benchmark_gcp:1"]
-
-    head_worker:
-        resources: {"verilator_run": 2}
-        num_workers: 1
-        docker:
-            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
-            container_name: "scale-benchmark-worker-${USER}"
-            pull_timeout: 3600
-            pull_before_run: True
-            run_options:
-                - --ulimit nofile=65536:65536
-                - --shm-size=10.24gb
-        compatible_ips: ["@head_gcp:0"]
-    
-    
-
 gcp_nodes:
-    project: chia-codesign26oak-1967
-    zone: us-west4-c
-    parallel_gcp:
-        machine_type: c4-standard-32
-        count: 3
+    project: chia-codesign26oak-1967  # TUTORIAL: your GCP project.
+    zone: us-west4-c  # TUTORIAL: builders' zone (96 C4 vCPUs).
+    parallel_gcp: &builder_vm
+        machine_type: c4-standard-32  # TUTORIAL: builder VM size.
+        count: 3  # TUTORIAL: independent builders; update chipyard above too.
         image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
-        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
-        ssh_user: ubuntu               # user the guest agent creates on the VM
-        ssh_private_key: ${HOME}/.ssh/chia-key
+        ssh_user: ubuntu
+        ssh_private_key: ${SCALE_SSH_KEY}
+        ssh_public_key: ${SCALE_SSH_KEY}.pub
+        skip_default_setup: true
+        setup_timeout: 1800
+        ssh_timeout: 300
+        setup_commands: []  # Docker is installed by initialization_commands above.
+        # C4 requires Hyperdisk + gVNIC. TUTORIAL: disk size is set here.
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  source_image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+                  disk_size_gb: 150  # TUTORIAL: builder disk; 3 x 150 = 450 GB west.
+                  disk_type: zones/us-west4-c/diskTypes/hyperdisk-balanced
+        network_interfaces:
+            - network: global/networks/default
+              nic_type: GVNIC
+              access_configs: [{name: External NAT, type_: ONE_TO_ONE_NAT}]
 
-    benchmark_gcp:
-        machine_type: c4-standard-32
-        count: 2
-        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
-        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
-        ssh_user: ubuntu               # user the guest agent creates on the VM
-        ssh_private_key: ${HOME}/.ssh/chia-key
+    benchmark_gcp: &central_vm
+        <<: *builder_vm
+        zone: us-central1-a  # TUTORIAL: second region; head + sims use 72 vCPUs.
+        machine_type: c4-standard-32  # TUTORIAL: simulator VM size.
+        count: 2  # TUTORIAL: update verilator_run above too.
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  source_image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+                  disk_size_gb: 100  # TUTORIAL: simulator disk; 2 x 100 = 200 GB central.
+                  disk_type: zones/us-central1-a/diskTypes/hyperdisk-balanced
 
     head_gcp:
-        machine_type: c4-standard-8
+        <<: *central_vm
+        machine_type: c4-standard-8  # TUTORIAL: head, compiler, agent clients.
         count: 1
-        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
-        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
-        ssh_user: ubuntu               # user the guest agent creates on the VM
-        ssh_private_key: ${HOME}/.ssh/chia-key
+        # Override the simulator disk inherited above: central total = 250 GB.
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  source_image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
+                  disk_size_gb: 50  # TUTORIAL: head disk for compiler + agent clients.
+                  disk_type: zones/us-central1-a/diskTypes/hyperdisk-balanced
+        setup_commands:
+            - command -v docker >/dev/null || (curl -fsSL https://get.docker.com | sudo sh)
+            - sudo usermod -aG docker ubuntu
+            - >-
+              test -x /home/ubuntu/miniforge3/bin/conda ||
+              (curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/scale-miniforge.sh &&
+              bash /tmp/scale-miniforge.sh -b -p /home/ubuntu/miniforge3)
+            - >-
+              test -x /home/ubuntu/miniforge3/envs/chia_env/bin/python ||
+              /home/ubuntu/miniforge3/bin/conda create -y -n chia_env python=3.10.19 pip
+            - /home/ubuntu/miniforge3/envs/chia_env/bin/python -m pip install 'chialoops==2.0.0'
+            - mkdir -p /home/ubuntu/.gemini
 
-connection: tunnel
-
-# chia runs the head's commands over SSH in a login shell that has neither
 head_env_commands:
-    - export PATH="${CONDA_PREFIX}/bin:$PATH"
-
+    - export PATH="/home/ubuntu/miniforge3/envs/chia_env/bin:$PATH"
 head_start_ray_commands:
     - >-
-      ulimit -c unlimited &&
-      ray start --head --port=6395
-      --dashboard-port=8095 
-      --include-dashboard=True
-      --temp-dir=/tmp/ray_accel/${USER}
-      --dashboard-agent-listen-port=0
-
+      ray start --head --node-ip-address=${SCALE_HEAD_IP} --port=6395
+      --dashboard-port=8095 --include-dashboard=True --num-cpus=1
+      --object-store-memory=1073741824 --temp-dir=/tmp/ray_scale
+      --min-worker-port=0 --max-worker-port=0 --dashboard-agent-listen-port=0
 worker_start_ray_commands:
+    # Some images bundle an older CHIA; use the same release on every worker.
+    - python -m pip install 'chialoops==2.0.0'
+    # TUTORIAL: CPU budgets are set per worker above; leave room for the OS.
+    # Ephemeral worker ports avoid collisions between host-network containers.
     - >-
-      ray start --address=$RAY_HEAD_IP:6395
+      ray start --address=$RAY_HEAD_IP:6395 --num-cpus=$SCALE_WORKER_CPUS
+      --object-store-memory=4294967296 --min-worker-port=0 --max-worker-port=0
       --dashboard-agent-listen-port=0

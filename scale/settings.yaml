@@ -1,0 +1,33 @@
+# TUTORIAL: fill in these values; VM sizes/counts live in cluster.yaml.
+agents: 3                     # One dedicated builder and model session per agent.
+iterations_per_agent: 1        # Start small; each iteration can have debug retries.
+strategies:
+  - Minimize setup and command overhead for small copies and unaligned tails.
+  - Maximize bulk throughput using pipelined requests and multiple outstanding operations.
+  - Improve cache-line transfers, ordering, and completion latency.
+model: gemini-3.8-flash-low    # Replace with an available model from `agy models`.
+chipyard_path: /home/ray/chipyard
+hardware_config: FastRTLSimRocketConfig
+build_jobs: 24                # Keep <= builder Ray CPUs (24 in cluster.yaml).
+java_heap_gb: 8               # TUTORIAL: SBT/Chisel JVM heap per builder.
+simulation_threads: 1         # Also consumes this many verilator_run slots.
+compile_slots: 4              # Keep <= riscv_build tokens in cluster.yaml.
+simulation_slots: 48          # Keep <= total verilator_run tokens in cluster.yaml.
+quick_cases_per_kind: 32      # Subset of the upstream tests AND benchmarks.
+max_case_bytes: 16384         # Retain large-copy coverage in the available corpus.
+case_limit: 1024              # TUTORIAL: fixed subset; 0 selects all 4,488 available cases.
+cases_per_binary: 8           # TUTORIAL: maximum, not a fixed batch size.
+batch_work_bytes: 98304       # TUTORIAL: cap sum((length + 128 guard bytes) * invocations).
+benchmark_repeats: 1          # Fast iteration timing; use 3 with case_limit: 0 for final checks.
+benchmark_warmups: 1
+max_attempts: 5               # Initial design + up to four debugging attempts.
+compile_timeout_seconds: 300
+build_timeout_seconds: 14400
+simulation_timeout_seconds: 900
+simulation_timeout_cycles: 50000000
+model_timeout_seconds: 3600
+model_rate_limit_retries: 2   # TUTORIAL: additional attempts for genuinely failed 429s.
+model_backoff_seconds: 30     # TUTORIAL: wait 30s, then 60s (or provider delay if longer).
+model_max_backoff_seconds: 120 # Stop if the provider asks for a longer wait; never retry early.
+metrics_interval_seconds: 5
+ray_address: auto

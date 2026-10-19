@@ -1,0 +1,71 @@
+Upstream suite: GNU C Library (glibc), release glibc-2.42.
+Commit: d2097651cc57834dbfcaa102ddfacae0d86cfb66.
+Source mirror: https://github.com/bminor/glibc
+Source files and their SHA-256 hashes are recorded in sources.json.
+Unmodified reference files and LGPL-2.1-or-later license are in upstream/.
+
+What is ported
+--------------
+generate_cases.py compiles and executes the deterministic test_main call loops
+extracted from benchtests/bench-memcpy.c and string/test-memcpy.c. The shim only
+prints vectors: no upstream memcpy implementation or Linux driver is run.
+cases.csv is the resulting checked-in, deterministic, deduplicated manifest.
+Regenerate with: python scale/benchmarks/generate_cases.py
+Verify with:     python scale/benchmarks/generate_cases.py --verify
+
+The generated manifest preserves length, source/destination within-page
+alignment, and both source-before-destination and destination-before-source
+directions. do_test1 uses reversed argument ordering; the adapter accounts for
+that. OS page size is fixed at 4096 and upstream page_size at 131072. Large
+do_test1 absolute placements are normalized to within-page offsets. Identical
+vectors are deduplicated; the source file is retained on every manifest row.
+
+Profiles
+--------
+Available: every manifest vector with length <= settings.yaml:max_case_bytes.
+At 16384 bytes: 1304 correctness cases + 3184 benchmark cases = 4488.
+Configured/full: case_limit: 1024 selects 512 correctness + 512 benchmark
+vectors; case_limit: 0 uses all available vectors. The same frozen subset is
+used for baseline and candidates. Selection round-robins deterministic size-
+band, byte-tail, aligned/unaligned, address-order, and page-crossing buckets.
+The 1024-case configuration preserves every category present in the available
+corpus, but is NOT equivalent to passing all 4488 cases. Results are provisional
+until checked against all available cases and a matching baseline.
+Quick: deterministic, evenly spaced samples from each kind sorted by size,
+alignment and direction. Default 32 per kind = 64; a subset of configured/full.
+Cases are adaptively batched: at most 8 per binary and 96 KiB estimated work,
+where work = sum((length + 128 guards) * invocations). Large copies use smaller
+batches. The wall-clock limit stays 900 seconds per simulator, not per suite.
+
+Bare-metal differences and limitations
+-------------------------------------
+- This is an ADAPTED SUBSET, not a complete or directly comparable glibc run.
+- The unbounded random-test phase is omitted; deterministic upstream vectors
+  and the source/destination sentinel checks remain reproducible.
+- Linux mmap/mprotect guard pages are unavailable. Use 64-byte sentinel bands
+  immediately before/after the copy, checking source and destination bytes.
+  This detects adjacent bad writes, not arbitrary reads or distant corruption.
+- The memcpy-compatible wrapper returns integer 1, not a destination pointer.
+- Source data use the upstream deterministic 1 + 23*i byte pattern.
+- CPU rdcycle replaces glibc's OS/platform timer. One warmup and one measured
+  copy per benchmark during iteration; use three measured copies for final
+  validation. Preparation and verification are untimed, but still consume
+  simulator wall time.
+  Correctness is checked on EVERY invocation, including warmups. Fence overhead
+  at completion is included in measured cycles. Reported cycles are the integer
+  mean of the measured copies. No claim of cold-cache timing is made.
+- Each ELF has separate, page-aligned source/destination regions; cases never
+  overlap. Zero-length cases are retained.
+- No glibc IFUNC comparisons, OS fault detection, or official glibc score.
+- Performance is relative to the SAME frozen harness, case list, repetition
+  settings, compiler, Chipyard revision/state, and software memcpy baseline.
+  The aggregate is the geometric mean of per-benchmark baseline/candidate
+  cycle ratios. Every correctness case AND benchmark must pass before promotion.
+- SCALE_HOST_TEST supplies synthetic cycle values ONLY for native correctness
+  tests. These values must NEVER be reported as accelerator performance.
+
+Licensing
+---------
+The upstream reference files retain their original notices. See
+upstream/COPYING.LIB. Generated inputs and the tutorial driver are kept
+separate from those reference sources; no git submodule is added or modified.
