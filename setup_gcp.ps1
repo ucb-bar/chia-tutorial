@@ -18,6 +18,8 @@
 #
 # Optional environment overrides:
 #   $env:DEV_ZONE = 'us-west4-c'   $env:TUT_HOME = "$HOME\.chia-tutorial"
+#   $env:QUOTA_REGIONS = 'us-west4=100 us-central1=100'   vCPU targets per region
+#   $env:QUOTA_FAMILIES = 'C4'                             VM families to raise them for
 param(
     [string]$Account,
     [string]$Project = $env:PROJECT_ID,
@@ -209,10 +211,12 @@ if ($billing -ne 'True') {
 # --- 4. APIs -----------------------------------------------------------------
 # compute: VMs. cloudaicompanion: Gemini Code Assist (what agy signs in against).
 # aiplatform: Vertex AI (Gemini via OpenCode, the alternative CHIA backend).
-Log 'Enabling APIs (takes a minute the first time)'
+# cloudquotas: requesting the vCPU quota increases below.
+Log 'Enabling APIs (the first time this can take several minutes with no output; please wait)'
 while ($true) {
     $out = gcloud services enable compute.googleapis.com cloudaicompanion.googleapis.com `
-               aiplatform.googleapis.com --project $Project 2>&1 | ForEach-Object { "$_" } | Out-String
+               aiplatform.googleapis.com cloudquotas.googleapis.com --project $Project 2>&1 |
+           ForEach-Object { "$_" } | Out-String
     if ($LASTEXITCODE -eq 0) { break }
     if ($out -notmatch 'UREQ_TOS_NOT_ACCEPTED') { Write-Host $out; Die 'enabling APIs failed' }
     # New accounts must accept the Google Cloud terms once, in the browser.
@@ -254,19 +258,67 @@ if ($LASTEXITCODE -ne 0) {
     Die "$DevType is not offered in $DevZone. Zones that have it: $zones"
 }
 
-function Test-Quota([string]$Region, [string]$Metric, [int]$Needed) {
-    $json = gcloud compute regions describe $Region --format=json | Out-String
-    if ($LASTEXITCODE -ne 0) { return }
-    foreach ($q in ($json | ConvertFrom-Json).quotas) {
-        if ($q.metric -eq $Metric -and $q.limit - $q.usage -lt $Needed) {
-            Write-Host (("WARNING: {0} quota in {1} is {2} (in use {3}); need {4} more. Request an increase at`n" +
-                         "  https://console.cloud.google.com/iam-admin/quotas") -f $Metric, $Region, [int]$q.limit, [int]$q.usage, $Needed)
-        }
+# --- 5b. vCPU quota increases ---------------------------------------------------
+# Same requests as scale/increase-quota.sh: vCPUs per VM family in each region, and
+# vCPUs across all regions (the sum of the regional targets). C4 is what the
+# tutorial's CHIA clusters use (scale/cluster.yaml). Only limits
+# below the target are requested. Google reviews requests asynchronously, so this
+# doesn't wait for approval.
+$QuotaRegions = if ($env:QUOTA_REGIONS) { $env:QUOTA_REGIONS } else { 'us-west4=100 us-central1=100' }
+$QuotaFamilies = if ($env:QUOTA_FAMILIES) { $env:QUOTA_FAMILIES } else { 'C4' }
+
+# The quota commands are in gcloud's beta component. (Don't probe it with
+# `gcloud beta ...`: when beta is missing that asks to install it, invisibly here.)
+Log "Installing gcloud's beta component (for the quota commands)"
+gcloud components install beta --quiet *> $null
+Assert-Ok "installing gcloud's beta component (needed for quota requests)"
+
+# Current limit of a quota for a region/family ('' = the quota has no such dimension).
+function Get-QuotaLimit([string]$QuotaId, [string]$Region, [string]$Family) {
+    $json = gcloud beta quotas info describe $QuotaId --service=compute.googleapis.com `
+                "--project=$Project" --format=json 2>$null | Out-String
+    if ($LASTEXITCODE -ne 0 -or -not $json.Trim()) { return 0 }
+    foreach ($info in ($json | ConvertFrom-Json).dimensionsInfos) {
+        $dims = $info.dimensions
+        $r = if ($dims -and $dims.region) { $dims.region } else { '' }
+        $f = if ($dims -and $dims.vm_family) { $dims.vm_family } else { '' }
+        if ($r -eq $Region -and $f -eq $Family) { return [long]$info.details.value }
+    }
+    return 0
+}
+
+function Request-Quota([string]$QuotaId, [long]$Value, [string]$Region, [string]$Family) {
+    $label = $QuotaId
+    if ($Region) { $label += " ($Region$(if ($Family) { ", $Family" }))" }
+    $current = Get-QuotaLimit $QuotaId $Region $Family
+    if ($current -ge $Value) { Write-Host "OK       ${label}: limit $current >= $Value"; return }
+    Write-Host "REQUEST  ${label}: limit $current -> $Value"
+    $pref = 'chia-tut'
+    if ($Region) { $pref += "-$Region" }
+    if ($Family) { $pref += "-$($Family.ToLower())" }
+    $pref += '-cpus'
+    $extra = @()
+    if ($Region) { $extra += "--dimensions=region=$Region$(if ($Family) { ",vm_family=$Family" })" }
+    gcloud beta quotas preferences update $pref "--project=$Project" `
+        --service=compute.googleapis.com "--quota-id=$QuotaId" "--preferred-value=$Value" @extra `
+        "--email=$Account" --allow-missing --quiet `
+        "--justification=CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
     }
 }
-$DevRegion = $DevZone -replace '-[^-]*$', ''
-Test-Quota $DevRegion C2D_CPUS 8
-Test-Quota $DevRegion CPUS 8
+
+Log "Requesting vCPU quota (regions: $QuotaRegions; families: $QuotaFamilies)"
+$total = 0
+foreach ($target in ($QuotaRegions -split '\s+' | Where-Object { $_ })) {
+    $region, $value = $target -split '=', 2
+    $total += [long]$value
+    foreach ($family in ($QuotaFamilies -split '\s+' | Where-Object { $_ })) {
+        Request-Quota CPUS-PER-VM-FAMILY-per-project-region $value $region $family
+    }
+}
+Request-Quota CPUS-ALL-REGIONS-per-project $total '' ''
+Write-Host 'Requests are reviewed by Google; check their status at https://console.cloud.google.com/iam-admin/quotas'
 
 # --- 6. VMs ------------------------------------------------------------------
 # The VM runs this with bash: write it with LF line endings and no BOM.

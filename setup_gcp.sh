@@ -19,6 +19,8 @@
 #
 # Optional environment overrides:
 #   DEV_ZONE=us-west4-c   TUT_HOME=~/.chia-tutorial
+#   QUOTA_REGIONS="us-west4=100 us-central1=100"   vCPU targets per region
+#   QUOTA_FAMILIES="C4"                             VM families to raise them for
 set -euo pipefail
 
 case "$(uname -s)" in
@@ -177,9 +179,11 @@ fi
 # --- 4. APIs -----------------------------------------------------------------
 # compute: VMs. cloudaicompanion: Gemini Code Assist (what agy signs in against).
 # aiplatform: Vertex AI (Gemini via OpenCode, the alternative CHIA backend).
-log "Enabling APIs (takes a minute the first time)"
+# cloudquotas: requesting the vCPU quota increases below.
+log "Enabling APIs (the first time this can take several minutes with no output; please wait)"
 until out="$(gcloud services enable compute.googleapis.com cloudaicompanion.googleapis.com \
-                 aiplatform.googleapis.com --project "$PROJECT_ID" 2>&1)"; do
+                 aiplatform.googleapis.com cloudquotas.googleapis.com \
+                 --project "$PROJECT_ID" 2>&1)"; do
     case "$out" in
         *UREQ_TOS_NOT_ACCEPTED*)
             # New accounts must accept the Google Cloud terms once, in the browser.
@@ -217,14 +221,57 @@ gcloud compute machine-types describe "$DEV_TYPE" --zone "$DEV_ZONE" >/dev/null 
     "$DEV_TYPE is not offered in $DEV_ZONE. Zones that have it: $(gcloud compute machine-types list \
      --filter="name=$DEV_TYPE" --format='value(zone)' | tr '\n' ' ')"
 
-check_quota() {  # region metric needed
-    gcloud compute regions describe "$1" --flatten=quotas \
-        --format='csv[no-heading](quotas.metric,quotas.limit,quotas.usage)' \
-    | awk -F, -v m="$2" -v n="$3" -v r="$1" '$1==m && $2-$3<n {
-        printf "WARNING: %s quota in %s is %d (in use %d); need %d more. Request an increase at\n  https://console.cloud.google.com/iam-admin/quotas\n", m, r, $2, $3, n }'
+# --- 5b. vCPU quota increases ---------------------------------------------------
+# Same requests as scale/increase-quota.sh: vCPUs per VM family in each region, and
+# vCPUs across all regions (the sum of the regional targets). C4 is what the
+# tutorial's CHIA clusters use (scale/cluster.yaml). Only limits
+# below the target are requested. Google reviews requests asynchronously, so this
+# doesn't wait for approval.
+QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 us-central1=100}"
+QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
+
+# The quota commands are in gcloud's beta component. (Don't probe it with
+# `gcloud beta ...`: when beta is missing that asks to install it, invisibly here.)
+log "Installing gcloud's beta component (for the quota commands)"
+gcloud components install beta --quiet >/dev/null 2>&1 \
+    || die "could not install gcloud's beta component (needed for quota requests)"
+
+quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
+    gcloud beta quotas info describe "$1" --service=compute.googleapis.com \
+        --project="$PROJECT_ID" --flatten=dimensionsInfos \
+        --format='csv[no-heading](dimensionsInfos.dimensions.region,dimensionsInfos.dimensions.vm_family,dimensionsInfos.details.value)' \
+        2>/dev/null | awk -F, -v r="$2" -v f="$3" '$1==r && $2==f { v=$3 } END { print v+0 }'
 }
-check_quota "${DEV_ZONE%-*}" C2D_CPUS 8
-check_quota "${DEV_ZONE%-*}" CPUS 8
+
+request_quota() {  # quota-id value region family
+    local id=$1 value=$2 region=$3 family=$4 current pref label dims=()
+    current="$(quota_limit "$id" "$region" "$family")"
+    label="$id${region:+ ($region${family:+, $family})}"
+    if [ "$current" -ge "$value" ]; then
+        echo "OK       $label: limit $current >= $value"
+        return
+    fi
+    echo "REQUEST  $label: limit $current -> $value"
+    pref="chia-tut${region:+-$region}$(printf '%s' "${family:+-$family}" | tr 'A-Z' 'a-z')-cpus"
+    [ -n "$region" ] && dims=(--dimensions="region=$region${family:+,vm_family=$family}")
+    gcloud beta quotas preferences update "$pref" --project="$PROJECT_ID" \
+        --service=compute.googleapis.com --quota-id="$id" --preferred-value="$value" \
+        ${dims[@]+"${dims[@]}"} --email="$ACCOUNT" --allow-missing --quiet \
+        --justification="CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" \
+        >/dev/null || echo "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
+}
+
+log "Requesting vCPU quota (regions: $QUOTA_REGIONS; families: $QUOTA_FAMILIES)"
+total=0
+for target in $QUOTA_REGIONS; do
+    region="${target%%=*}" value="${target#*=}"
+    total=$((total + value))
+    for family in $QUOTA_FAMILIES; do
+        request_quota CPUS-PER-VM-FAMILY-per-project-region "$value" "$region" "$family"
+    done
+done
+request_quota CPUS-ALL-REGIONS-per-project "$total" "" ""
+echo "Requests are reviewed by Google; check their status at https://console.cloud.google.com/iam-admin/quotas"
 
 # --- 6. VMs ------------------------------------------------------------------
 STARTUP="$TUT_HOME/startup.sh"
