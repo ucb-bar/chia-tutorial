@@ -1,0 +1,122 @@
+cluster_name: accel-memcpy
+
+# The accel cluster (same head, same containers) plus one GCP VM, "storage",
+# with no container. It advertises PERSISTENT_STORAGE, so chia_log writes that
+# ask for that resource land on its disk. Bring it up next to the running
+# cluster with:  chia up --add --yes cluster.yaml    (GCP_PROJECT must be set)
+# The head is a GCP VM, so the new VM joins over the VPC's private IPs.
+connection: vpc
+
+gcp_nodes:
+    project: ${GCP_PROJECT}
+    zone: us-west4-c
+
+    storage:
+        machine_type: e2-standard-2
+        count: 1
+        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64
+        disk_size_gb: 30
+        ssh_user: ${USER}
+        ssh_private_key: ${HOME}/.ssh/chia-key
+        ssh_public_key: ${HOME}/.ssh/chia-key.pub
+        # CHIA's default setup installs chia from GitHub and docker; this VM
+        # needs neither, only the head's exact Python and chialoops (which
+        # pins ray[default]==2.54.0, the head's ray), and the log folder.
+        skip_default_setup: true
+        setup_commands:
+            - curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh
+            - test -x $HOME/miniforge3/bin/conda || bash /tmp/miniforge.sh -b -p $HOME/miniforge3
+            - test -d $HOME/miniforge3/envs/chia_env || $HOME/miniforge3/bin/conda create -q -y -n chia_env python=3.10.19
+            - $HOME/miniforge3/envs/chia_env/bin/pip install -q chialoops==2.0.1
+            - mkdir -p $HOME/chia_logs/sims
+
+provider:
+    head_ip: ${THIS_MACHINE}
+
+auth:
+    ssh_user: ${USER}
+
+available_node_types:
+
+    storage:
+        resources: {"PERSISTENT_STORAGE": 1}
+        num_workers: 1
+        compatible_ips: ["@storage:0"]
+        # no docker: ray runs directly on the VM, in the env setup_commands made
+        worker_env_commands:
+            - source $HOME/miniforge3/etc/profile.d/conda.sh && conda activate chia_env
+
+    chipyard:
+        resources: {"chipyard": 1}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        worker_setup_commands:
+            - "source /home/ray/chipyard/env.sh"
+        docker:
+            image: "ghcr.io/ucb-bar/chia-chisel-build:latest"
+            container_name: "accel-chipyard-${USER}"
+            pull_before_run: True
+            pull_timeout: 7200  # the image is large; the default 600 s is too short
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+
+    verilator_run:
+        resources: {"verilator_run": 8}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
+            container_name: "accel-verilator-run-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+
+    riscv_cross:
+        resources: {"riscv_build": 4}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-riscv-cross:latest"
+            container_name: "accel-riscv-cross-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+
+    antigravity:
+        resources: {"antigravity_creds": 1}
+        num_workers: 1
+        compatible_ips: ["${THIS_MACHINE}"]
+        docker:
+            image: "ghcr.io/ucb-bar/chia-antigravity:latest"
+            container_name: "accel-antigravity-${USER}"
+            pull_before_run: True
+            run_options:
+                - --ulimit nofile=65536:65536
+                - --shm-size=10.24gb
+                - "--user $(id -u):$(id -g)"
+                # agy's OAuth token and settings
+                - "-v ${HOME}/.gemini:/home/ray/.gemini"
+            run_setup_commands:
+                - echo "user:x:$(id -u):$(id -g)::/home/ray:/bin/bash" >> /etc/passwd
+                # agy's working directory (work_dir in accel_loop.py), kept empty
+                - mkdir -p /home/ray/agy_workspace
+
+# chia runs the head's commands over SSH in a login shell that has neither
+head_env_commands:
+    - export PATH="${CONDA_PREFIX}/bin:$PATH"
+
+head_start_ray_commands:
+    - >-
+      ulimit -c unlimited &&
+      ray start --head --port=6395
+      --dashboard-port=8095 
+      --include-dashboard=True
+      --temp-dir=/tmp/ray_accel/${USER}
+      --dashboard-agent-listen-port=0
+
+worker_start_ray_commands:
+    - >-
+      ray start --address=$RAY_HEAD_IP:6395
+      --dashboard-agent-listen-port=0
