@@ -21,6 +21,7 @@ from coordinator import Coordinator, Design
 from nodes import EDIT_ROOT, SourceTool, editable, source_path, validate_patch, workspace, inspect_builder
 from suite import Case, body_from, category, fingerprint, load_cases, parse_results, render, score, validate_offload
 from build_worker import target_settings
+from model_client import ScaleAntigravityLLM
 
 
 class SuiteTests(unittest.TestCase):
@@ -30,6 +31,34 @@ class SuiteTests(unittest.TestCase):
         cls.full = load_cases(cls.settings, "full")
         cls.quick = load_cases(cls.settings, "quick")
         cls.body = body_from((ROOT / "memcpy_rocc.c").read_text())
+
+    def test_default_effort_omits_cli_override_for_sonnet(self):
+        llm = ScaleAntigravityLLM(model=self.settings["model"],
+                                 extra_cli_args=[] if self.settings["model_effort"] == "default" else ["--effort", self.settings["model_effort"]])
+        cmd = llm._build_cmd("offline command construction only")
+        self.assertEqual(self.settings["model_effort"], "default")
+        self.assertNotIn("--effort", cmd)
+        self.assertEqual(cmd[cmd.index("--model") + 1], "claude-sonnet-4-6")
+
+    def test_explicit_effort_cli_option_for_adjustable_models(self):
+        # Command construction only; no claim that Sonnet supports this option.
+        llm = ScaleAntigravityLLM(model="gemini-3.8-flash-medium", extra_cli_args=["--effort", "medium"])
+        cmd = llm._build_cmd("offline command construction only")
+        self.assertEqual(cmd[cmd.index("--effort") + 1], "medium")
+        self.assertEqual(cmd.count("--effort"), 1)
+
+    def test_model_effort_rejects_missing_or_invalid_values(self):
+        with tempfile.TemporaryDirectory(prefix="scale-effort-test-") as directory:
+            path = Path(directory) / "settings.json"
+            for value in [None, "medum", "", 3]:
+                settings = dict(self.settings, model_effort=value)
+                path.write_text(json.dumps(settings))
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "model_effort"):
+                    load_settings(path)
+            settings.pop("model_effort")
+            path.write_text(json.dumps(settings))
+            with self.assertRaisesRegex(ValueError, "model_effort"):
+                load_settings(path)
 
     def test_pinned_upstream_enumeration(self):
         subprocess.run([sys.executable, str(ROOT / "benchmarks/generate_cases.py"), "--verify"], check=True)

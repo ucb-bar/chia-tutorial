@@ -10,8 +10,10 @@ not a literal YAML value. The defaults are a starting point, not requirements.
 
 What you want          File / setting                       Current value
 ---------------------  -----------------------------------  -------------
-More parallel agents   settings.yaml: agents                 3
+More parallel agents   settings.yaml: agents                 2 (cluster capacity: 3)
 More search iterations settings.yaml: iterations_per_agent   1 per agent
+Different AI model     settings.yaml: model                  claude-sonnet-4-6 (Thinking)
+AI reasoning effort    settings.yaml: model_effort           default (fixed Thinking preset)
 More hardware builders cluster.yaml: parallel_gcp.count      3 VMs
 Larger builder VMs     cluster.yaml: parallel_gcp.machine_type c4-standard-32
 Faster hardware builds settings.yaml: build_jobs             24 per builder
@@ -20,6 +22,7 @@ More concurrent sims   settings.yaml: simulation_slots       48 total
 Larger JVM heap        settings.yaml: java_heap_gb           8 GiB per builder
 More test cases        settings.yaml: case_limit             1024; 0 = all 4488
 More timing samples    settings.yaml: benchmark_repeats      1; use 3 for final checks
+Longer sim timeout     settings.yaml: simulation_timeout_seconds 1200 (20 min per batch)
 More disk space        cluster.yaml: disk_size_gb            builder 150 / sim 100 / head 50 GB
 
 IMPORTANT: some numbers MUST change together.
@@ -50,7 +53,7 @@ IMPORTANT: some numbers MUST change together.
 
 Changing case counts, repeat counts, or the timing protocol requires a matching
 new baseline. More cases/repeats improve coverage but take longer; extra VMs
-do not guarantee that every individual simulation will finish within 15 minutes.
+do not guarantee that every individual simulation will finish within 20 minutes.
 See "Resource/settings reference (all editable knobs)" below for the full list.
 
 Scope
@@ -115,7 +118,7 @@ The example project ID is not a credential and must be replaced for your setup.
   $PY scale/run.py --placement-check        # Real concurrent MCP placement check.
   $PY scale/run.py --baseline-only          # Real build + quick/full simulation, no model.
   $PY scale/run.py --agents 1 --iterations 1 # Single-agent integration run first.
-  $PY scale/run.py --agents 3 --iterations 1 # Three asynchronous optimization agents.
+  $PY scale/run.py --agents 2 --iterations 1 # Two asynchronous optimization agents.
 
 After a FULL baseline passes, avoid repeating its simulations in later runs:
   $PY scale/run.py --agents 1 --baseline-run /home/ubuntu/scale/out/run_<id>
@@ -140,10 +143,29 @@ If restarting login, use the new link/code, not an earlier session's code.
 Verify your available model and edit settings.yaml:model if needed. File-presence
 preflight is not proof that OAuth tokens are valid; the model call surfaces real
 authentication, billing and rate-limit errors without inventing an answer.
-Three local client slots do not guarantee account-side concurrency or quota.
+The cluster has three client/builder slots; the default loop uses two agents.
+Local client slots do not guarantee account-side concurrency or quota.
 
 Model throttling and retries
 ----------------------------
+The default model is Claude Sonnet 4.6 Thinking (claude-sonnet-4-6).
+model_effort: default omits --effort on every call, including debugging/retries.
+The deployed agy 1.4.2 reports Sonnet effort as "not adjustable": its fixed
+Thinking preset is NOT verified medium or high. Explicit --effort medium was
+rejected before generation; use default for Sonnet on this backend.
+For models that support adjustment, low/medium/high/xhigh/max pass --effort
+explicitly. Effort is not a token cap; provider support must be checked.
+Verify available IDs with agy models; model-group quota belongs to the login.
+Baseline-only builds/simulations make ZERO model calls. Optimization uses AI to
+design the software interface, implement hardware through source tools, and
+debug failures. Each active agent has its own conversation. One loop-level
+prompt can involve many model/tool turns, with growing conversation context;
+three agents does NOT mean three model requests. With max_attempts: 5, each
+agent can make two design prompts plus four debug prompts, before rate-limit
+retries or CLI-internal tool turns. Tests/benchmarks themselves do not call AI.
+Changing settings.yaml does not change the model of an already-running driver;
+it takes effect on the next run. Reuse a compatible baseline to avoid redoing it.
+
 model_client.py is a LOCAL adapter around CHIA 2.0.0; the installed package and
 third-party submodules are not edited. An explicit nonempty final SUCCESS plus
 exit code 0 wins over earlier recovered 429 warnings. Diagnostics remain logged.
@@ -153,7 +175,7 @@ than retrying early. Explicit daily/weekly limits and auth/billing errors stop.
 Each backoff is recorded next to the model transcript in *.retry_<n>.json.
 Model timeouts and missing/empty/failed final outputs are never accepted as answers.
 
-All three agents use the same login and therefore share its model-group quota.
+All agents use the same login and therefore share its model-group quota.
 Weekly budget remaining is NOT a promise of short-term rate/capacity availability.
 The CLI's /usage panel refreshes quota status without generating a model answer.
 No automatic model switch, paid-credit opt-in, or quota purchase is performed.
@@ -174,8 +196,9 @@ cluster.yaml:
   worker_env_commands                Ray CPU budget for each container.
   docker.run_options                 Shared-memory sizing and limits.
 settings.yaml:
-  agents / iterations_per_agent / strategies / model
+  agents / iterations_per_agent / strategies / model / model_effort
     Agent count, per-agent iteration budget, independent search strategies.
+    Model ID and reasoning effort (default = no CLI override).
   build_jobs                         Build CPU parallelism, <= each builder's Ray CPUs.
   java_heap_gb                       Maximum Java/SBT heap per builder.
   compile_slots / simulation_slots    GLOBAL budgets shared by all agents.

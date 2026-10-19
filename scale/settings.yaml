@@ -1,11 +1,12 @@
 # TUTORIAL: fill in these values; VM sizes/counts live in cluster.yaml.
-agents: 3                     # One dedicated builder and model session per agent.
+agents: 2                     # One dedicated builder/model session each; cluster has capacity for 3.
 iterations_per_agent: 1        # Start small; each iteration can have debug retries.
 strategies:
   - Minimize setup and command overhead for small copies and unaligned tails.
   - Maximize bulk throughput using pipelined requests and multiple outstanding operations.
   - Improve cache-line transfers, ordering, and completion latency.
-model: gemini-3.8-flash-low    # Replace with an available model from `agy models`.
+model: claude-sonnet-4-6      # Sonnet 4.6 Thinking; verify availability with `agy models`.
+model_effort: default        # TUTORIAL: omit --effort; Sonnet uses its fixed Thinking preset.
 chipyard_path: /home/ray/chipyard
 hardware_config: FastRTLSimRocketConfig
 build_jobs: 24                # Keep <= builder Ray CPUs (24 in cluster.yaml).
@@ -23,7 +24,7 @@ benchmark_warmups: 1
 max_attempts: 5               # Initial design + up to four debugging attempts.
 compile_timeout_seconds: 300
 build_timeout_seconds: 14400
-simulation_timeout_seconds: 900
+simulation_timeout_seconds: 1200 # TUTORIAL: 20-minute wall-clock limit per simulation batch.
 simulation_timeout_cycles: 50000000
 model_timeout_seconds: 3600
 model_rate_limit_retries: 2   # TUTORIAL: additional attempts for genuinely failed 429s.

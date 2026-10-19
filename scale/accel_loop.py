@@ -41,6 +41,8 @@ class EvaluationError(RuntimeError):
 
 def load_settings(path):
     settings = yaml.safe_load(Path(path).read_text())
+    if settings.get("model_effort") not in ("default", "low", "medium", "high", "xhigh", "max"):
+        raise ValueError("model_effort must be default, low, medium, high, xhigh, or max")
     positive = ["agents", "iterations_per_agent", "build_jobs", "simulation_threads", "compile_slots", "simulation_slots", "quick_cases_per_kind", "max_case_bytes", "cases_per_binary", "batch_work_bytes", "benchmark_repeats", "max_attempts", "compile_timeout_seconds", "build_timeout_seconds", "simulation_timeout_seconds", "simulation_timeout_cycles", "model_timeout_seconds", "metrics_interval_seconds"]
     for name in positive:
         if type(settings[name]) is not int or settings[name] < 1:
@@ -366,6 +368,7 @@ def run_agent(index, builder, source_info, coordinator, engine, quick, full, bas
                 get(nodes.workspace.options(scheduling_strategy=nodes.pinned(node_id)).chia_remote(settings["chipyard_path"], "apply", source_info, parent.patch))
                 llm = ScaleAntigravityLLM(model=settings["model"], system_message=prompts.RULES,
                     timeout_seconds=settings["model_timeout_seconds"], resume_session=True,
+                    extra_cli_args=[] if settings["model_effort"] == "default" else ["--effort", settings["model_effort"]],
                     work_dir=f"/tmp/scale_agy/{engine.directory.name}/{label}", logging_name=label)
                 llm._scale_node_id = get(nodes.prepare_model_workspace.chia_remote(llm.work_dir))
                 body = prompts.answer_body(ask(llm, tool, prompts.software(parent, strategy, dict(quick=len(quick), full=len(full))), directory, label + "/software", engine))
