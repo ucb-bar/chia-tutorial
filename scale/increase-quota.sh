@@ -15,8 +15,10 @@ requested.
                    (default: -r us-west4=100 -r us-central1=100)
   -p PROJECT       GCP project (default: gcloud config, then this VM's project,
                    then gcp_nodes.project)
-  -e EMAIL         contact email for the request (default: the gcloud account,
-                   unless it is a service account)
+  -e EMAIL         contact email, required by GCP for any increase (default:
+                   QUOTA_EMAIL, then the gcloud account unless it is a
+                   service account, then the project's devstar####@gcplab.me
+                   lab user)
   -n               dry run: show what would be requested
 
 JUSTIFICATION in the environment overrides the request justification.
@@ -28,7 +30,7 @@ die() { echo "$*" >&2; exit 1; }
 CLUSTER_YAML="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cluster.yaml"
 PROJECT=""
 declare -A REGION_TARGETS
-EMAIL=""
+EMAIL="${QUOTA_EMAIL:-}"
 DRY_RUN=false
 
 while getopts "c:p:r:e:nh" opt; do
@@ -83,6 +85,17 @@ if [[ -z "$EMAIL" ]]; then
     account="$(gcloud config get-value account 2>/dev/null || true)"
     [[ "$account" == *.gserviceaccount.com ]] || EMAIL="$account"
 fi
+if [[ -z "$EMAIL" ]]; then
+    lab_users="$(gcloud projects get-iam-policy "$PROJECT" --flatten='bindings[].members' \
+        --format='value(bindings.members)' 2>/dev/null |
+        grep -oE '^user:devstar[0-9]+@gcplab\.me$' | sort -u | cut -d: -f2 || true)"
+    if [[ -n "$lab_users" && "$(wc -l <<<"$lab_users")" -eq 1 ]]; then
+        EMAIL="$lab_users"
+    fi
+fi
+if [[ -n "$EMAIL" ]]; then
+    echo "Contact email: $EMAIL"
+fi
 
 JUSTIFICATION="${JUSTIFICATION:-CHIA cluster '$CLUSTER' needs more Compute Engine vCPUs for its workers}"
 
@@ -117,7 +130,8 @@ print(next((i.get("details", {}).get("value", 0) for i in infos if i.get("dimens
 ' "$dims"
 }
 
-request() {
+PLANNED=()
+plan() {
     local id="$1" quota_id="$2" value="$3" dims="${4:-}"
     local label="$quota_id${dims:+ ($dims)}"
     local current
@@ -125,38 +139,44 @@ request() {
 
     if (( current >= value )); then
         echo "OK       $label: limit $current >= $value"
-        return
+    else
+        echo "REQUEST  $label: limit $current -> $value"
+        PLANNED+=("$id|$quota_id|$value|$dims")
     fi
-    echo "REQUEST  $label: limit $current -> $value"
-    if $DRY_RUN; then
-        return
-    fi
+}
 
-    local args=(
+plan "$CLUSTER-global-cpus" CPUS-ALL-REGIONS-per-project "$GLOBAL_TARGET"
+for region in "${!REGION_TARGETS[@]}"; do
+    for family in "${!FAMILIES[@]}"; do
+        plan "$CLUSTER-$region-${family,,}-cpus" CPUS-PER-VM-FAMILY-per-project-region \
+            "${REGION_TARGETS[$region]}" "region=$region,vm_family=$family"
+    done
+done
+
+if (( ${#PLANNED[@]} == 0 )) || $DRY_RUN; then
+    exit 0
+fi
+[[ -n "$EMAIL" ]] || die "
+GCP needs a contact email to increase quota, and the gcloud account is a
+service account. Rerun with -e you@example.com (or set QUOTA_EMAIL)."
+
+for entry in "${PLANNED[@]}"; do
+    IFS='|' read -r id quota_id value dims <<<"$entry"
+    args=(
         "$id"
         --project="$PROJECT"
         --service=compute.googleapis.com
         --quota-id="$quota_id"
         --preferred-value="$value"
         --justification="$JUSTIFICATION"
+        --email="$EMAIL"
         --allow-missing
         --quiet
     )
     if [[ -n "$dims" ]]; then args+=(--dimensions="$dims"); fi
-    if [[ -n "$EMAIL" ]]; then args+=(--email="$EMAIL"); fi
     gcloud beta quotas preferences update "${args[@]}"
-}
-
-request "$CLUSTER-global-cpus" CPUS-ALL-REGIONS-per-project "$GLOBAL_TARGET"
-for region in "${!REGION_TARGETS[@]}"; do
-    for family in "${!FAMILIES[@]}"; do
-        request "$CLUSTER-$region-${family,,}-cpus" CPUS-PER-VM-FAMILY-per-project-region \
-            "${REGION_TARGETS[$region]}" "region=$region,vm_family=$family"
-    done
 done
 
-if ! $DRY_RUN; then
-    echo
-    gcloud beta quotas preferences list --project="$PROJECT" \
-        --format="table(name.basename(),quotaId,dimensions,quotaConfig.preferredValue,quotaConfig.grantedValue,reconciling)"
-fi
+echo
+gcloud beta quotas preferences list --project="$PROJECT" \
+    --format="table(name.basename(),quotaId,dimensions,quotaConfig.preferredValue,quotaConfig.grantedValue,reconciling)"
