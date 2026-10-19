@@ -97,7 +97,7 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
     else:
         build_cache.software_body_hash = software_body_hash
         build_cache.elfs = {c.name: compile_software(source, c.name, c.cflags,
-                                                     tag=f"sw_{iter_out_dir.path.name}_{tag}_{c.name}")
+                                                     tag=f"sw_{_RUN_LABEL}_{tag}_{c.name}")
                             for c in CASES}
     elf_refs = build_cache.elfs
 
@@ -109,7 +109,7 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         logger.info("[%s] building FastRTLSimRocketConfig", tag)
         build_cache.rtl_diff_hash = rtl_diff_hash
         build_cache.logged = False
-        build_cache.build = build_hardware(tag=f"hw_{iter_out_dir.path.name}_{tag}")
+        build_cache.build = build_hardware(tag=f"hw_{_RUN_LABEL}_{tag}")
 
     # 3. Get the compiled software artifacts
     elfs: dict[str, RiscvBuildArtifact] = {name: get(ref) for name, ref in elf_refs.items()}
@@ -146,7 +146,7 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
     # 6. Simulation: every case on the same simulator
     logger.info("[%s] running %d cases", tag, len(CASES))
     run_refs = {name: run_simulation(hw_build_artifact, elf,
-                                     tag=f"sim_{iter_out_dir.path.name}_{tag}_{name}")
+                                     tag=f"sim_{_RUN_LABEL}_{tag}_{name}")
                 for name, elf in elfs.items()}
     runs: dict[str, RunResult] = {name: get(ref) for name, ref in run_refs.items()}
     sim = SimResults()
@@ -191,6 +191,8 @@ def finish(iter_out_dir: IterDir, summary: dict, body: str | None, last: Evaluat
 
 
 def run_baseline() -> dict:
+    global _RUN_LABEL
+    _RUN_LABEL = "baseline"
     """Clean chipyard + the harness's own (software) body; no LLM."""
     iter_out_dir = IterDir(BASELINE_DIR)
     logger.info("Generating the baseline in %s", iter_out_dir.path)
@@ -207,6 +209,9 @@ def run_baseline() -> dict:
 
 
 def run_iteration(chipyard_bash: BashTool) -> dict:
+    global _RUN_LABEL, _RUN_ITER
+    _RUN_ITER += 1
+    _RUN_LABEL = f"iter_{_RUN_ITER}"
     parent = best_design()
     iter_out_dir = next_iter_dir()
     logger.info("=== %s: starting from %s (avg speedup %.3f) ===",
@@ -238,7 +243,7 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
     # 1. Software write
     prompt = agent_prompt.software_prompt(parent)
     llm_sw_write_response = get(prompt_llm(llm, prompt, chipyard_bash,
-                                           tag=f"llm_{iter_out_dir.path.name}_software"))
+                                           tag=f"llm_{_RUN_LABEL}_software"))
     cli = agent_prompt.check_answer(llm_sw_write_response)
     agent_prompt.log_call(iter_out_dir, "software", prompt, cli)
     if not cli.success:
@@ -249,7 +254,7 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
     # 2. Hardware write (a revised body in the answer replaces the first)
     prompt = agent_prompt.hardware_prompt(parent, applied, apply_msg)
     llm_hw_write_response = get(prompt_llm(llm, prompt, chipyard_bash,
-                                           tag=f"llm_{iter_out_dir.path.name}_hardware"))
+                                           tag=f"llm_{_RUN_LABEL}_hardware"))
     cli = agent_prompt.check_answer(llm_hw_write_response)
     agent_prompt.log_call(iter_out_dir, "hardware", prompt, cli)
     if not cli.success:
@@ -264,7 +269,7 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
         if n > 0:
             prompt = agent_prompt.debug_prompt(n, evaluation_result.stage, evaluation_result.feedback)
             llm_debug_response = get(prompt_llm(llm, prompt, chipyard_bash,
-                                                tag=f"llm_{iter_out_dir.path.name}_debug{n}"))
+                                                tag=f"llm_{_RUN_LABEL}_debug{n}"))
             cli = agent_prompt.check_answer(llm_debug_response)
             agent_prompt.log_call(iter_out_dir, f"debug_{n}", prompt, cli)
             if not cli.success:
@@ -278,6 +283,15 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
             break
         iter_out_dir.log(f"evaluation_result{n}_feedback.md", evaluation_result.feedback)
     return finish(iter_out_dir, summary, body, evaluation_result)
+
+
+# ----- CACHING: the label every tag is built from -------------------------
+# Not iter_out_dir.path.name: that is next_iter_dir(), which counts the
+# directories already in accel/out, so a leftover run shifts every tag and the
+# cache misses. Counting within this process gives the same names every time:
+# baseline, iter_1, iter_2, iter_3.
+_RUN_LABEL = "baseline"
+_RUN_ITER = 0
 
 
 # ----- CACHING: how a replayed call is served -----------------------------
