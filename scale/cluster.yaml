@@ -102,7 +102,7 @@ gcp_nodes:
     benchmark_gcp:
         zone: us-central1-a
         machine_type: c4-standard-32
-        count: 1  # TUTORIAL: simulator VM count.
+        count: 3  # TUTORIAL: simulator VM count.
         image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
         ssh_user: ubuntu
         ssh_private_key: ${HOME}/.ssh/google_compute_engine
