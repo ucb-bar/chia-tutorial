@@ -10,7 +10,7 @@ cache:
   AntigravityLLM.prompt: {cache: true, tags: ["llm_.*"]}
 
 bypass:
-  RiscvBuildNode.build:  {bypass: true, tags: ["sw_.*"]}
-  ChiselBuildNode.build: {bypass: true, tags: ["hw_.*"]}
-  VerilatorRunNode.run:  {bypass: true, tags: ["sim_.*"]}
-  AntigravityLLM.prompt: {bypass: true, tags: ["llm_.*"]}
+  RiscvBuildNode.build:  {bypass: false, tags: ["sw_.*"]}
+  ChiselBuildNode.build: {bypass: false, tags: ["hw_.*"]}
+  VerilatorRunNode.run:  {bypass: false, tags: ["sim_.*"]}
+  AntigravityLLM.prompt: {bypass: false, tags: ["llm_.*"]}
