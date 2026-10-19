@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parents[1] / "accel" / "out"
+OUT = Path(__file__).resolve().parent / "out"
 
 
 def newest_log() -> Path:

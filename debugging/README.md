@@ -179,6 +179,7 @@ One subfolder per block; `accel/` is never edited.
 debugging/
   README.md
   cache/                     recorded results (git-ignored)
+  profiling/out/             profiles this section records (git-ignored)
   caching/
     tagging.py               puts a _chia_tag on accel's own dispatches
     cache.yaml               record: write every tagged call

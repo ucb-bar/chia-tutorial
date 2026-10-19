@@ -37,9 +37,10 @@ from chia.trace.profiler import get_profiler, start_collector, stop_collector
 
 import accel_loop
 import tagging
-from results import BASELINE_DIR, OUT_DIR
+from results import BASELINE_DIR
 
-CACHE_DIR = HERE.parents[0] / "cache"
+CACHE_DIR = HERE.parents[0] / "cache"            # debugging/cache
+PROFILE_DIR = HERE.parents[0] / "profiling" / "out"   # debugging/profiling/out
 FUNCS = ("ChiselBuildNode.build", "RiscvBuildNode.build",
          "VerilatorRunNode.run", "AntigravityLLM.prompt")
 
@@ -79,7 +80,8 @@ def main() -> None:
     for line in tagging.install():
         print(f"  tagging {line}")
 
-    out = OUT_DIR / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"
+    out = PROFILE_DIR / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"
+    out.mkdir(parents=True, exist_ok=True)
     start_collector(log_dir=str(out))
 
     phases: list[tuple[str, float]] = []
