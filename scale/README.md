@@ -29,6 +29,7 @@ python run.py
 ```
 
 After increasing cluster counts, add workers without tearing down the cluster:
+In a new terminal, first run `source load-env.sh` (step 1), then run:
 
 ```bash
 chia up --add cluster.yaml
