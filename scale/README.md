@@ -1,130 +1,56 @@
 # Run the accelerator loop
 
-Assumes GCP setup, model login, and the CHIA Python environment are already ready.
-Run commands from the repository root. Keep the terminal open (or use `tmux`),
-and do not launch a second loop while one is running.
+Run commands from the repository root.
 
-## 1. Run
+## 1. Load the environment
 
 ```bash
+conda activate chia_env
 source "${TUT_HOME:-$HOME/.chia-tutorial}/env.sh"
 export CHIA_HEAD_IP="$(gcloud compute instances list --project "$CHIA_TUT_PROJECT" --filter='name=chia-dev' --format='value(networkInterfaces[0].networkIP)')"
 export CHIA_HEAD_ZONE="$(gcloud compute instances list --project "$CHIA_TUT_PROJECT" --filter='name=chia-dev' --format='value(zone.basename())')"
-chia up scale/cluster.yaml       # Skip if the cluster is already running.
+```
+
+## 2. Adjust values
+
+Increase these starting values under `TUTORIAL` in `scale/settings.yaml`:
+
+```yaml
+agents: 1       # Increase to run more agents in parallel (up to 5).
+test_cases: 17  # Increase to run more test and benchmark cases.
+```
+
+For more agents, provide enough builders in `scale/cluster.yaml`: update the
+builder VM `count`, builder `num_workers`, and matching `compatible_ips` entries.
+Leave `FIXED` settings unchanged.
+
+## 3. Start and run
+
+```bash
+chia up scale/cluster.yaml
 python scale/run.py
 ```
 
-This measures the baseline, runs the agents configured in `scale/settings.yaml`,
-builds and tests their designs, and selects the best passing result.
-By default, three agents each explore one design against a 1,024-case suite.
-The existing `chia-dev` VM is the head; CHIA creates only builder/simulator VMs.
-The first three commands load your existing setup and find your head VM's internal
-IP and zone. CHIA substitutes these values and your setup project into
-`cluster.yaml`; no IP, project, or SSH-alias edits are needed. Run these commands
-again in a new shell or after replacing the head VM. Keep using the same shell
-for downloading results and stopping the cluster.
-The console prints the results directory on the head: `~/scale/out/run_...`.
-
-To monitor it, open another terminal on the head and use that directory:
+After increasing cluster counts, add workers without tearing down the cluster:
 
 ```bash
-watch -n 5 'python ~/scale/status.py ~/scale/out/run_...'
+chia up --add scale/cluster.yaml
 ```
 
-This shows each agent's design iteration, debug attempt, latest saved quick/full
-profile, and reported case pass/fail counts. Counts update when the driver saves
-batch logs, not continuously inside a simulation; they can lag completed work.
-It reads saved files only, so it does not prove that a stalled run is still alive.
-The final summaries, not these progress counts, determine validation.
+Do not start a second loop while one is running.
 
-### Scaling knobs
+## 4. Check progress
 
-Editable scaling knobs and strategy prompts are at the top of `settings.yaml`.
-Model settings have their own section; leave the parameters marked `FIXED`
-unchanged. VM allocation knobs are marked `TUTORIAL` in `cluster.yaml`.
-
-| File under `scale/` | Knob | What it scales |
-|---|---|---|
-| `settings.yaml` | `agents` | Parallel optimization searches |
-| `settings.yaml` | `strategies` | One optimization prompt per agent; edit to explore different approaches |
-| `settings.yaml` | `design_iterations_per_agent` | Designs explored per agent, not debug retries (formerly `iterations_per_agent`) |
-| `settings.yaml` | `test_cases` | Total test + benchmark cases; `0` selects all available cases |
-| `cluster.yaml` | `gcp_nodes.*.count` and the corresponding `num_workers` | Number of builder or simulator VMs and workers |
-| `cluster.yaml` | `gcp_nodes.*.machine_type` | CPU and RAM per VM |
-
-More agents need matching builders and strategy prompts, not model-client slots.
-Five strategy prompts are supplied; the default remains three agents. Agent 0
-uses the first prompt, agent 1 the second, and so on; only the first `agents`
-entries are used.
-Use `python scale/run.py --agents 5` after providing five builders and sufficient
-cloud quota. When changing VM counts, set the corresponding `num_workers` to the
-same number and add/remove the corresponding `compatible_ips` entries.
-
-All agents share the compiler and simulation workers: Ray schedules queued work
-using automatically detected CPUs, with no extra per-run or per-agent caps.
-Hardware builds retain isolated per-agent workspaces and use their builder's
-detected CPU count for build parallelism. The fixed `resources` labels only route
-jobs to suitable containers; they are not tutorial concurrency knobs. Model
-requests run remotely and do not reserve local CPU slots.
-There are no CPU exports, `build_jobs`, or compile/simulation slot settings to
-keep in sync when changing VM sizes.
-Each design gets one initial evaluation plus up to four debug retries
-(`max_attempts: 5`); these are separate from `design_iterations_per_agent`.
-
-Changing coverage requires a new matching baseline. Benchmarks use one timed repetition.
-Editing cluster YAML does not resize existing VMs; resource changes require
-reprovisioning. Download results before replacing VMs or disks.
-
-## 2. Download results
-
-After the loop finishes:
+On the head, use the run directory printed by the loop:
 
 ```bash
-rsync -az "chia-dev.${CHIA_HEAD_ZONE}.${CHIA_TUT_PROJECT}:scale/out/" scale/out/
+python ~/scale/status.py ~/scale/out/run_...
 ```
 
-This uses your setup script's SSH alias and copies all saved runs
-without copying credentials. Keep the complete run directory so its settings,
-baseline, test cases, and logs stay with the results.
-
-## 3. Read the results
-
-Open the run directory printed by the loop, now under `scale/out/`:
-
-- `best.json`: winning design, its directory, and speedup.
-- `run_summary.json`: validated candidate count, total wall time, and scoring method.
-- `agent_*/iter_*/summary.json`: each agent's success or failure.
-- Winning directory's `hardware.patch` and `memcpy_body.c`: the implementation (`best.json` points directly to the successful attempt).
-- `attempt_*/failure.txt` and profile logs within each iteration: failure details.
-
-A score of `6.36` means a **6.36x arithmetic-mean simulated-cycle speedup** across
-the configured benchmarks, matching the original loop's scoring method. It does
-not measure faster wall-clock execution. Older scale runs used geometric-mean
-scoring and are not directly comparable. A passing run does
-not mean every agent succeeded. The current 1,024-case suite is a subset of the
-4,488 available cases; do not report it as validation against all cases.
-
-Each run measures a fresh baseline. The driver keeps parallel design loops,
-batched upstream cases, and model backoff. Hardware builds call CHIA's
-`ChiselBuildNode` directly, as in the original accelerator loop; there is no
-custom build process or filesystem sandbox. Agents use CHIA's standard
-`BashTool`; there is no custom editing tool or file-state fingerprinting.
-Saved patches and iteration resets cover Chipyard's Scala source directory.
-VM telemetry, per-stage timing, placement-check commands, and cross-run baseline
-reuse are not included.
-
-## 4. Stop worker charges
-
-After downloading and checking the results:
+## 5. Shut down
 
 ```bash
 chia down scale/cluster.yaml
 ```
 
-This deletes the managed worker VMs and their boot disks. The existing dev head
-and its saved results remain; that VM continues to incur charges until stopped
-separately. Never tear down a cluster while its loop is running.
-
-For an older deployment with a separate scale head, archive its results before
-teardown: native `chia down` deletes all VMs carrying the same cluster label,
-including that legacy head. Existing runs are not automatically migrated.
+Run after the loop finishes. Worker VMs are deleted; the existing head remains.
