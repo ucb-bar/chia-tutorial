@@ -39,7 +39,7 @@ gcp_nodes:
     project: ${GCP_PROJECT}
     zone: us-west4-c
     gem5_gcp:
-        machine_type: c4-highcpu-24
+        machine_type: c4-highcpu-32
         count: 1
         image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
         disk_size_gb: 300              # gem5 image + build tree + workspaces + traces

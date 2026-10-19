@@ -105,7 +105,7 @@ def main():
     print()
 
     # Simulate on benchmarks which have vector crypto instructions when they compile.
-    b = get(g5.build_gem5.chia_remote(str(GEM5_ROOT), jobs=24, timeout_s=7200))
+    b = get(g5.build_gem5.chia_remote(str(GEM5_ROOT), jobs=32, timeout_s=7200))
     assert b.success, b.stderr_tail
 
     sims = []

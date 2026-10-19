@@ -65,7 +65,7 @@ def main():
     get(g5.restore_gem5_source_state.chia_remote(str(GEM5_ROOT), Gem5SourceState(base_rev=BASE_REV, source_diff=VLEFF_FIX)))
 
     # Pre-build Gem5 with the patch to warm up the gem5 workspace (don't get() result yet)
-    build = g5.build_gem5.chia_remote(GEM5_ROOT, jobs=24)
+    build = g5.build_gem5.chia_remote(GEM5_ROOT, jobs=32)
 
     # Prepare the gem5 workspace with the workloads we want
     elfs: dict[str, bytes] = {p.name: p.read_bytes() for p in ELF_DIR.glob("*.elf")}
@@ -103,7 +103,7 @@ def main():
     print()
 
     # Simulate on benchmarks which have vector crypto instructions when they compile.
-    b = get(g5.build_gem5.chia_remote(str(GEM5_ROOT), jobs=24, timeout_s=7200))
+    b = get(g5.build_gem5.chia_remote(str(GEM5_ROOT), jobs=32, timeout_s=7200))
     assert b.success, b.stderr_tail
 
     sims = []
