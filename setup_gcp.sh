@@ -165,16 +165,33 @@ QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 us-central1=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
-    gcloud beta quotas info describe "$1" --service=compute.googleapis.com \
+    local out           # on failure, prints gcloud's error and returns non-zero
+    out="$(gcloud beta quotas info describe "$1" --service=compute.googleapis.com \
         --project="$PROJECT_ID" --flatten=dimensionsInfos \
         --format='csv[no-heading](dimensionsInfos.dimensions.region,dimensionsInfos.dimensions.vm_family,dimensionsInfos.details.value)' \
-        2>/dev/null | awk -F, -v r="$2" -v f="$3" '$1==r && $2==f { v=$3 } END { print v+0 }'
+        2>&1 </dev/null)" || { printf '%s\n' "$out"; return 1; }
+    printf '%s\n' "$out" | awk -F, -v r="$2" -v f="$3" '$1==r && $2==f { v=$3 } END { print v+0 }'
 }
 
 request_quota() {  # quota-id value region family
-    local id=$1 value=$2 region=$3 family=$4 current pref label dims=()
-    current="$(quota_limit "$id" "$region" "$family")"
+    local id=$1 value=$2 region=$3 family=$4 current pref label dims=() tries=0
     label="$id${region:+ ($region${family:+, $family})}"
+    until current="$(quota_limit "$id" "$region" "$family")"; do
+        case "$current" in
+            # A just-enabled API takes a minute or two to start answering.
+            *SERVICE_DISABLED*|*"has not been used"*|*"it is disabled"*)
+                tries=$((tries + 1))
+                if [ "$tries" -lt 12 ]; then
+                    echo "  (the Cloud Quotas API is still switching on; retrying in 10 s)"
+                    sleep 10
+                    continue
+                fi ;;
+        esac
+        echo "WARNING: couldn't read the current limit for $label:"
+        printf '%s\n' "$current" | tail -5 | sed 's/^/    /'
+        echo "  Request it by hand at https://console.cloud.google.com/iam-admin/quotas"
+        return 0
+    done
     if [ "$current" -ge "$value" ]; then
         echo "OK       $label: limit $current >= $value"
         return
