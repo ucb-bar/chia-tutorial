@@ -3,15 +3,20 @@
 # (https://shell.cloud.google.com), which is already signed in to your account.
 #
 # Uses/creates a GCP project with billing, enables the APIs the tutorial needs,
-# requests vCPU quota for CHIA clusters, and starts one VM:
-#   chia-dev    c4-highcpu-32  (Intel Xeon, 32 vCPU / 64 GB) - your dev machine / CHIA head
-# with Docker, conda (Miniforge) and the Antigravity CLI (agy), signed in. More machines are
-# brought up later by CHIA clusters.
+# requests vCPU quota for CHIA clusters, and starts these VMs (all c4-highcpu-32,
+# 32 vCPU / 64 GB):
+#   chia-dev                     your dev machine / CHIA head: Docker, conda (Miniforge),
+#                                the chia-tutorial repo + its conda env, the Antigravity
+#                                CLI (agy, signed in), and an SSH key (~/.ssh/chia-key)
+#   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo, and
+#                                chia-dev's key in authorized_keys, so chia-dev can ssh in
+# chia-dev and workers 1-2 go in europe-west4, workers 3-5 in europe-west1. Every VM
+# also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
 #
 # Usage:
 #   ./setup_gcp.sh [--project ID] [--billing-account ID]
-#   ./setup_gcp.sh --teardown     # delete the VM
-#   ./setup_gcp.sh --purge        # delete the VM (and optionally the project), remove the
+#   ./setup_gcp.sh --teardown     # delete the VMs
+#   ./setup_gcp.sh --purge        # delete the VMs (and optionally the project), remove the
 #                                 # tutorial's files from Cloud Shell
 #
 # Project: --project, else the one this script used last time, else Cloud Shell's
@@ -19,7 +24,8 @@
 # are reused.
 #
 # Optional environment overrides:
-#   DEV_REGION=europe-west4   TUT_HOME=~/.chia-tutorial   (Google picks chia-dev's zone)
+#   DEV_REGION=europe-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
+#   WORKER_REGIONS="europe-west4=2 europe-west1=3"   chia-worker VMs per region
 #   QUOTA_REGIONS="europe-west4=100 europe-west1=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
 set -euo pipefail
@@ -54,24 +60,43 @@ fi
 DEV_REGION="${DEV_REGION:-europe-west4}"
 # C4 rejects --min-cpu-platform, so the CPU generation isn't pinned.
 DEV_VM=chia-dev    DEV_TYPE=c4-highcpu-32
-# chia-dev is created by region and Google picks the zone, so look the zone up
-# (it also finds a chia-dev made by an older version of this script in another zone).
-vm_zone() {
-    gcloud compute instances list --project "$PROJECT_ID" --filter="name=$DEV_VM" \
+WORKER_REGIONS="${WORKER_REGIONS:-europe-west4=2 europe-west1=3}"   WORKER_TYPE=c4-highcpu-32
+# Workers are numbered across the regions in order: chia-worker-1..2 in the first,
+# chia-worker-3..5 in the second. region_of_worker maps a name back to its region.
+WORKERS="" i=0
+for spec in $WORKER_REGIONS; do
+    for _ in $(seq 1 "${spec#*=}"); do i=$((i + 1)); WORKERS="$WORKERS chia-worker-$i"; done
+done
+region_of_worker() {  # chia-worker-N -> region
+    local n="${1#chia-worker-}" i=0 spec
+    for spec in $WORKER_REGIONS; do
+        i=$((i + ${spec#*=}))
+        [ "$n" -le "$i" ] && { echo "${spec%%=*}"; return; }
+    done
+}
+CHISEL_IMAGE=ghcr.io/ucb-bar/chia-chisel-build:latest
+LOGS="$TUT_HOME/logs"
+# The VMs are created by region and Google picks the zone, so look zones up (this
+# also finds a chia-dev made by an older version of this script in another zone).
+zone_of() {  # vm name -> its zone, or nothing if it doesn't exist
+    gcloud compute instances list --project "$PROJECT_ID" --filter="name~^$1\$" \
         --format='value(zone.basename())' 2>/dev/null </dev/null | head -1
 }
+vm_zone() { zone_of "$DEV_VM"; }
 IMAGE=(--image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud)
 
 # --- Teardown / purge ---------------------------------------------------------
 if [ -n "$TEARDOWN" ]; then
     if [ -n "${PROJECT_ID:-}" ]; then
-        DEV_ZONE="$(vm_zone)"
-        if [ -n "$DEV_ZONE" ]; then
-            log "Deleting $DEV_VM ($DEV_ZONE) in $PROJECT_ID"
-            gcloud compute instances delete "$DEV_VM" --zone "$DEV_ZONE" --project "$PROJECT_ID" --quiet || true
-        else
-            echo "No $DEV_VM found in $PROJECT_ID"
-        fi
+        for vm in $DEV_VM $WORKERS; do
+            zone="$(zone_of "$vm")"
+            if [ -n "$zone" ]; then
+                log "Deleting $vm ($zone) in $PROJECT_ID"
+                gcloud compute instances delete "$vm" --zone "$zone" --project "$PROJECT_ID" --quiet || true
+            else
+                echo "No $vm found in $PROJECT_ID"
+            fi
+        done
     elif [ -z "$PURGE" ]; then
         die "no project recorded in $STATE"
     fi
@@ -163,10 +188,12 @@ if ! gcloud compute networks describe default >/dev/null 2>&1; then
     fi
 fi
 
-[ -n "$(gcloud compute machine-types list --filter="name=$DEV_TYPE AND zone~^$DEV_REGION-" \
-          --format='value(zone)' 2>/dev/null)" ] || die \
-    "$DEV_TYPE is not offered in $DEV_REGION. Regions that have it: $(gcloud compute machine-types list \
-     --filter="name=$DEV_TYPE" --format='value(zone.basename())' | sed 's/-[a-z]$//' | sort -u | tr '\n' ' ')"
+for region in $DEV_REGION $(for spec in $WORKER_REGIONS; do echo "${spec%%=*}"; done | sort -u); do
+    [ -n "$(gcloud compute machine-types list --filter="name=$DEV_TYPE AND zone~^$region-" \
+              --format='value(zone)' 2>/dev/null)" ] || die \
+        "$DEV_TYPE is not offered in $region. Regions that have it: $(gcloud compute machine-types list \
+         --filter="name=$DEV_TYPE" --format='value(zone.basename())' | sed 's/-[a-z]$//' | sort -u | tr '\n' ' ')"
+done
 
 # --- 4. vCPU quota increases --------------------------------------------------
 # Same requests as scale/increase-quota.sh: vCPUs per VM family in each region, and
@@ -174,6 +201,7 @@ fi
 # tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
 # are requested. Google reviews requests asynchronously, so this doesn't wait for
 # approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
+# chia-dev + 2 workers in europe-west4 and 3 workers in europe-west1 are 96 C4 vCPUs each.
 QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 europe-west1=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 
@@ -232,43 +260,126 @@ done
 request_quota CPUS-ALL-REGIONS-per-project "$total" "" ""
 echo "Requests are reviewed by Google; check their status at https://console.cloud.google.com/iam-admin/quotas"
 
-# --- 5. VM -------------------------------------------------------------------
+# --- 5. VMs ------------------------------------------------------------------
 STARTUP="$TUT_HOME/startup.sh"
 cat > "$STARTUP" <<'EOF'
 #!/bin/bash
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
 EOF
 
-DEV_ZONE="$(vm_zone)"
+mkdir -p "$LOGS"
+# bulk create takes a region and places VMs in whichever zone has capacity.
+# chia-dev and each region's workers are created at the same time, by parallel calls.
+DEV_ZONE="$(vm_zone)" dev_pid="" CREATE_JOBS=""
 if [ -n "$DEV_ZONE" ]; then
     echo "$DEV_VM already exists in $DEV_ZONE"
 else
-    # bulk create takes a region and places the VM in whichever zone has capacity.
     # chia-dev gets the cloud-platform scope so CHIA running on it can create more VMs.
     log "Creating $DEV_VM ($DEV_TYPE) in $DEV_REGION (Google picks the zone)"
     gcloud compute instances bulk create --predefined-names="$DEV_VM" --count=1 \
-        --region="$DEV_REGION" --machine-type="$DEV_TYPE" \
-        "${IMAGE[@]}" \
+        --region="$DEV_REGION" --machine-type="$DEV_TYPE" "${IMAGE[@]}" \
         --boot-disk-type=hyperdisk-balanced --boot-disk-size=200GB \
-        --metadata-from-file=startup-script="$STARTUP" --scopes=cloud-platform
+        --metadata-from-file=startup-script="$STARTUP" --scopes=cloud-platform \
+        >"$LOGS/create-$DEV_VM.log" 2>&1 </dev/null &
+    dev_pid=$!
+fi
+for spec in $WORKER_REGIONS; do
+    region="${spec%%=*}" missing="" n_missing=0
+    for w in $WORKERS; do
+        [ "$(region_of_worker "$w")" = "$region" ] || continue
+        if [ -n "$(zone_of "$w")" ]; then echo "$w already exists"
+        else missing="$missing${missing:+,}$w"; n_missing=$((n_missing + 1)); fi
+    done
+    [ "$n_missing" -gt 0 ] || continue
+    # --min-count=1: if quota or capacity only allows some, create those now; a
+    # re-run creates the rest.
+    log "Creating $n_missing worker(s) ($WORKER_TYPE) in $region: $missing"
+    gcloud compute instances bulk create --predefined-names="$missing" \
+        --count="$n_missing" --min-count=1 \
+        --region="$region" --machine-type="$WORKER_TYPE" "${IMAGE[@]}" \
+        --boot-disk-type=hyperdisk-balanced --boot-disk-size=200GB \
+        --metadata-from-file=startup-script="$STARTUP" \
+        >"$LOGS/create-workers-$region.log" 2>&1 </dev/null &
+    CREATE_JOBS="$CREATE_JOBS $region:$!"
+done
+for job in $CREATE_JOBS; do
+    region="${job%%:*}"
+    wait "${job#*:}" && continue
+    echo "WARNING: creating the workers in $region failed or was partial (quota not approved yet?):"
+    tail -5 "$LOGS/create-workers-$region.log" | sed 's/^/    /'
+    echo "  Re-run this script later to create the missing ones."
+done
+if [ -n "$dev_pid" ]; then
+    wait "$dev_pid" || { tail -20 "$LOGS/create-$DEV_VM.log" >&2; die "creating $DEV_VM failed"; }
     DEV_ZONE="$(vm_zone)"
     [ -n "$DEV_ZONE" ] || die "created $DEV_VM, but can't find which zone it's in"
     echo "$DEV_VM is in $DEV_ZONE"
 fi
 
 # --- 6. Per-user setup on the VM (docker group, conda) ----------------------
-vm_ssh() { gcloud compute ssh "$DEV_VM" --zone "$DEV_ZONE" --quiet --command "${1:-bash -s}"; }
+ssh_on() { gcloud compute ssh "$1" --zone "$2" --quiet --command "${3:-bash -s}"; }  # vm zone [cmd]
+vm_ssh() { ssh_on "$DEV_VM" "$DEV_ZONE" "$@"; }
+
+# Starts pulling the chisel-build image on a VM, detached so it keeps going after
+# this SSH session ends (it's large). Progress: ~/chisel-pull.log on the VM.
+start_chisel_pull() {  # vm zone
+    ssh_on "$1" "$2" "pgrep -f '[d]ocker pull $CHISEL_IMAGE' >/dev/null ||
+        { sudo nohup setsid docker pull $CHISEL_IMAGE >~/chisel-pull.log 2>&1 </dev/null & }" </dev/null
+}
+
+wait_for_docker() {  # vm zone
+    local tries=0
+    until ssh_on "$1" "$2" "getent group docker && systemctl is-active --quiet docker" >/dev/null 2>&1 </dev/null; do
+        tries=$((tries + 1))
+        if [ "$tries" -ge 60 ]; then
+            echo "Docker still isn't running on $1 after 10 minutes. See the install log with:" >&2
+            echo "  gcloud compute ssh $1 --zone $2 --command 'sudo journalctl -u google-startup-scripts --no-pager | tail -50'" >&2
+            return 1
+        fi
+        sleep 10
+    done
+}
+
+# Workers: Docker group, conda and the chia-tutorial repo. Runs in the background
+# (one job per worker, output in $LOGS/<worker>.log); chia-dev's key is added at the end.
+setup_worker() {  # vm zone
+    set -e
+    wait_for_docker "$1" "$2"
+    ssh_on "$1" "$2" 'sudo usermod -aG docker "$USER"' </dev/null
+    start_chisel_pull "$1" "$2"
+    ssh_on "$1" "$2" <<'EOF'
+set -e
+if [ ! -x ~/miniforge3/bin/conda ]; then
+    curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh
+    bash /tmp/miniforge.sh -b -p ~/miniforge3 >/dev/null
+    ~/miniforge3/bin/conda init bash >/dev/null
+fi
+if [ ! -d ~/chia-tutorial/.git ]; then
+    git clone -q https://github.com/ucb-bar/chia-tutorial.git ~/chia-tutorial
+fi
+cd ~/chia-tutorial
+git submodule update --init
+echo "setup done"
+EOF
+}
 
 # The docker command appears partway through Docker's install, before its group
 # and service exist, so wait for those instead.
 log "Waiting for SSH + Docker on $DEV_VM (the VM installs Docker on first boot, a few minutes)"
-tries=0
-until vm_ssh "getent group docker && systemctl is-active --quiet docker" >/dev/null 2>&1 </dev/null; do
-    tries=$((tries + 1))
-    [ "$tries" -lt 60 ] || die "Docker still isn't running on $DEV_VM after 10 minutes. See the install log with:
-  gcloud compute ssh $DEV_VM --zone $DEV_ZONE --command 'sudo journalctl -u google-startup-scripts --no-pager | tail -50'"
-    sleep 10
+wait_for_docker "$DEV_VM" "$DEV_ZONE" || die "Docker isn't running on $DEV_VM"
+start_chisel_pull "$DEV_VM" "$DEV_ZONE"
+echo "Pulling $CHISEL_IMAGE in the background on every VM (log: ~/chisel-pull.log on each)"
+
+# Start the workers' setup now, after the first SSH to chia-dev has put this Cloud
+# Shell's key in the project metadata (parallel first-time SSHs would race on that).
+WORKER_JOBS=""
+for w in $WORKERS; do
+    zone="$(zone_of "$w")"
+    [ -n "$zone" ] || continue
+    setup_worker "$w" "$zone" >"$LOGS/$w.log" 2>&1 </dev/null &
+    WORKER_JOBS="$WORKER_JOBS $w:$zone:$!"
 done
+[ -z "$WORKER_JOBS" ] || echo "Setting up the workers in the background (logs: $LOGS/chia-worker-*.log)"
 vm_ssh 'sudo usermod -aG docker "$USER"' </dev/null
 echo "$DEV_VM: $(vm_ssh "lscpu | sed -n 's/^Model name: *//p'" </dev/null)"
 
@@ -352,13 +463,41 @@ EOF
         || echo "WARNING: no agy login found in ~/.gemini on $DEV_VM; re-run this script to try again."
 fi
 
+# --- 8. Workers: finish, and let chia-dev SSH into them ------------------------
+READY=""
+if [ -n "$WORKER_JOBS" ]; then
+    log "Waiting for the workers' setup to finish"
+    PUBKEY="$(vm_ssh 'cat ~/.ssh/chia-key.pub' </dev/null)"
+    case "$PUBKEY" in ssh-*) ;; *) die "couldn't read ~/.ssh/chia-key.pub from $DEV_VM" ;; esac
+    for job in $WORKER_JOBS; do
+        w="${job%%:*}" rest="${job#*:}"; zone="${rest%%:*}" pid="${rest#*:}"
+        if ! wait "$pid"; then
+            echo "WARNING: setting up $w failed; see $LOGS/$w.log. Re-run this script to retry."
+            tail -5 "$LOGS/$w.log" | sed 's/^/    /'
+            continue
+        fi
+        # chia-dev's public key (not a new one) goes in the worker's authorized_keys.
+        ssh_on "$w" "$zone" "mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys &&
+            { grep -qxF '$PUBKEY' ~/.ssh/authorized_keys || echo '$PUBKEY' >> ~/.ssh/authorized_keys; } &&
+            chmod 600 ~/.ssh/authorized_keys" </dev/null \
+            || { echo "WARNING: couldn't add chia-dev's key on $w"; continue; }
+        ip="$(gcloud compute instances describe "$w" --zone "$zone" \
+              --format='value(networkInterfaces[0].networkIP)' </dev/null)"
+        echo "$w ($zone, $ip): ready"
+        READY="$READY  $w  $zone  $ip
+"
+    done
+fi
+
 # --- Done ---------------------------------------------------------------------
 log "Done"
 cat <<EOF
 Project:  $PROJECT_ID
 VM:       $DEV_VM ($DEV_ZONE)
-
+Workers (name, zone, internal IP):
+${READY:-  (none ready yet; re-run this script)}
 SSH to your dev machine (from Cloud Shell):   gcloud compute ssh $DEV_VM --zone $DEV_ZONE
-Tear down the development machine:            $0 --teardown
-Remove everything (VM, tutorial files):       $0 --purge
+From chia-dev, SSH to a worker:               ssh chia-worker-1   (or its internal IP)
+Tear down all the VMs:                        $0 --teardown
+Remove everything (VMs, tutorial files):      $0 --purge
 EOF
