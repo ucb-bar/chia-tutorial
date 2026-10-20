@@ -28,6 +28,8 @@
 #   WORKER_REGIONS="europe-west4=2 us-west4=3"   chia-worker VMs per region
 #   QUOTA_REGIONS="europe-west4=100 us-west4=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
+#   QUOTA_HDB_GB=1000                               Hyperdisk Balanced GB per region
+#   BOOT_DISK_GB=150                                boot disk size of every VM
 set -euo pipefail
 
 usage() { grep '^#   \./setup_gcp' "$0" | sed 's/^#   /usage: /'; exit 1; }
@@ -204,6 +206,10 @@ done
 # chia-dev + 2 workers in europe-west4 and 3 workers in us-west4 are 96 C4 vCPUs each.
 QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 us-west4=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
+# Every VM's boot disk is Hyperdisk Balanced (C4 needs it), which has its own storage
+# quota: new projects get 500 GB per region. 3 x 150 GB fits in that; 3 x 200 GB didn't.
+QUOTA_HDB_GB="${QUOTA_HDB_GB:-1000}"
+BOOT_DISK_GB="${BOOT_DISK_GB:-150}"
 
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
     local out           # on failure, prints gcloud's error and returns non-zero
@@ -214,8 +220,8 @@ quota_limit() {  # quota-id region family -> current limit ("" region/family = n
     printf '%s\n' "$out" | awk -F, -v r="$2" -v f="$3" '$1==r && $2==f { v=$3 } END { print v+0 }'
 }
 
-request_quota() {  # quota-id value region family
-    local id=$1 value=$2 region=$3 family=$4 current pref label dims=() tries=0
+request_quota() {  # quota-id value region family [name-suffix]
+    local id=$1 value=$2 region=$3 family=$4 kind=${5:-cpus} current pref label dims=() tries=0
     label="$id${region:+ ($region${family:+, $family})}"
     until current="$(quota_limit "$id" "$region" "$family")"; do
         case "$current" in
@@ -238,18 +244,18 @@ request_quota() {  # quota-id value region family
         return
     fi
     echo "REQUEST  $label: limit $current -> $value"
-    pref="chia-tut${region:+-$region}$(printf '%s' "${family:+-$family}" | tr 'A-Z' 'a-z')-cpus"
+    pref="chia-tut${region:+-$region}$(printf '%s' "${family:+-$family}" | tr 'A-Z' 'a-z')-$kind"
     [ -n "$region" ] && dims=(--dimensions="region=$region${family:+,vm_family=$family}")
     gcloud beta quotas preferences update "$pref" --project="$PROJECT_ID" \
         --billing-project="$PROJECT_ID" --service=compute.googleapis.com --quota-id="$id" --preferred-value="$value" \
         ${dims[@]+"${dims[@]}"} --email="$ACCOUNT" --allow-missing --quiet \
-        --justification="CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" \
+        --justification="CHIA tutorial: Compute Engine capacity for the participant's CHIA cluster workers" \
         >"$TUT_HOME/quota-$pref.log" 2>&1 </dev/null \
         || { echo "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
              tail -5 "$TUT_HOME/quota-$pref.log" | sed 's/^/    /'; }
 }
 
-log "Requesting vCPU quota (regions: $QUOTA_REGIONS; families: $QUOTA_FAMILIES)"
+log "Requesting quota (vCPUs: $QUOTA_REGIONS, families $QUOTA_FAMILIES; Hyperdisk: $QUOTA_HDB_GB GB per region)"
 total=0
 for target in $QUOTA_REGIONS; do
     region="${target%%=*}" value="${target#*=}"
@@ -257,6 +263,7 @@ for target in $QUOTA_REGIONS; do
     for family in $QUOTA_FAMILIES; do
         request_quota CPUS-PER-VM-FAMILY-per-project-region "$value" "$region" "$family"
     done
+    request_quota HDB-TOTAL-GB-per-project-region "$QUOTA_HDB_GB" "$region" "" disk
 done
 request_quota CPUS-ALL-REGIONS-per-project "$total" "" ""
 echo "Requests are reviewed by Google; check their status at https://console.cloud.google.com/iam-admin/quotas"
@@ -279,7 +286,7 @@ else
     log "Creating $DEV_VM ($DEV_TYPE) in $DEV_REGION (Google picks the zone)"
     gcloud compute instances bulk create --predefined-names="$DEV_VM" --count=1 \
         --region="$DEV_REGION" --machine-type="$DEV_TYPE" "${IMAGE[@]}" \
-        --boot-disk-type=hyperdisk-balanced --boot-disk-size=200GB \
+        --boot-disk-type=hyperdisk-balanced --boot-disk-size="${BOOT_DISK_GB}GB" \
         --metadata-from-file=startup-script="$STARTUP" --scopes=cloud-platform \
         >"$LOGS/create-$DEV_VM.log" 2>&1 </dev/null &
     dev_pid=$!
@@ -298,27 +305,47 @@ for spec in $WORKER_REGIONS; do
     gcloud compute instances bulk create --predefined-names="$missing" \
         --count="$n_missing" --min-count=1 \
         --region="$region" --machine-type="$WORKER_TYPE" "${IMAGE[@]}" \
-        --boot-disk-type=hyperdisk-balanced --boot-disk-size=200GB \
+        --boot-disk-type=hyperdisk-balanced --boot-disk-size="${BOOT_DISK_GB}GB" \
         --metadata-from-file=startup-script="$STARTUP" \
         >"$LOGS/create-workers-$region.log" 2>&1 </dev/null &
     CREATE_JOBS="$CREATE_JOBS $region:$!"
 done
-# With --min-count=1 a partial create still exits 0, so check which workers exist.
+# A partial bulk create doesn't say why the rest failed (often: that zone ran out of
+# this machine type). For each VM still missing, try the region's zones one at a time
+# with a plain create, which does report the reason if every zone fails.
+create_in_zones() {  # vm region [extra flags...] -> 0 once created in some zone
+    local vm=$1 region=$2 zone err=""; shift 2
+    for zone in $(gcloud compute machine-types list --filter="name=$DEV_TYPE AND zone~^$region-" \
+                      --format='value(zone.basename())' </dev/null | sort); do
+        if out="$(gcloud compute instances create "$vm" --zone "$zone" --machine-type "$DEV_TYPE" \
+                      "${IMAGE[@]}" --boot-disk-type=hyperdisk-balanced --boot-disk-size="${BOOT_DISK_GB}GB" \
+                      --metadata-from-file=startup-script="$STARTUP" "$@" 2>&1 </dev/null)"; then
+            echo "$vm created in $zone"
+            return 0
+        fi
+        err="$err
+    $zone: $(printf '%s\n' "$out" | grep -vE '^WARNING|^ *$' | tail -2 | tr -s ' ' | tr '\n' ' ')"
+    done
+    echo "WARNING: couldn't create $vm in any $region zone:$err"
+    return 1
+}
+
 for job in $CREATE_JOBS; do
     region="${job%%:*}"
     wait "${job#*:}" || true
-    absent=""
     for w in $WORKERS; do
-        [ "$(region_of_worker "$w")" = "$region" ] && [ -z "$(zone_of "$w")" ] && absent="$absent $w"
+        [ "$(region_of_worker "$w")" = "$region" ] && [ -z "$(zone_of "$w")" ] || continue
+        echo "$w wasn't created by the bulk request; trying $region's zones one by one"
+        create_in_zones "$w" "$region" \
+            || echo "  Re-run this script later to try $w again."
     done
-    [ -n "$absent" ] || continue
-    echo "WARNING: couldn't create$absent in $region. gcloud said:"
-    grep -iE 'error|failed|quota|exceeded|insufficient|unavailable|resource' "$LOGS/create-workers-$region.log" \
-        | tail -5 | sed 's/^/    /'
-    echo "  Usually this is quota that isn't approved yet. Re-run this script later to create them."
 done
 if [ -n "$dev_pid" ]; then
-    wait "$dev_pid" || { tail -20 "$LOGS/create-$DEV_VM.log" >&2; die "creating $DEV_VM failed"; }
+    wait "$dev_pid" || true
+    if [ -z "$(vm_zone)" ]; then
+        echo "$DEV_VM wasn't created by the bulk request; trying $DEV_REGION's zones one by one"
+        create_in_zones "$DEV_VM" "$DEV_REGION" --scopes=cloud-platform || die "couldn't create $DEV_VM"
+    fi
     DEV_ZONE="$(vm_zone)"
     [ -n "$DEV_ZONE" ] || die "created $DEV_VM, but can't find which zone it's in"
     echo "$DEV_VM is in $DEV_ZONE"
