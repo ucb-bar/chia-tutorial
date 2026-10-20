@@ -10,7 +10,7 @@
 #                                CLI (agy, signed in), and an SSH key (~/.ssh/chia-key)
 #   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo + its conda env, and
 #                                chia-dev's key in authorized_keys, so chia-dev can ssh in
-# chia-dev and workers 1-2 go in europe-west4, workers 3-5 in us-west4. Every VM
+# chia-dev and workers 1-2 go in us-west4, workers 3-5 in europe-west4. Every VM
 # also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
 #
 # Usage:
@@ -24,9 +24,9 @@
 # are reused.
 #
 # Optional environment overrides:
-#   DEV_REGION=europe-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
-#   WORKER_REGIONS="europe-west4=2 us-west4=3"   chia-worker VMs per region
-#   QUOTA_REGIONS="europe-west4=100 us-west4=100"   vCPU targets per region
+#   DEV_REGION=us-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
+#   WORKER_REGIONS="us-west4=2 europe-west4=3"   chia-worker VMs per region
+#   QUOTA_REGIONS="us-west4=100 europe-west4=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
 #   QUOTA_HDB_GB=1000                               Hyperdisk Balanced GB per region
 #   BOOT_DISK_GB=150                                boot disk size of every VM
@@ -59,10 +59,10 @@ if [ -z "${PROJECT_ID:-}" ] && [ -f "$STATE" ]; then
     . "$STATE"     # remembers this account's PROJECT_ID between runs
 fi
 
-DEV_REGION="${DEV_REGION:-europe-west4}"
+DEV_REGION="${DEV_REGION:-us-west4}"
 # C4 rejects --min-cpu-platform, so the CPU generation isn't pinned.
 DEV_VM=chia-dev    DEV_TYPE=c4-highcpu-32
-WORKER_REGIONS="${WORKER_REGIONS:-europe-west4=2 us-west4=3}"   WORKER_TYPE=c4-highcpu-32
+WORKER_REGIONS="${WORKER_REGIONS:-us-west4=2 europe-west4=3}"   WORKER_TYPE=c4-highcpu-32
 # Workers are numbered across the regions in order: chia-worker-1..2 in the first,
 # chia-worker-3..5 in the second. region_of_worker maps a name back to its region.
 WORKERS="" i=0
@@ -203,8 +203,8 @@ done
 # tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
 # are requested. Google reviews requests asynchronously, so this doesn't wait for
 # approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
-# chia-dev + 2 workers in europe-west4 and 3 workers in us-west4 are 96 C4 vCPUs each.
-QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 us-west4=100}"
+# chia-dev + 2 workers in us-west4 and 3 workers in europe-west4 are 96 C4 vCPUs each.
+QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 europe-west4=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 # Every VM's boot disk is Hyperdisk Balanced (C4 needs it), which has its own storage
 # quota: new projects get 500 GB per region. 3 x 150 GB fits in that; 3 x 200 GB didn't.
