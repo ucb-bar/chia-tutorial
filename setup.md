@@ -33,14 +33,20 @@ If the script exits immediately, having only printed "Using gcloud signed in as 
    10. Click **Yes, I trust this folder**
    11. Press ctrl-D twice to exit Antigravity
 
-8. After the script has finished running, run the following command in the shell to download the SSH key you will use in order to ssh into the development machine which was provisioned for you by the setup script. Please save this key to your local machine in the ~/.ssh/ directory.
+8. After the script has finished running, run the following command in the shell to download the SSH key you will use to SSH into the development machine the setup script provisioned for you:
 
    ```bash
    cloudshell download ~/.ssh/google_compute_engine
    ```
 
-9. The script should have printed the command you can use to SSH into the development machine which was provisioned for you for this tutorial. You can use any remote development environment of your choosing throughout the tutorial. If you do not have one ready to use, we recommend using Visual Studio Code <https://code.visualstudio.com/download> with the **Remote SSH** Extension. 
+   Save the key anywhere on your laptop and **note the path where you saved it**; you will need it in the next step. If you already have a `~/.ssh/google_compute_engine` file, don't overwrite it: save this one somewhere else, or under a different name such as `~/.ssh/chia-tutorial-key`. On macOS or Linux, also restrict the key's permissions, or SSH will refuse to use it:
+
+   ```bash
+   chmod 600 <path to the key>
+   ```
+
+9. The script should have printed the command you can use to SSH into the development machine which was provisioned for you for this tutorial. It looks like `ssh -i <path to the key> USER@IP`: replace `<path to the key>` with the path where you saved the key in step 8. You can use any remote development environment of your choosing throughout the tutorial. If you do not have one ready to use, we recommend using Visual Studio Code <https://code.visualstudio.com/download> with the **Remote SSH** Extension. 
     
-    1. In VSCode with the remote ssh extension installed, you can add a new remote host by typing CTRL/CMD+Shift+P and searching for **Remote-SSH: Add New SSH Host**, and pasting in the ssh command printed at the end of the script.
+    1. In VSCode with the remote ssh extension installed, you can add a new remote host by typing CTRL/CMD+Shift+P and searching for **Remote-SSH: Add New SSH Host**, and pasting in that ssh command (with your key's path filled in).
 
     2. In VSCode you can connect to this host by  typing CTRL/CMD+Shift+P and searching for **Remote-SSH: Connect to Host**, and selecting the host you just added.

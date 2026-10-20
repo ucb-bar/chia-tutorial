@@ -555,9 +555,11 @@ VM:       $DEV_VM ($DEV_ZONE), external IP ${DEV_IP:-unknown}
 Workers (name, zone, internal IP):
 ${READY:-  (none ready yet; re-run this script)}
 SSH to your dev machine (from Cloud Shell):   gcloud compute ssh $DEV_VM --zone $DEV_ZONE
-SSH to your dev machine (from your laptop):   ssh -i ~/.ssh/google_compute_engine $SSH_USER@${DEV_IP:-EXTERNAL_IP}
-  (first download the key with: cloudshell download ~/.ssh/google_compute_engine,
-   and move it to ~/.ssh/ on your laptop. Stopping and starting the VM changes the IP.)
+SSH to your dev machine (from your laptop):   ssh -i <path to the key> $SSH_USER@${DEV_IP:-EXTERNAL_IP}
+  (first download the key with: cloudshell download ~/.ssh/google_compute_engine
+   Save it anywhere on your laptop and use that path for <path to the key>. Don't
+   overwrite a google_compute_engine key you already have in ~/.ssh. Stopping and
+   starting the VM changes the IP.)
 From chia-dev, SSH to a worker:               ssh ${FIRST_READY:-chia-worker-N}   (or its internal IP)
 Tear down all the VMs:                        $0 --teardown
 Remove everything (VMs, tutorial files):      $0 --purge
