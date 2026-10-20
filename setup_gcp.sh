@@ -265,6 +265,53 @@ mkdir -p ~/.gemini
 ~/miniforge3/bin/conda --version
 EOF
 
+log "Setting up the shell, the chia-tutorial repo and SSH keys on $DEV_VM"
+vm_ssh <<'EOF'
+set -e
+# Ubuntu's ~/.bashrc stops early for non-interactive shells. Remove that guard so
+# commands CHIA runs over SSH also get conda and the ssh-agent settings below.
+sed -i '/^# If not running interactively, don.t do anything$/d' ~/.bashrc
+sed -i '/^case \$- in$/,/^esac$/d' ~/.bashrc
+sed -i '/^\[ -z "\$PS1" \] && return$/d' ~/.bashrc
+
+# One ssh-agent per user at a fixed socket, shared by all shells.
+if ! grep -qF 'ssh-agent.socket' ~/.bashrc; then
+    cat >> ~/.bashrc <<'RC'
+export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+if [ ! -S "$SSH_AUTH_SOCK" ]; then
+    eval "$(ssh-agent -a "$SSH_AUTH_SOCK")" > /dev/null
+fi
+RC
+fi
+
+# The tutorial repo and its conda environment.
+if [ ! -d ~/chia-tutorial/.git ]; then
+    git clone -q https://github.com/ucb-bar/chia-tutorial.git ~/chia-tutorial
+fi
+cd ~/chia-tutorial
+git submodule update --init
+env_name="$(sed -n 's/^name: *//p' environment.yml)"
+if ~/miniforge3/bin/conda env list | awk '{print $1}' | grep -qxF "$env_name"; then
+    echo "conda env $env_name already exists"
+else
+    echo "Creating conda env $env_name (takes several minutes)"
+    ~/miniforge3/bin/conda env create -q -f environment.yml
+fi
+
+# SSH key CHIA uses to reach this machine (and the cluster VMs it starts).
+# Lingering keeps $XDG_RUNTIME_DIR (and so the agent's socket and its loaded key)
+# alive after this session ends, instead of being deleted at logout.
+sudo loginctl enable-linger "$USER"
+export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+[ -S "$SSH_AUTH_SOCK" ] || eval "$(ssh-agent -a "$SSH_AUTH_SOCK")" > /dev/null
+[ -f ~/.ssh/chia-key ] || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/chia-key
+ssh-add -q ~/.ssh/chia-key
+touch ~/.ssh/authorized_keys
+grep -qxF "$(cat ~/.ssh/chia-key.pub)" ~/.ssh/authorized_keys \
+    || cat ~/.ssh/chia-key.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+EOF
+
 # --- 7. Gemini / Antigravity -------------------------------------------------
 AGY_TOKEN=.gemini/antigravity-cli/antigravity-oauth-token
 if vm_ssh "test -s ~/$AGY_TOKEN" </dev/null; then
