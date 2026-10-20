@@ -540,13 +540,24 @@ if [ -n "$WORKER_JOBS" ]; then
 fi
 
 # --- Done ---------------------------------------------------------------------
+# chia-dev's external IP, and the username gcloud created on the VMs (gcloud's own
+# ssh command line has both), for SSHing in from a laptop with Cloud Shell's key.
+DEV_IP="$(gcloud compute instances describe "$DEV_VM" --zone "$DEV_ZONE" \
+          --format='value(networkInterfaces[0].accessConfigs[0].natIP)' </dev/null)"
+SSH_USER="$(gcloud compute ssh "$DEV_VM" --zone "$DEV_ZONE" --dry-run 2>/dev/null </dev/null \
+            | grep -oE '[^ @]+@[0-9]+(\.[0-9]+){3}' | tail -1 | cut -d@ -f1 || true)"
+SSH_USER="${SSH_USER:-$USER}"
+
 log "Done"
 cat <<EOF
 Project:  $PROJECT_ID
-VM:       $DEV_VM ($DEV_ZONE)
+VM:       $DEV_VM ($DEV_ZONE), external IP ${DEV_IP:-unknown}
 Workers (name, zone, internal IP):
 ${READY:-  (none ready yet; re-run this script)}
 SSH to your dev machine (from Cloud Shell):   gcloud compute ssh $DEV_VM --zone $DEV_ZONE
+SSH to your dev machine (from your laptop):   ssh -i ~/.ssh/google_compute_engine $SSH_USER@${DEV_IP:-EXTERNAL_IP}
+  (first download the key with: cloudshell download ~/.ssh/google_compute_engine,
+   and move it to ~/.ssh/ on your laptop. Stopping and starting the VM changes the IP.)
 From chia-dev, SSH to a worker:               ssh ${FIRST_READY:-chia-worker-N}   (or its internal IP)
 Tear down all the VMs:                        $0 --teardown
 Remove everything (VMs, tutorial files):      $0 --purge

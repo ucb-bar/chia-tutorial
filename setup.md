@@ -23,6 +23,22 @@ This file contains the instructions for setting up the provided Google Cloud acc
    2. Choose **Continue with Google Cloud**.
    3. Open the link provided, and select the account provided to you in the email you received.
    4. Copy the code back into the Antigravity CLI and press Enter.
-   5. 
+   5. Enter the Project Name from the email you received as the Google Cloud Project ID
+   6. Select **global**
+   7. Select **Agent Platform - Pay as you go...**
+   8. Choose any color scheme option (you won't be using AGY directly so it does not matter).
+   9. Click **Done** on the terms of service page.
+   10. Click **Yes, I trust this folder**
+   11. Press ctrl-D twice to exit Antigravity
 
-8. Run the following command in the shell to download 
+8. After the script has finished running, run the following command in the shell to download the SSH key you will use in order to ssh into the development machine which was provisioned for you by the setup script. Please save this key to your local machine in the ~/.ssh/ directory.
+
+   ```bash
+   cloudshell download ~/.ssh/google_compute_engine
+   ```
+
+9. The script should have printed the command you can use to SSH into the development machine which was provisioned for you for this tutorial. You can use any remote development environment of your choosing throughout the tutorial. If you do not have one ready to use, we recommend using Visual Studio Code <https://code.visualstudio.com/download> with the **Remote SSH** Extension. 
+    
+    1. In VSCode with the remote ssh extension installed, you can add a new remote host by typing CTRL/CMD+Shift+P and searching for **Remote-SSH: Add New SSH Host**, and pasting in the ssh command printed at the end of the script.
+
+    2. In VSCode you can connect to this host by  typing CTRL/CMD+Shift+P and searching for **Remote-SSH: Connect to Host**, and selecting the host you just added.
