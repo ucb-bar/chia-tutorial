@@ -1,6 +1,6 @@
 This file contains the instructions for setting up the provided Google Cloud account for the CHIA tutorial.
 
-1. In your browser, open <http://console.cloud.google.com/> and sign in with the credentials provided to you in the email you received. You may be signed in to a different account by default. If so, click your profile picture in the top right, then click **Add account**.
+1. In your browser, open <http://console.cloud.google.com/> and sign in with the credentials provided to you in the email you received. You may be signed in to a different account by default. If so, click your profile picture in the top right, then click **Add account**. Please accept that you understand the terms if prompted.
 
 2. Open <https://console.cloud.google.com/cloudshelleditor/> and make sure you are still signed in with the account provided to you in the email you received with credentials, by checking the profile in the top right corner of the page.
 
