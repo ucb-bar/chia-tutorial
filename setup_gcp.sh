@@ -8,7 +8,7 @@
 #   chia-dev                     your dev machine / CHIA head: Docker, conda (Miniforge),
 #                                the chia-tutorial repo + its conda env, the Antigravity
 #                                CLI (agy, signed in), and an SSH key (~/.ssh/chia-key)
-#   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo, and
+#   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo + its conda env, and
 #                                chia-dev's key in authorized_keys, so chia-dev can ssh in
 # chia-dev and workers 1-2 go in europe-west4, workers 3-5 in us-west4. Every VM
 # also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
@@ -377,7 +377,7 @@ wait_for_docker() {  # vm zone
     done
 }
 
-# Workers: Docker group, conda and the chia-tutorial repo. Runs in the background
+# Workers: Docker group, conda, the chia-tutorial repo and its conda env. Runs in the background
 # (one job per worker, output in $LOGS/<worker>.log); chia-dev's key is added at the end.
 setup_worker() {  # vm zone
     set -e
@@ -391,11 +391,23 @@ if [ ! -x ~/miniforge3/bin/conda ]; then
     bash /tmp/miniforge.sh -b -p ~/miniforge3 >/dev/null
     ~/miniforge3/bin/conda init bash >/dev/null
 fi
+# Same as on chia-dev: drop ~/.bashrc's interactive-only guard so commands run over
+# plain `ssh chia-worker-N <cmd>` (as CHIA does) also get conda's setup.
+sed -i '/^# If not running interactively, don.t do anything$/d' ~/.bashrc
+sed -i '/^case \$- in$/,/^esac$/d' ~/.bashrc
+sed -i '/^\[ -z "\$PS1" \] && return$/d' ~/.bashrc
 if [ ! -d ~/chia-tutorial/.git ]; then
     git clone -q https://github.com/ucb-bar/chia-tutorial.git ~/chia-tutorial
 fi
 cd ~/chia-tutorial
 git submodule update --init
+env_name="$(sed -n 's/^name: *//p' environment.yml)"
+if ~/miniforge3/bin/conda env list | awk '{print $1}' | grep -qxF "$env_name"; then
+    echo "conda env $env_name already exists"
+else
+    echo "Creating conda env $env_name"
+    ~/miniforge3/bin/conda env create -q -f environment.yml
+fi
 echo "setup done"
 EOF
 }
