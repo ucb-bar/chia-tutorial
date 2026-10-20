@@ -4,7 +4,7 @@ This file contains the instructions for setting up the provided Google Cloud acc
 
 2. Open <https://console.cloud.google.com/cloudshelleditor/> and make sure you are still signed in with the account provided to you in the email you received with credentials, by checking the profile in the top right corner of the page. Please authorize the use of Cloud Shell.
 
-3. Click **Select a project** at the top left of the screen, and choose the only project listed.
+3. Click **Select a project** at the top left of the screen, and choose the only project listed. Please then refresh the page.
 
 4. Click **Open Terminal** at the top middle of the screen to open a shell.
 
@@ -15,6 +15,8 @@ This file contains the instructions for setting up the provided Google Cloud acc
    chmod +x setup_gcp.sh
    ./setup_gcp.sh
    ```
+
+If the script exits immediately, having only printed "Using gcloud signed in as ..." and no line with "Using project ...", then please ensure that a project is selected at the top left (see step 3), and then refresh the page.
 
 6. The script may ask you to open a link and accept the terms of service. If so, follow the instructions in the terminal.
 
