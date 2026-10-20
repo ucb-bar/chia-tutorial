@@ -10,7 +10,7 @@
 #                                CLI (agy, signed in), and an SSH key (~/.ssh/chia-key)
 #   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo, and
 #                                chia-dev's key in authorized_keys, so chia-dev can ssh in
-# chia-dev and workers 1-2 go in europe-west4, workers 3-5 in europe-west1. Every VM
+# chia-dev and workers 1-2 go in europe-west4, workers 3-5 in europe-west3. Every VM
 # also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
 #
 # Usage:
@@ -25,8 +25,8 @@
 #
 # Optional environment overrides:
 #   DEV_REGION=europe-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
-#   WORKER_REGIONS="europe-west4=2 europe-west1=3"   chia-worker VMs per region
-#   QUOTA_REGIONS="europe-west4=100 europe-west1=100"   vCPU targets per region
+#   WORKER_REGIONS="europe-west4=2 europe-west3=3"   chia-worker VMs per region
+#   QUOTA_REGIONS="europe-west4=100 europe-west3=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
 set -euo pipefail
 
@@ -60,7 +60,7 @@ fi
 DEV_REGION="${DEV_REGION:-europe-west4}"
 # C4 rejects --min-cpu-platform, so the CPU generation isn't pinned.
 DEV_VM=chia-dev    DEV_TYPE=c4-highcpu-32
-WORKER_REGIONS="${WORKER_REGIONS:-europe-west4=2 europe-west1=3}"   WORKER_TYPE=c4-highcpu-32
+WORKER_REGIONS="${WORKER_REGIONS:-europe-west4=2 europe-west3=3}"   WORKER_TYPE=c4-highcpu-32
 # Workers are numbered across the regions in order: chia-worker-1..2 in the first,
 # chia-worker-3..5 in the second. region_of_worker maps a name back to its region.
 WORKERS="" i=0
@@ -201,8 +201,8 @@ done
 # tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
 # are requested. Google reviews requests asynchronously, so this doesn't wait for
 # approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
-# chia-dev + 2 workers in europe-west4 and 3 workers in europe-west1 are 96 C4 vCPUs each.
-QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 europe-west1=100}"
+# chia-dev + 2 workers in europe-west4 and 3 workers in europe-west3 are 96 C4 vCPUs each.
+QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 europe-west3=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
@@ -244,8 +244,9 @@ request_quota() {  # quota-id value region family
         --billing-project="$PROJECT_ID" --service=compute.googleapis.com --quota-id="$id" --preferred-value="$value" \
         ${dims[@]+"${dims[@]}"} --email="$ACCOUNT" --allow-missing --quiet \
         --justification="CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" \
-        >/dev/null </dev/null \
-        || echo "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
+        >"$TUT_HOME/quota-$pref.log" 2>&1 </dev/null \
+        || { echo "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
+             tail -5 "$TUT_HOME/quota-$pref.log" | sed 's/^/    /'; }
 }
 
 log "Requesting vCPU quota (regions: $QUOTA_REGIONS; families: $QUOTA_FAMILIES)"
@@ -302,12 +303,19 @@ for spec in $WORKER_REGIONS; do
         >"$LOGS/create-workers-$region.log" 2>&1 </dev/null &
     CREATE_JOBS="$CREATE_JOBS $region:$!"
 done
+# With --min-count=1 a partial create still exits 0, so check which workers exist.
 for job in $CREATE_JOBS; do
     region="${job%%:*}"
-    wait "${job#*:}" && continue
-    echo "WARNING: creating the workers in $region failed or was partial (quota not approved yet?):"
-    tail -5 "$LOGS/create-workers-$region.log" | sed 's/^/    /'
-    echo "  Re-run this script later to create the missing ones."
+    wait "${job#*:}" || true
+    absent=""
+    for w in $WORKERS; do
+        [ "$(region_of_worker "$w")" = "$region" ] && [ -z "$(zone_of "$w")" ] && absent="$absent $w"
+    done
+    [ -n "$absent" ] || continue
+    echo "WARNING: couldn't create$absent in $region. gcloud said:"
+    grep -iE 'error|failed|quota|exceeded|insufficient|unavailable|resource' "$LOGS/create-workers-$region.log" \
+        | tail -5 | sed 's/^/    /'
+    echo "  Usually this is quota that isn't approved yet. Re-run this script later to create them."
 done
 if [ -n "$dev_pid" ]; then
     wait "$dev_pid" || { tail -20 "$LOGS/create-$DEV_VM.log" >&2; die "creating $DEV_VM failed"; }
@@ -464,7 +472,7 @@ EOF
 fi
 
 # --- 8. Workers: finish, and let chia-dev SSH into them ------------------------
-READY=""
+READY="" FIRST_READY=""
 if [ -n "$WORKER_JOBS" ]; then
     log "Waiting for the workers' setup to finish"
     PUBKEY="$(vm_ssh 'cat ~/.ssh/chia-key.pub' </dev/null)"
@@ -486,6 +494,7 @@ if [ -n "$WORKER_JOBS" ]; then
         echo "$w ($zone, $ip): ready"
         READY="$READY  $w  $zone  $ip
 "
+        FIRST_READY="${FIRST_READY:-$w}"
     done
 fi
 
@@ -497,7 +506,7 @@ VM:       $DEV_VM ($DEV_ZONE)
 Workers (name, zone, internal IP):
 ${READY:-  (none ready yet; re-run this script)}
 SSH to your dev machine (from Cloud Shell):   gcloud compute ssh $DEV_VM --zone $DEV_ZONE
-From chia-dev, SSH to a worker:               ssh chia-worker-1   (or its internal IP)
+From chia-dev, SSH to a worker:               ssh ${FIRST_READY:-chia-worker-N}   (or its internal IP)
 Tear down all the VMs:                        $0 --teardown
 Remove everything (VMs, tutorial files):      $0 --purge
 EOF
