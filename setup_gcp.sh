@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# CHIA tutorial: one-time GCP setup.
+# CHIA tutorial: one-time GCP setup. Run it in Google Cloud Shell
+# (https://shell.cloud.google.com), which is already signed in to your account.
 #
-# Installs a private copy of the gcloud CLI (your existing gcloud install and
-# its config are not touched), signs you in, creates/uses a GCP project with
-# billing, enables the APIs the tutorial needs, and starts one VM:
+# Uses/creates a GCP project with billing, enables the APIs the tutorial needs,
+# requests vCPU quota for CHIA clusters, and starts one VM:
 #   chia-dev    c2d-standard-8  (AMD Milan, 8 vCPU / 32 GB) - your dev machine / CHIA head
 # with Docker, conda (Miniforge) and the Antigravity CLI (agy), signed in. More machines are
 # brought up later by CHIA clusters.
 #
 # Usage:
-#   ./setup_gcp.sh --account you@gmail.com [--project ID] [--billing-account ID]
-#   ./setup_gcp.sh --account you@gmail.com --teardown     # delete the VM
-#   ./setup_gcp.sh --account you@gmail.com --purge        # delete the VM (and optionally the
-#                                                         # project), sign out, remove local files
+#   ./setup_gcp.sh [--project ID] [--billing-account ID]
+#   ./setup_gcp.sh --teardown     # delete the VM
+#   ./setup_gcp.sh --purge        # delete the VM (and optionally the project), remove the
+#                                 # tutorial's files from Cloud Shell
 #
-# Sign-in happens in the browser (Google OAuth); the script never sees your password.
-# Safe to re-run: existing project, VMs and installs are reused.
+# Project: --project, else the one this script used last time, else Cloud Shell's
+# current project, else a new one. Safe to re-run: existing project, VM and installs
+# are reused.
 #
 # Optional environment overrides:
 #   DEV_ZONE=us-west4-c   TUT_HOME=~/.chia-tutorial
@@ -23,18 +24,10 @@
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
 set -euo pipefail
 
-case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*)
-        echo "On Windows, run setup_gcp.ps1 from PowerShell instead:" >&2
-        echo "  powershell -ExecutionPolicy Bypass -File .\\setup_gcp.ps1 -Account you@gmail.com" >&2
-        exit 1 ;;
-esac
-
 usage() { grep '^#   \./setup_gcp' "$0" | sed 's/^#   /usage: /'; exit 1; }
-ACCOUNT="" TEARDOWN="" PURGE=""
+TEARDOWN="" PURGE=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --account)         ACCOUNT="$2"; shift 2 ;;
         --project)         PROJECT_ID="$2"; shift 2 ;;
         --billing-account) BILLING_ACCOUNT="$2"; shift 2 ;;
         --teardown)        TEARDOWN=1; shift ;;
@@ -42,7 +35,13 @@ while [ $# -gt 0 ]; do
         *) usage ;;
     esac
 done
-[ -n "$ACCOUNT" ] || usage
+
+log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+
+command -v gcloud >/dev/null || die "gcloud not found. Run this script in Google Cloud Shell: https://shell.cloud.google.com"
+ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
+[ -n "$ACCOUNT" ] || die "gcloud isn't signed in. Run this script in Google Cloud Shell, or run 'gcloud auth login' first."
 
 TUT_HOME="${TUT_HOME:-$HOME/.chia-tutorial}"
 STATE="$TUT_HOME/state-$ACCOUNT.sh"
@@ -56,36 +55,7 @@ DEV_ZONE="${DEV_ZONE:-us-west4-c}"
 DEV_VM=chia-dev    DEV_TYPE=c2d-standard-8   DEV_CPU="AMD Milan"
 IMAGE=(--image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud)
 
-log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
-die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
-
-# --- 1. Private gcloud --------------------------------------------------------
-# CLOUDSDK_CONFIG keeps this install's accounts/projects separate from ~/.config/gcloud.
-export CLOUDSDK_CONFIG="$TUT_HOME/gcloud-config"
-SDK="$TUT_HOME/google-cloud-sdk"
-if [ -n "$PURGE" ] && [ ! -x "$SDK/bin/gcloud" ]; then
-    echo "The tutorial's gcloud isn't installed in $TUT_HOME; nothing to sign out of."
-    rm -f "$STATE"
-    exit 0
-fi
-if [ ! -x "$SDK/bin/gcloud" ]; then
-    log "Installing a private gcloud CLI into $SDK"
-    case "$(uname -s)-$(uname -m)" in
-        Linux-x86_64)  pkg=linux-x86_64 ;;
-        Linux-aarch64) pkg=linux-arm ;;
-        Darwin-arm64)  pkg=darwin-arm ;;
-        Darwin-x86_64) pkg=darwin-x86_64 ;;
-        *) die "unsupported platform $(uname -s)-$(uname -m)" ;;
-    esac
-    curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-$pkg.tar.gz" \
-        | tar -xz -C "$TUT_HOME"
-    "$SDK/install.sh" --quiet --usage-reporting=false --path-update=false \
-        --command-completion=false >/dev/null
-fi
-gcloud() { "$SDK/bin/gcloud" "$@"; }
-
-gcloud config set account "$ACCOUNT" >/dev/null 2>&1
-
+# --- Teardown / purge ---------------------------------------------------------
 if [ -n "$TEARDOWN" ]; then
     if [ -n "${PROJECT_ID:-}" ]; then
         log "Deleting $DEV_VM in $PROJECT_ID"
@@ -94,11 +64,10 @@ if [ -n "$TEARDOWN" ]; then
         die "no project recorded in $STATE"
     fi
     if [ -z "$PURGE" ]; then
-        echo "To delete the whole project too: $SDK/bin/gcloud projects delete $PROJECT_ID"
-        echo "To also sign out and remove the tutorial's local files: $0 --account $ACCOUNT --purge"
+        echo "To delete the whole project too: gcloud projects delete $PROJECT_ID"
+        echo "To also remove the tutorial's files from Cloud Shell: $0 --purge"
         exit 0
     fi
-
     if [ -n "${PROJECT_ID:-}" ]; then
         read -r -p "Also delete the whole project $PROJECT_ID? [y/N] " answer
         case "$answer" in
@@ -106,61 +75,26 @@ if [ -n "$TEARDOWN" ]; then
             *) echo "Keeping project $PROJECT_ID." ;;
         esac
     fi
-
-    # Take the tutorial's VMs out of ~/.ssh/config if it added that section and this is
-    # the last account using TUT_HOME (see below). config-ssh needs valid credentials,
-    # so this comes before signing out.
-    if [ -z "$(ls "$TUT_HOME"/state-*.sh 2>/dev/null | grep -vxF "$STATE")" ] \
-       && [ "$(cat "$TUT_HOME/ssh-config-preexisting" 2>/dev/null)" = no ]; then
-        log "Removing the tutorial's VMs from ~/.ssh/config"
-        gcloud compute config-ssh --remove --quiet >/dev/null 2>&1 || true
-    fi
-
-    log "Signing $ACCOUNT out of the tutorial's gcloud"
-    gcloud auth revoke "$ACCOUNT" --quiet >/dev/null 2>&1 || true
-    gcloud auth application-default revoke --quiet >/dev/null 2>&1 || true
-
-    # Other accounts may share TUT_HOME (and the SSH key); only clean up when this
-    # is the last one.
-    rm -f "$STATE"
-    others="$(ls "$TUT_HOME"/state-*.sh 2>/dev/null || true)"
-    if [ -z "$others" ]; then
-        # The SSH key is shared with any other gcloud on this machine: only remove
-        # it if this tutorial created it.
-        if [ "$(cat "$TUT_HOME/ssh-key-preexisting" 2>/dev/null)" = no ]; then
-            log "Removing the SSH key the tutorial created"
-            rm -f ~/.ssh/google_compute_engine ~/.ssh/google_compute_engine.pub \
-                  ~/.ssh/google_compute_known_hosts
-        fi
-        log "Removing $TUT_HOME"
-        rm -rf "$TUT_HOME"
-    else
-        echo "Keeping $TUT_HOME: it still holds state for: $others"
-    fi
+    log "Removing $TUT_HOME"
+    rm -rf "$TUT_HOME"
     exit 0
 fi
 
-# --- 2. Sign in --------------------------------------------------------------
-if ! gcloud auth print-access-token "$ACCOUNT" >/dev/null 2>&1; then
-    log "Signing in as $ACCOUNT (a browser window or URL will appear)"
-    browser=()
-    [ "$(uname -s)" = Linux ] && [ -z "${DISPLAY:-}" ] && browser=(--no-launch-browser)
-    gcloud auth login "$ACCOUNT" --update-adc ${browser[@]+"${browser[@]}"}
-fi
-active="$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
-[ "$active" = "$ACCOUNT" ] || die "signed in as '$active', expected '$ACCOUNT' (pick that account in the browser)"
-echo "Signed in as $ACCOUNT"
+echo "Using gcloud signed in as $ACCOUNT"
 
-# --- 3. Project + billing ----------------------------------------------------
+# --- 1. Project + billing ----------------------------------------------------
+if [ -z "${PROJECT_ID:-}" ]; then
+    PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}"
+fi
 if [ -z "${PROJECT_ID:-}" ]; then
     PROJECT_ID="chia-tut-$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 6)"
     log "Creating project $PROJECT_ID"
     gcloud projects create "$PROJECT_ID" --name="CHIA tutorial" \
-        || die "project creation failed (your organization may require a folder or block it; set PROJECT_ID=<existing project> and re-run)"
+        || die "project creation failed (your organization may require a folder or block it; re-run with --project <existing project>)"
 fi
+echo "Using project $PROJECT_ID"
 echo "PROJECT_ID=$PROJECT_ID" > "$STATE"
 gcloud config set project "$PROJECT_ID" >/dev/null 2>&1
-gcloud auth application-default set-quota-project "$PROJECT_ID" >/dev/null 2>&1 || true
 
 if [ "$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled)')" != "True" ]; then
     if [ -z "${BILLING_ACCOUNT:-}" ]; then
@@ -169,14 +103,14 @@ if [ "$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingEn
             0) die "no open billing account. Create one at https://console.cloud.google.com/billing (or redeem the tutorial credits), then re-run." ;;
             1) BILLING_ACCOUNT="$accounts" ;;
             *) gcloud billing accounts list --filter=open=true
-               die "several billing accounts found; re-run with BILLING_ACCOUNT=<ACCOUNT_ID>" ;;
+               die "several billing accounts found; re-run with --billing-account <ACCOUNT_ID>" ;;
         esac
     fi
     log "Linking billing account $BILLING_ACCOUNT"
     gcloud billing projects link "$PROJECT_ID" --billing-account="$BILLING_ACCOUNT" >/dev/null
 fi
 
-# --- 4. APIs -----------------------------------------------------------------
+# --- 2. APIs -----------------------------------------------------------------
 # compute: VMs. cloudaicompanion: Gemini Code Assist (what agy signs in against).
 # aiplatform: Vertex AI (Gemini via OpenCode, the alternative CHIA backend).
 # cloudquotas: requesting the vCPU quota increases below.
@@ -200,7 +134,7 @@ EOF
     esac
 done
 
-# --- 5. Pre-flight: network, machine types, CPU quota ------------------------
+# --- 3. Pre-flight: network, machine type ------------------------------------
 # New projects get a default network (with SSH/internal firewall rules) once the
 # Compute API is on, but asynchronously: it can appear while we create our own.
 if ! gcloud compute networks describe default >/dev/null 2>&1; then
@@ -221,22 +155,18 @@ gcloud compute machine-types describe "$DEV_TYPE" --zone "$DEV_ZONE" >/dev/null 
     "$DEV_TYPE is not offered in $DEV_ZONE. Zones that have it: $(gcloud compute machine-types list \
      --filter="name=$DEV_TYPE" --format='value(zone)' | tr '\n' ' ')"
 
-# --- 5b. vCPU quota increases ---------------------------------------------------
+# --- 4. vCPU quota increases --------------------------------------------------
 # Same requests as scale/increase-quota.sh: vCPUs per VM family in each region, and
 # vCPUs across all regions (the sum of the regional targets). C4 is what the
-# tutorial's CHIA clusters use (scale/cluster.yaml). Only limits
-# below the target are requested. Google reviews requests asynchronously, so this
-# doesn't wait for approval.
+# tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
+# are requested. Google reviews requests asynchronously, so this doesn't wait for
+# approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
 QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 us-central1=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 
-# `gcloud quotas` is GA since gcloud 579.0.0, so no beta component is needed.
-
-# --billing-project: without it, Cloud Quotas charges these calls to gcloud's own
-# shared client project, whose daily "Quota Increase Requests" limit runs out.
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
-    gcloud quotas info describe "$1" --service=compute.googleapis.com \
-        --project="$PROJECT_ID" --billing-project="$PROJECT_ID" --flatten=dimensionsInfos \
+    gcloud beta quotas info describe "$1" --service=compute.googleapis.com \
+        --project="$PROJECT_ID" --flatten=dimensionsInfos \
         --format='csv[no-heading](dimensionsInfos.dimensions.region,dimensionsInfos.dimensions.vm_family,dimensionsInfos.details.value)' \
         2>/dev/null | awk -F, -v r="$2" -v f="$3" '$1==r && $2==f { v=$3 } END { print v+0 }'
 }
@@ -252,11 +182,12 @@ request_quota() {  # quota-id value region family
     echo "REQUEST  $label: limit $current -> $value"
     pref="chia-tut${region:+-$region}$(printf '%s' "${family:+-$family}" | tr 'A-Z' 'a-z')-cpus"
     [ -n "$region" ] && dims=(--dimensions="region=$region${family:+,vm_family=$family}")
-    gcloud quotas preferences update "$pref" --project="$PROJECT_ID" --billing-project="$PROJECT_ID" \
+    gcloud beta quotas preferences update "$pref" --project="$PROJECT_ID" \
         --service=compute.googleapis.com --quota-id="$id" --preferred-value="$value" \
         ${dims[@]+"${dims[@]}"} --email="$ACCOUNT" --allow-missing --quiet \
         --justification="CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" \
-        >/dev/null || echo "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
+        >/dev/null </dev/null \
+        || echo "WARNING: the request for $label failed; request it at https://console.cloud.google.com/iam-admin/quotas"
 }
 
 log "Requesting vCPU quota (regions: $QUOTA_REGIONS; families: $QUOTA_FAMILIES)"
@@ -271,55 +202,42 @@ done
 request_quota CPUS-ALL-REGIONS-per-project "$total" "" ""
 echo "Requests are reviewed by Google; check their status at https://console.cloud.google.com/iam-admin/quotas"
 
-# --- 6. VMs ------------------------------------------------------------------
+# --- 5. VM -------------------------------------------------------------------
 STARTUP="$TUT_HOME/startup.sh"
 cat > "$STARTUP" <<'EOF'
 #!/bin/bash
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
-# graphviz: the "dot" binary that `chia viz-profile --format svg` shells out to.
-# The pip package is only the Python wrapper, so pip cannot supply it.
-command -v dot >/dev/null || { apt-get update -qq && apt-get install -y -qq graphviz; }
 EOF
 
-create_vm() {  # name zone type cpu-platform disk-type disk-size [extra flags...]
-    local name=$1 zone=$2 type=$3 cpu=$4 dtype=$5 dsize=$6; shift 6
-    if gcloud compute instances describe "$name" --zone "$zone" >/dev/null 2>&1; then
-        echo "$name already exists"
-        return
-    fi
-    log "Creating $name ($type${cpu:+, $cpu}) in $zone"
-    gcloud compute instances create "$name" --zone "$zone" --machine-type "$type" \
-        ${cpu:+--min-cpu-platform="$cpu"} "${IMAGE[@]}" \
-        --boot-disk-type="$dtype" --boot-disk-size="$dsize" \
-        --metadata-from-file=startup-script="$STARTUP" "$@"
-}
-# chia-dev gets the cloud-platform scope so CHIA running on it can create more VMs.
-create_vm "$DEV_VM" "$DEV_ZONE" "$DEV_TYPE" "$DEV_CPU" pd-balanced 200GB --scopes=cloud-platform
-
-# --- 7. Per-user setup on the VM (docker group, conda) ----------------------
-# Before the first `gcloud compute ssh` creates it, note whether an SSH key
-# already existed so --purge knows whether it may delete it.
-if [ ! -f "$TUT_HOME/ssh-key-preexisting" ]; then
-    if [ -f ~/.ssh/google_compute_engine ]; then echo yes; else echo no; fi > "$TUT_HOME/ssh-key-preexisting"
+if gcloud compute instances describe "$DEV_VM" --zone "$DEV_ZONE" >/dev/null 2>&1; then
+    echo "$DEV_VM already exists"
+else
+    # chia-dev gets the cloud-platform scope so CHIA running on it can create more VMs.
+    log "Creating $DEV_VM ($DEV_TYPE, $DEV_CPU) in $DEV_ZONE"
+    gcloud compute instances create "$DEV_VM" --zone "$DEV_ZONE" --machine-type "$DEV_TYPE" \
+        --min-cpu-platform="$DEV_CPU" "${IMAGE[@]}" \
+        --boot-disk-type=pd-balanced --boot-disk-size=200GB \
+        --metadata-from-file=startup-script="$STARTUP" --scopes=cloud-platform
 fi
-vm_ssh() { gcloud compute ssh "$1" --zone "$2" --quiet --command "${3:-bash -s}"; }
+
+# --- 6. Per-user setup on the VM (docker group, conda) ----------------------
+vm_ssh() { gcloud compute ssh "$DEV_VM" --zone "$DEV_ZONE" --quiet --command "${1:-bash -s}"; }
 
 # The docker command appears partway through Docker's install, before its group
 # and service exist, so wait for those instead.
 log "Waiting for SSH + Docker on $DEV_VM (the VM installs Docker on first boot, a few minutes)"
 tries=0
-until vm_ssh "$DEV_VM" "$DEV_ZONE" \
-        "getent group docker && systemctl is-active --quiet docker" >/dev/null 2>&1; do
+until vm_ssh "getent group docker && systemctl is-active --quiet docker" >/dev/null 2>&1 </dev/null; do
     tries=$((tries + 1))
     [ "$tries" -lt 60 ] || die "Docker still isn't running on $DEV_VM after 10 minutes. See the install log with:
-  $SDK/bin/gcloud compute ssh $DEV_VM --zone $DEV_ZONE --command 'sudo journalctl -u google-startup-scripts --no-pager | tail -50'"
+  gcloud compute ssh $DEV_VM --zone $DEV_ZONE --command 'sudo journalctl -u google-startup-scripts --no-pager | tail -50'"
     sleep 10
 done
-vm_ssh "$DEV_VM" "$DEV_ZONE" 'sudo usermod -aG docker "$USER"'
-echo "$DEV_VM: $(vm_ssh "$DEV_VM" "$DEV_ZONE" "lscpu | sed -n 's/^Model name: *//p'")"
+vm_ssh 'sudo usermod -aG docker "$USER"' </dev/null
+echo "$DEV_VM: $(vm_ssh "lscpu | sed -n 's/^Model name: *//p'" </dev/null)"
 
 log "Installing conda (Miniforge) on $DEV_VM"
-vm_ssh "$DEV_VM" "$DEV_ZONE" <<'EOF'
+vm_ssh <<'EOF'
 set -e
 if [ ! -x ~/miniforge3/bin/conda ]; then
     curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh
@@ -330,15 +248,14 @@ mkdir -p ~/.gemini
 ~/miniforge3/bin/conda --version
 EOF
 
-# --- 8. Gemini / Antigravity -------------------------------------------------
+# --- 7. Gemini / Antigravity -------------------------------------------------
 AGY_TOKEN=.gemini/antigravity-cli/antigravity-oauth-token
-if vm_ssh "$DEV_VM" "$DEV_ZONE" "test -s ~/$AGY_TOKEN"; then
+if vm_ssh "test -s ~/$AGY_TOKEN" </dev/null; then
     echo "agy is already signed in on $DEV_VM (~/$AGY_TOKEN exists)"
 else
     # The login lands in ~/.gemini on $DEV_VM, which CHIA mounts into its LLM containers.
     log "Installing agy on $DEV_VM"
-    vm_ssh "$DEV_VM" "$DEV_ZONE" \
-        '[ -x ~/.local/bin/agy ] || curl -fsSL https://antigravity.google/cli/install.sh | bash >/dev/null'
+    vm_ssh '[ -x ~/.local/bin/agy ] || curl -fsSL https://antigravity.google/cli/install.sh | bash >/dev/null' </dev/null
     log "Signing agy in on $DEV_VM"
     cat <<EOF
 agy will print a sign-in URL. Open it, pick $ACCOUNT, then choose project
@@ -348,44 +265,17 @@ type /exit (or press Ctrl-C) to leave agy and let this script continue.
 EOF
     # Leaving agy with Ctrl-C exits non-zero; the token check below is what counts.
     gcloud compute ssh "$DEV_VM" --zone "$DEV_ZONE" --quiet -- -t '~/.local/bin/agy' || true
-    vm_ssh "$DEV_VM" "$DEV_ZONE" "test -s ~/$AGY_TOKEN" \
+    vm_ssh "test -s ~/$AGY_TOKEN" </dev/null \
         || echo "WARNING: no agy login found in ~/.gemini on $DEV_VM; re-run this script to try again."
 fi
 
-# --- 9. SSH config (VS Code Remote-SSH, plain ssh) ---------------------------
-# config-ssh keeps one "Google Compute Engine Section" in ~/.ssh/config and rewrites
-# it with this project's running VMs. Note whether one already existed so --purge
-# knows whether it may remove it.
-if [ ! -f "$TUT_HOME/ssh-config-preexisting" ]; then
-    if grep -qs '^# Google Compute Engine Section' ~/.ssh/config; then echo yes; else echo no; fi \
-        > "$TUT_HOME/ssh-config-preexisting"
-fi
-log "Adding $DEV_VM to ~/.ssh/config"
-gcloud compute config-ssh --quiet >/dev/null \
-    || echo "WARNING: gcloud compute config-ssh failed; VS Code Remote-SSH won't list $DEV_VM."
-SSH_HOST="$DEV_VM.$DEV_ZONE.$PROJECT_ID"
-# The same connection spelled out, for anyone who'd rather not rely on ~/.ssh/config.
-target="$(gcloud compute ssh "$DEV_VM" --zone "$DEV_ZONE" --dry-run 2>/dev/null \
-          | grep -oE '[^ ]+@[0-9]+(\.[0-9]+){3}' | tail -1 || true)"
-SSH_DIRECT="ssh -i ~/.ssh/google_compute_engine ${target:-USER@EXTERNAL_IP}"
-
 # --- Done ---------------------------------------------------------------------
-cat > "$TUT_HOME/env.sh" <<EOF
-export CLOUDSDK_CONFIG="$CLOUDSDK_CONFIG"
-export PATH="$SDK/bin:\$PATH"
-export CHIA_TUT_PROJECT="$PROJECT_ID"
-EOF
 log "Done"
 cat <<EOF
 Project:  $PROJECT_ID
 VM:       $DEV_VM ($DEV_ZONE)
 
-Use the tutorial's gcloud in a new shell:   source $TUT_HOME/env.sh
-SSH to your dev machine:                    gcloud compute ssh $DEV_VM --zone $DEV_ZONE
-                                        or: ssh $SSH_HOST
-                                        or: $SSH_DIRECT
-  (stopping and starting the VM changes its IP: re-run gcloud compute config-ssh;
-   gcloud compute instances list shows the new IP)
-Tear down the development machine:          $0 --account $ACCOUNT --teardown
-Remove everything (VM, sign-in, local files): $0 --account $ACCOUNT --purge
+SSH to your dev machine (from Cloud Shell):   gcloud compute ssh $DEV_VM --zone $DEV_ZONE
+Tear down the development machine:            $0 --teardown
+Remove everything (VM, tutorial files):       $0 --purge
 EOF
