@@ -10,7 +10,7 @@
 #                                CLI (agy, signed in), and an SSH key (~/.ssh/chia-key)
 #   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo, and
 #                                chia-dev's key in authorized_keys, so chia-dev can ssh in
-# chia-dev and workers 1-2 go in europe-west4, workers 3-5 in europe-west3. Every VM
+# chia-dev and workers 1-2 go in europe-west4, workers 3-5 in us-west4. Every VM
 # also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
 #
 # Usage:
@@ -25,8 +25,8 @@
 #
 # Optional environment overrides:
 #   DEV_REGION=europe-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
-#   WORKER_REGIONS="europe-west4=2 europe-west3=3"   chia-worker VMs per region
-#   QUOTA_REGIONS="europe-west4=100 europe-west3=100"   vCPU targets per region
+#   WORKER_REGIONS="europe-west4=2 us-west4=3"   chia-worker VMs per region
+#   QUOTA_REGIONS="europe-west4=100 us-west4=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
 set -euo pipefail
 
@@ -60,7 +60,7 @@ fi
 DEV_REGION="${DEV_REGION:-europe-west4}"
 # C4 rejects --min-cpu-platform, so the CPU generation isn't pinned.
 DEV_VM=chia-dev    DEV_TYPE=c4-highcpu-32
-WORKER_REGIONS="${WORKER_REGIONS:-europe-west4=2 europe-west3=3}"   WORKER_TYPE=c4-highcpu-32
+WORKER_REGIONS="${WORKER_REGIONS:-europe-west4=2 us-west4=3}"   WORKER_TYPE=c4-highcpu-32
 # Workers are numbered across the regions in order: chia-worker-1..2 in the first,
 # chia-worker-3..5 in the second. region_of_worker maps a name back to its region.
 WORKERS="" i=0
@@ -201,8 +201,8 @@ done
 # tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
 # are requested. Google reviews requests asynchronously, so this doesn't wait for
 # approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
-# chia-dev + 2 workers in europe-west4 and 3 workers in europe-west3 are 96 C4 vCPUs each.
-QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 europe-west3=100}"
+# chia-dev + 2 workers in europe-west4 and 3 workers in us-west4 are 96 C4 vCPUs each.
+QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 us-west4=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
@@ -331,8 +331,10 @@ vm_ssh() { ssh_on "$DEV_VM" "$DEV_ZONE" "$@"; }
 # Starts pulling the chisel-build image on a VM, detached so it keeps going after
 # this SSH session ends (it's large). Progress: ~/chisel-pull.log on the VM.
 start_chisel_pull() {  # vm zone
-    ssh_on "$1" "$2" "pgrep -f '[d]ocker pull $CHISEL_IMAGE' >/dev/null ||
-        { sudo nohup setsid docker pull $CHISEL_IMAGE >~/chisel-pull.log 2>&1 </dev/null & }" </dev/null
+    # flock -n makes a second run exit at once while a pull still holds the lock.
+    ssh_on "$1" "$2" "echo \"\$(date) starting pull\" >> ~/chisel-pull.log;
+        sudo nohup setsid flock -n /tmp/chisel-pull.lock docker pull $CHISEL_IMAGE \
+            >> ~/chisel-pull.log 2>&1 </dev/null &" </dev/null
 }
 
 wait_for_docker() {  # vm zone
