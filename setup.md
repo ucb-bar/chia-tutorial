@@ -6,7 +6,27 @@ This file contains the instructions for setting up the provided Google Cloud acc
 
 3. Click **Select a project** at the top left of the screen, and choose the only project listed. Please then refresh the page.
 
-4. Click **Open Terminal** at the top middle of the screen to open a shell.
+4. Click **Open Terminal** at the top middle of the screen to open a shell. 
+
+If you see the prompt
+
+```bash
+Welcome to Cloud Shell! Type "help" to get started.
+To set your Cloud Platform project in this session use `gcloud config set project [PROJECT_ID]`.
+You can view your projects by running `gcloud projects list`.
+```
+
+then please run the following command, filling in `[PROJECT_ID]` with the project id provided in the email to you:
+
+```bash
+gcloud config set project [PROJECT_ID]
+```
+
+You should then see the project id in the shell prefix, for example:
+
+```bash
+devstar1956@cloudshell:~ (chia-codesign26oak-1956)$ 
+```
 
 5. Copy the following commands into the shell to set up your account for the CHIA tutorial. They run a script that creates the Google Cloud VMs you will use for the tutorial today, including a machine you can SSH into to develop on:
 
@@ -16,7 +36,7 @@ This file contains the instructions for setting up the provided Google Cloud acc
    ./setup_gcp.sh
    ```
 
-If the script exits immediately, having only printed "Using gcloud signed in as ..." and no line with "Using project ...", then please ensure that a project is selected at the top left (see step 3), and then refresh the page.
+If the script exits immediately, having only printed "Using gcloud signed in as ..." and no line with "Using project ...", then please ensure that a project is selected at the top left (see step 3 and 4), and then refresh the page.
 
 6. The script may ask you to open a link and accept the terms of service. If so, follow the instructions in the terminal.
 
