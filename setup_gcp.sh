@@ -167,7 +167,7 @@ QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
     local out           # on failure, prints gcloud's error and returns non-zero
     out="$(gcloud beta quotas info describe "$1" --service=compute.googleapis.com \
-        --project="$PROJECT_ID" --flatten=dimensionsInfos \
+        --project="$PROJECT_ID" --billing-project="$PROJECT_ID" --flatten=dimensionsInfos \
         --format='csv[no-heading](dimensionsInfos.dimensions.region,dimensionsInfos.dimensions.vm_family,dimensionsInfos.details.value)' \
         2>&1 </dev/null)" || { printf '%s\n' "$out"; return 1; }
     printf '%s\n' "$out" | awk -F, -v r="$2" -v f="$3" '$1==r && $2==f { v=$3 } END { print v+0 }'
@@ -182,7 +182,7 @@ request_quota() {  # quota-id value region family
             *SERVICE_DISABLED*|*"has not been used"*|*"it is disabled"*)
                 tries=$((tries + 1))
                 if [ "$tries" -lt 12 ]; then
-                    echo "  (the Cloud Quotas API is still switching on; retrying in 10 s)"
+                    [ "$tries" -gt 1 ] || echo "  (the Cloud Quotas API is still switching on; retrying for up to 2 minutes)"
                     sleep 10
                     continue
                 fi ;;
@@ -200,7 +200,7 @@ request_quota() {  # quota-id value region family
     pref="chia-tut${region:+-$region}$(printf '%s' "${family:+-$family}" | tr 'A-Z' 'a-z')-cpus"
     [ -n "$region" ] && dims=(--dimensions="region=$region${family:+,vm_family=$family}")
     gcloud beta quotas preferences update "$pref" --project="$PROJECT_ID" \
-        --service=compute.googleapis.com --quota-id="$id" --preferred-value="$value" \
+        --billing-project="$PROJECT_ID" --service=compute.googleapis.com --quota-id="$id" --preferred-value="$value" \
         ${dims[@]+"${dims[@]}"} --email="$ACCOUNT" --allow-missing --quiet \
         --justification="CHIA tutorial: Compute Engine vCPUs for the participant's CHIA cluster workers" \
         >/dev/null </dev/null \
