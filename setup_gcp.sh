@@ -4,7 +4,7 @@
 #
 # Uses/creates a GCP project with billing, enables the APIs the tutorial needs,
 # requests vCPU quota for CHIA clusters, and starts one VM:
-#   chia-dev    c2d-standard-8  (AMD Milan, 8 vCPU / 32 GB) - your dev machine / CHIA head
+#   chia-dev    c4-highcpu-32  (Intel Xeon, 32 vCPU / 64 GB) - your dev machine / CHIA head
 # with Docker, conda (Miniforge) and the Antigravity CLI (agy), signed in. More machines are
 # brought up later by CHIA clusters.
 #
@@ -19,8 +19,8 @@
 # are reused.
 #
 # Optional environment overrides:
-#   DEV_ZONE=us-west4-c   TUT_HOME=~/.chia-tutorial
-#   QUOTA_REGIONS="us-west4=100 us-central1=100"   vCPU targets per region
+#   DEV_REGION=europe-west4   TUT_HOME=~/.chia-tutorial   (Google picks chia-dev's zone)
+#   QUOTA_REGIONS="europe-west4=100 europe-west1=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
 set -euo pipefail
 
@@ -51,15 +51,27 @@ if [ -z "${PROJECT_ID:-}" ] && [ -f "$STATE" ]; then
     . "$STATE"     # remembers this account's PROJECT_ID between runs
 fi
 
-DEV_ZONE="${DEV_ZONE:-us-west4-c}"
-DEV_VM=chia-dev    DEV_TYPE=c2d-standard-8   DEV_CPU="AMD Milan"
+DEV_REGION="${DEV_REGION:-europe-west4}"
+# C4 rejects --min-cpu-platform, so the CPU generation isn't pinned.
+DEV_VM=chia-dev    DEV_TYPE=c4-highcpu-32
+# chia-dev is created by region and Google picks the zone, so look the zone up
+# (it also finds a chia-dev made by an older version of this script in another zone).
+vm_zone() {
+    gcloud compute instances list --project "$PROJECT_ID" --filter="name=$DEV_VM" \
+        --format='value(zone.basename())' 2>/dev/null </dev/null | head -1
+}
 IMAGE=(--image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud)
 
 # --- Teardown / purge ---------------------------------------------------------
 if [ -n "$TEARDOWN" ]; then
     if [ -n "${PROJECT_ID:-}" ]; then
-        log "Deleting $DEV_VM in $PROJECT_ID"
-        gcloud compute instances delete "$DEV_VM" --zone "$DEV_ZONE" --project "$PROJECT_ID" --quiet || true
+        DEV_ZONE="$(vm_zone)"
+        if [ -n "$DEV_ZONE" ]; then
+            log "Deleting $DEV_VM ($DEV_ZONE) in $PROJECT_ID"
+            gcloud compute instances delete "$DEV_VM" --zone "$DEV_ZONE" --project "$PROJECT_ID" --quiet || true
+        else
+            echo "No $DEV_VM found in $PROJECT_ID"
+        fi
     elif [ -z "$PURGE" ]; then
         die "no project recorded in $STATE"
     fi
@@ -151,9 +163,10 @@ if ! gcloud compute networks describe default >/dev/null 2>&1; then
     fi
 fi
 
-gcloud compute machine-types describe "$DEV_TYPE" --zone "$DEV_ZONE" >/dev/null 2>&1 || die \
-    "$DEV_TYPE is not offered in $DEV_ZONE. Zones that have it: $(gcloud compute machine-types list \
-     --filter="name=$DEV_TYPE" --format='value(zone)' | tr '\n' ' ')"
+[ -n "$(gcloud compute machine-types list --filter="name=$DEV_TYPE AND zone~^$DEV_REGION-" \
+          --format='value(zone)' 2>/dev/null)" ] || die \
+    "$DEV_TYPE is not offered in $DEV_REGION. Regions that have it: $(gcloud compute machine-types list \
+     --filter="name=$DEV_TYPE" --format='value(zone.basename())' | sed 's/-[a-z]$//' | sort -u | tr '\n' ' ')"
 
 # --- 4. vCPU quota increases --------------------------------------------------
 # Same requests as scale/increase-quota.sh: vCPUs per VM family in each region, and
@@ -161,7 +174,7 @@ gcloud compute machine-types describe "$DEV_TYPE" --zone "$DEV_ZONE" >/dev/null 
 # tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
 # are requested. Google reviews requests asynchronously, so this doesn't wait for
 # approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
-QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 us-central1=100}"
+QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west4=100 europe-west1=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
@@ -226,15 +239,21 @@ cat > "$STARTUP" <<'EOF'
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
 EOF
 
-if gcloud compute instances describe "$DEV_VM" --zone "$DEV_ZONE" >/dev/null 2>&1; then
-    echo "$DEV_VM already exists"
+DEV_ZONE="$(vm_zone)"
+if [ -n "$DEV_ZONE" ]; then
+    echo "$DEV_VM already exists in $DEV_ZONE"
 else
+    # bulk create takes a region and places the VM in whichever zone has capacity.
     # chia-dev gets the cloud-platform scope so CHIA running on it can create more VMs.
-    log "Creating $DEV_VM ($DEV_TYPE, $DEV_CPU) in $DEV_ZONE"
-    gcloud compute instances create "$DEV_VM" --zone "$DEV_ZONE" --machine-type "$DEV_TYPE" \
-        --min-cpu-platform="$DEV_CPU" "${IMAGE[@]}" \
-        --boot-disk-type=pd-balanced --boot-disk-size=200GB \
+    log "Creating $DEV_VM ($DEV_TYPE) in $DEV_REGION (Google picks the zone)"
+    gcloud compute instances bulk create --predefined-names="$DEV_VM" --count=1 \
+        --region="$DEV_REGION" --machine-type="$DEV_TYPE" \
+        "${IMAGE[@]}" \
+        --boot-disk-type=hyperdisk-balanced --boot-disk-size=200GB \
         --metadata-from-file=startup-script="$STARTUP" --scopes=cloud-platform
+    DEV_ZONE="$(vm_zone)"
+    [ -n "$DEV_ZONE" ] || die "created $DEV_VM, but can't find which zone it's in"
+    echo "$DEV_VM is in $DEV_ZONE"
 fi
 
 # --- 6. Per-user setup on the VM (docker group, conda) ----------------------
