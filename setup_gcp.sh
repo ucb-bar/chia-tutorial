@@ -364,6 +364,20 @@ start_chisel_pull() {  # vm zone
             >> ~/chisel-pull.log 2>&1 </dev/null &" </dev/null
 }
 
+# Environment variables the tutorial uses, at the end of ~/.bashrc on a VM. GCP_PROJECT
+# is rewritten each run so it follows the project this script is using.
+add_bashrc_env() {  # vm zone
+    ssh_on "$1" "$2" <<EOF
+set -e
+grep -qF 'export THIS_MACHINE=' ~/.bashrc || cat >> ~/.bashrc <<'RC'
+export THIS_MACHINE=\$(hostname -I | awk '{print \$1}')
+export CHIA_HEAD=\$(hostname -I | awk '{print \$1}')
+RC
+sed -i '/^export GCP_PROJECT=/d' ~/.bashrc
+echo 'export GCP_PROJECT=$PROJECT_ID' >> ~/.bashrc
+EOF
+}
+
 wait_for_docker() {  # vm zone
     local tries=0
     until ssh_on "$1" "$2" "getent group docker && systemctl is-active --quiet docker" >/dev/null 2>&1 </dev/null; do
@@ -410,6 +424,7 @@ else
 fi
 echo "setup done"
 EOF
+    add_bashrc_env "$1" "$2" </dev/null
 }
 
 # The docker command appears partway through Docker's install, before its group
@@ -490,6 +505,7 @@ grep -qxF "$(cat ~/.ssh/chia-key.pub)" ~/.ssh/authorized_keys \
     || cat ~/.ssh/chia-key.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 EOF
+add_bashrc_env "$DEV_VM" "$DEV_ZONE"
 
 # --- 7. Gemini / Antigravity -------------------------------------------------
 AGY_TOKEN=.gemini/antigravity-cli/antigravity-oauth-token
