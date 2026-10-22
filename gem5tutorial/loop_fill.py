@@ -53,7 +53,7 @@ def main():
     })
 
     # Setup objects
-    g5 = Gem5Node(require_colocated=False)
+    g5 = Gem5Node()
     ag = AntigravityLLM("gemini-4-argon-low", timeout_seconds=3600 * 2, mcp_timeout_seconds=3600)
 
     # Patch and build Gem5 workspace
@@ -69,7 +69,7 @@ def main():
 
     # Prepare the gem5 workspace with the workloads we want
     elfs: dict[str, bytes] = {p.name: p.read_bytes() for p in ELF_DIR.glob("*.elf")}
-    get(stage_workloads.chia_remote(elfs))
+    get(stage_workloads.options(**g5.task_options).chia_remote(elfs))
 
     print()
     print("Gem5 built and workloads shipped.")
@@ -82,7 +82,7 @@ def main():
 
     g5Tool : ChiaTool = g5.spawn_tool("gem5_build_run_tool", gem5_root=GEM5_ROOT, workloads=WORKLOAD_DIR,
                                       config_script=SE_PY, kernel_flag="--cmd", config_args=CPU_ARGS + ["--output=program.out"],)
-    g5bash : ChiaTool = BashTool("gem5_bash_tool", GEM5_ROOT, task_options={"resources":{"gem5": 0.33}})
+    g5bash : ChiaTool = BashTool("gem5_bash_tool", GEM5_ROOT, task_options={**g5.task_options, "resources":{"gem5": 1.0}})
 
     # Prompt AGY with tools and wait for it to finish
     res = get(ag.prompt.chia_remote(ag, prompt, [<TODO: FILL IN WITH TOOLS>]))
@@ -119,7 +119,7 @@ def main():
     for sim, elf in zip(sims, elfs):
         res = get(sim)
         if res.status == "ok":
-            rc = get(check_success.chia_remote(elf))
+            rc = get(check_success.options(**g5.task_options).chia_remote(elf))
         else:
             rc = -1
         if rc != 0:
