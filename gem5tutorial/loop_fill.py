@@ -1,11 +1,11 @@
 
 
-from chia.base.ChiaFunction import ChiaFunction, get
-from chia.base.tools.ChiaTool import ChiaTool
-from chia.base.tools.BashTool import BashTool
+from chia.chia.base.ChiaFunction import ChiaFunction, get
+from chia.chia.base.tools.ChiaTool import ChiaTool
+from chia.chia.base.tools.BashTool import BashTool
 
-from chia.simulators.gem5 import Gem5Node, Gem5SourceState
-from chia.models.antigravity import AntigravityLLM
+from chia.chia.simulators.gem5 import Gem5Node, Gem5SourceState
+from chia.chia.models.antigravity import AntigravityLLM
 
 import ray
 from pathlib import Path
@@ -29,7 +29,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 CPU_ARGS = ["--cpu-type=RiscvO3CPU", "--caches", "--l2cache"]
 
 # Puts elfs on Gem5 worker
-@ChiaFunction(resources={"gem5": 0.05})
+@ChiaFunction(resources={"gem5": 1})
 def stage_workloads(elfs: dict[str, bytes]):
     WORKLOAD_DIR.mkdir(parents=True, exist_ok=True)
     for fname, data in elfs.items():
@@ -38,8 +38,7 @@ def stage_workloads(elfs: dict[str, bytes]):
         os.chmod(p, 0o755)
 
 # Check's success of simulation on Gem5 worker
-### TODO: Fill in line below! ### 
-# fill
+@ChiaFunction(resources={"gem5": 0.33})
 def check_success(elf):
     out = f"/home/ray/verify_runs/{Path(elf).stem}"
     rc = subprocess.run([sys.executable, f"{out}/program.out"]).returncode
@@ -54,29 +53,23 @@ def main():
     })
 
     # Setup objects
-    g5 = Gem5Node(require_colocated=True, reserve_bundle={"CPU": 10, "gem5": 1})
-    g5bash = BashTool("gem5_bash_tool", GEM5_ROOT, task_options=g5.task_options)
+    g5 = Gem5Node(require_colocated=False)
     ag = AntigravityLLM("gemini-4-argon-low", timeout_seconds=3600 * 2, mcp_timeout_seconds=3600)
 
     # Patch and build Gem5 workspace
     VLEFF_FIX = (Path(__file__).resolve().parent / "riscv-vleff-reset.patch").read_text()
     BASE_REV = "origin/HEAD"
 
-    ### TODO: Start filling in here! ###
-
     # Apply the VLEFF_FIX patch to the gem5 workspace
+    get(g5.restore_gem5_source_state.chia_remote(str(GEM5_ROOT), Gem5SourceState(base_rev=BASE_REV, source_diff=VLEFF_FIX)))
 
     # Pre-build Gem5 with the patch to warm up the gem5 workspace (don't get() result yet)
-    # build = ...
-
-    ### End filling in here! ###
+    build = get(g5.build_gem5.chia_remote(GEM5_ROOT, jobs=32))
+    assert build.success, build.stderr_tail
 
     # Prepare the gem5 workspace with the workloads we want
     elfs: dict[str, bytes] = {p.name: p.read_bytes() for p in ELF_DIR.glob("*.elf")}
     get(stage_workloads.chia_remote(elfs))
-
-    b = get(build)
-    assert b.success, b.stderr_tail
 
     print()
     print("Gem5 built and workloads shipped.")
@@ -86,18 +79,22 @@ def main():
     # Ask An LLM to implement the vector crypto instruction set extension in Gem5
     # Save the changes it made, it's transcript, and a summary of the changes it made
     prompt = Path(Path(__file__).resolve().parent / "prompt.txt").read_text(encoding="utf-8")
+
     g5Tool : ChiaTool = g5.spawn_tool("gem5_build_run_tool", gem5_root=GEM5_ROOT, workloads=WORKLOAD_DIR,
                                       config_script=SE_PY, kernel_flag="--cmd", config_args=CPU_ARGS + ["--output=program.out"],)
+    g5bash : ChiaTool = BashTool("gem5_bash_tool", GEM5_ROOT, task_options={"resources":{"gem5": 0.33}})
 
-    ### TODO: Start filling in here! ###
-
-    # Prompt AGY and wait for it to finish
+    # Prompt AGY with tools and wait for it to finish
+    res = get(ag.prompt.chia_remote(ag, prompt, [<TODO: FILL IN WITH TOOLS>]))
 
     # Print or save the agent's result and stream_result
+    if not res.success: print(res.stderr)
+    (OUT / Path("agent_transcript.txt")).write_text(res.stream_result)
+    (OUT / Path("agent_summary.txt")).write_text(res.result)
 
     # Collect and print or save the diff on the Gem5 node
-
-    ### End filling in here! ###
+    state = get(g5.capture_gem5_source_state.chia_remote(str(GEM5_ROOT), base_rev="origin/HEAD"))
+    (OUT / Path("gem5_source_state.diff")).write_text(state.source_diff)
 
     print()
     print("Antigravity Finished.")
@@ -113,11 +110,11 @@ def main():
         out = f"/home/ray/verify_runs/{Path(elf).stem}"
         conf_args = ["--cmd", str(WORKLOAD_DIR / elf), *CPU_ARGS, f"--output={out}/program.out"]
 
-        ### TODO: Start filling in here! ###
-
-        # Append a sim for each elf to sims
-
-        ### End filling in here! ###
+        # Append a sim for each elf to sims (and allow 3 concurrent sims)
+        sims.append(
+            g5.run_gem5.options(
+                resources={"gem5": <TODO: FILL IN>}
+            ).chia_remote(GEM5_BIN, SE_PY, out, config_args=conf_args))
 
     for sim, elf in zip(sims, elfs):
         res = get(sim)

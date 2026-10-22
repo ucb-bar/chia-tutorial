@@ -20,7 +20,7 @@ available_node_types:
         compatible_ips: ["${CHIA_HEAD}"]
 
     gem5_worker:
-        resources: {"gem5": 2}
+        resources: {"gem5": 1}
         num_workers: 1
         docker:
             image: "ghcr.io/ucb-bar/chia-gem5:latest"
@@ -33,18 +33,7 @@ available_node_types:
         worker_setup_commands:
                 - "pip install pycryptodome"
                 - "sudo apt-get update -qq && sudo apt-get install -y -qq lld binutils-riscv64-linux-gnu"
-        compatible_ips: ["@gem5_gcp:0"]
-
-gcp_nodes:
-    project: ${GCP_PROJECT}
-    zone: us-west4-c
-    gem5_gcp:
-        machine_type: c4-highcpu-32
-        count: 1
-        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
-        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
-        ssh_user: ubuntu               # user the guest agent creates on the VM
-        ssh_private_key: ${HOME}/.ssh/chia-key
+        compatible_ips: ["chia-worker-1"]
 
 provider:
     head_ip: ${CHIA_HEAD}
