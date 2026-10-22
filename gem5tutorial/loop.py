@@ -53,7 +53,7 @@ def main():
     })
 
     # Setup objects
-    g5 = Gem5Node()
+    g5 = Gem5Node(reserve_bundle={"CPU": 32, "gem5": 1.0})
     ag = AntigravityLLM("gemini-4-argon-low", timeout_seconds=3600 * 2, mcp_timeout_seconds=3600)
 
     # Patch and build Gem5 workspace
