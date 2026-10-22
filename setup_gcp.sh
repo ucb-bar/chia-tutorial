@@ -364,17 +364,20 @@ start_chisel_pull() {  # vm zone
             >> ~/chisel-pull.log 2>&1 </dev/null &" </dev/null
 }
 
-# Environment variables the tutorial uses, at the end of ~/.bashrc on a VM. GCP_PROJECT
-# is rewritten each run so it follows the project this script is using.
-add_bashrc_env() {  # vm zone
+# Environment variables the tutorial uses, at the end of ~/.bashrc on a VM. Only the
+# head (chia-dev) gets CHIA_HEAD. They're rewritten each run, so GCP_PROJECT follows
+# the project this script is using.
+add_bashrc_env() {  # vm zone [head]
+    local head=""
+    [ "${3:-}" = head ] && head="export CHIA_HEAD=\$(hostname -I | awk '{print \$1}')"
     ssh_on "$1" "$2" <<EOF
 set -e
-grep -qF 'export THIS_MACHINE=' ~/.bashrc || cat >> ~/.bashrc <<'RC'
+sed -i '/^export \(THIS_MACHINE\|CHIA_HEAD\|GCP_PROJECT\)=/d' ~/.bashrc
+cat >> ~/.bashrc <<'RC'
 export THIS_MACHINE=\$(hostname -I | awk '{print \$1}')
-export CHIA_HEAD=\$(hostname -I | awk '{print \$1}')
+${head}${head:+
+}export GCP_PROJECT=$PROJECT_ID
 RC
-sed -i '/^export GCP_PROJECT=/d' ~/.bashrc
-echo 'export GCP_PROJECT=$PROJECT_ID' >> ~/.bashrc
 EOF
 }
 
@@ -505,7 +508,7 @@ grep -qxF "$(cat ~/.ssh/chia-key.pub)" ~/.ssh/authorized_keys \
     || cat ~/.ssh/chia-key.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 EOF
-add_bashrc_env "$DEV_VM" "$DEV_ZONE"
+add_bashrc_env "$DEV_VM" "$DEV_ZONE" head
 
 # --- 7. Gemini / Antigravity -------------------------------------------------
 AGY_TOKEN=.gemini/antigravity-cli/antigravity-oauth-token
