@@ -87,6 +87,9 @@ def main():
     # Prompt AGY with tools and wait for it to finish
     res = get(ag.prompt.chia_remote(ag, prompt, [g5Tool, g5bash]))
 
+    g5Tool.stop()
+    g5bash.stop()
+
     # Print or save the agent's result and stream_result
     if not res.success: print(res.stderr)
     (OUT / Path("agent_transcript.txt")).write_text(res.stream_result)
