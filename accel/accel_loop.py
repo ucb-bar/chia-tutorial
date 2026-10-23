@@ -68,31 +68,31 @@ class BuildCache:
     """The last software compiles and simulator build, and the body / chipyard
     diff hashes they were built from, so an unchanged half is not rebuilt."""
     software_body_hash: str = ""
-    elfs: dict[str, ObjectRef[RiscvBuildArtifact]] = field(default_factory=dict)
+    elfs: dict[str, ObjectRef[RiscvBuildArtifact]] | dict[str, RiscvBuildArtifact] = field(default_factory=dict)
     rtl_diff_hash: str = ""
-    build: ObjectRef[BuildArtifact] | None = None
-    logged: bool = False            # its stdout/stderr are in the logs
+    build: ObjectRef[BuildArtifact] | BuildArtifact | None = None
+    logged: bool = False
 
 def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cache: BuildCache) -> EvaluationResult:
     if body is None:
         return EvaluationResult("software format", "no body between the markers", agent_prompt.feedback_no_body())
 
-    source = render_source(body)
-    iter_out_dir.log(f"{tag}_memcpy_rocc.c", source)
+    source_code = render_source(body)
+    iter_out_dir.log(f"{tag}_memcpy_rocc.c", source_code)
 
-    # 1. Dispatch every sw compile if the body changed
+    # 4. Dispatch every sw compile if the body changed
     software_body_hash = hashlib.sha256(body.encode()).hexdigest()
     if build_cache.elfs and build_cache.software_body_hash == software_body_hash:
         logger.info("[%s] body unchanged since the last compile: reusing the ELFs", tag)
     else:
         build_cache.software_body_hash = software_body_hash
-        build_cache.elfs = {
-            case.name: compile_software(source, case)
-            for case in CASES
-        }
-    elf_refs = build_cache.elfs
+        build_cache.elfs = {} # maps name -> elfs
+        for case in CASES: 
+            # TODO: make each software build launch in parallel
+            build_cache.elfs[case.name] = get(compile_software(source_code, case))
+            # END TODO
 
-    # 2. Dispatch hardware build if the RTL diff changed
+    # 5. Dispatch hardware build if the RTL diff changed
     rtl_diff_hash = hashlib.sha256(json.dumps(get(git_diff()), sort_keys=True).encode()).hexdigest()
     if build_cache.build is not None and build_cache.rtl_diff_hash == rtl_diff_hash:
         logger.info("[%s] chipyard unchanged since the last build: reusing the simulator", tag)
@@ -100,21 +100,27 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         logger.info("[%s] building FastRTLSimRocketConfig", tag)
         build_cache.rtl_diff_hash = rtl_diff_hash
         build_cache.logged = False
-        build_cache.build = build_hardware()
+        # TODO: have the hardware build launch in parallel with software builds
+        build_cache.build = get(build_hardware())
+        # END TODO
 
-    # 3. Get the compiled software artifacts
-    elfs: dict[str, RiscvBuildArtifact] = {
-        name: get(ref) for name, ref in elf_refs.items()
-    }
+    # 6. Get the compiled software artifacts
+    elfs = {}
+    for build_cache_name, build_cache_ref in build_cache.elfs.items():
+        # TODO: get the result of the parallelized software build
+        elfs[build_cache_name] = build_cache_ref
+        # END TODO
 
-    # 4. Get the hardware build artifact
-    hw_build_artifact: BuildArtifact = get(build_cache.build)
+    # 7. Get the hardware build artifact
+    # TODO: get the result of the parallelized hardware build
+    hw_build_artifact: BuildArtifact = build_cache.build
+    # END TODO
     if not build_cache.logged:
         iter_out_dir.log(f"{tag}_hw_build.stdout.txt", hw_build_artifact.stdout)
         iter_out_dir.log(f"{tag}_hw_build.stderr.txt", hw_build_artifact.stderr)
         build_cache.logged = True
     
-    # 5. If sw compile or hardware build failed, return early
+    # 8. If sw compile or hardware build failed, return early
     sw_compile_failed = [name for name, elf in elfs.items() if not elf.success]
     for name in sw_compile_failed:
         elf = elfs[name]
@@ -136,24 +142,27 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         build_cache.build = None
         return EvaluationResult("hardware build", f"rc={hw_build_artifact.returncode}", agent_prompt.feedback_hw_build(hw_build_artifact))
 
-    # 6. Simulation: every case on the same simulator
+    # 9. Simulation: every case on the same simulator
     logger.info("[%s] running %d cases", tag, len(CASES))
-    run_refs = {
-        name: run_simulation(hw_build_artifact, elf)
-        for name, elf in elfs.items()
-    }
-    runs: dict[str, RunResult] = {
-        name: get(ref) for name, ref in run_refs.items()
-    }
+    run_refs = {}
+    for name, elf in elfs.items():
+        # TODO: run each simulation in parallel
+        run_refs[name] = get(run_simulation(hw_build_artifact, elf))
+        # END TODO
+    run_results = {}
+    for name, ref in run_refs.items():
+        # TODO: get the result of the parallelized simulation
+        run_results[name] = ref
+        # END TODO
     sim = SimResults()
     for case in CASES:
-        run = runs[case.name]
+        run = run_results[case.name]
         iter_out_dir.log(f"{tag}_{case.name}_sim.log", run.log)
         iter_out_dir.log(f"{tag}_{case.name}_sim.out", run.out)
         sim.add(case, run.log, run.returncode)
     problem = sim.problem()
     if problem:
-        return EvaluationResult("simulation", problem, agent_prompt.feedback_sim(runs, sim, problem, dump), sim)
+        return EvaluationResult("simulation", problem, agent_prompt.feedback_sim(run_results, sim, problem, dump), sim)
     return EvaluationResult("passed", f"{len(sim.tests)} tests, {len(sim.evals)} evals passed", sim=sim)
 
 
@@ -243,7 +252,7 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
         return finish(iter_out_dir, summary, None, None)
     body = agent_prompt.parse_body(cli)
 
-    # 2. Hardware write (a revised body in the answer replaces the first)
+    # 2. Hardware write
     prompt = agent_prompt.hardware_prompt(parent, applied, apply_msg)
     llm_hw_write_response = get(prompt_llm(llm, prompt, chipyard_bash))
     cli = agent_prompt.check_answer(llm_hw_write_response)
@@ -267,7 +276,8 @@ def run_iteration(chipyard_bash: BashTool) -> dict:
                 break
             body = agent_prompt.parse_body(cli) or body
         evaluation_result = evaluate_design(body, iter_out_dir, f"evaluation_result{n}", build_cache)
-        summary["attempts"].append({"evaluation_result": n, "stage": evaluation_result.stage, "detail": evaluation_result.detail})
+        summary["attempts"].append({"evaluation_result": n, "stage": evaluation_result.stage, 
+                                    "detail": evaluation_result.detail})
         logger.info("[evaluation_result%d] %s: %s", n, evaluation_result.stage, evaluation_result.detail)
         if evaluation_result.stage == "passed":
             break

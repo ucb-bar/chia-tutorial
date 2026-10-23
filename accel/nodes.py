@@ -25,7 +25,6 @@ logger = logging.getLogger("accel.nodes")
 # Software compile node
 # ---------------------------------------------------------------------------
 
-
 def compile_software(source: str, case: Case) -> ObjectRef[RiscvBuildArtifact]:
     node = RiscvBuildNode(timeout_seconds=300)
     return node.build.options(resources={"riscv_build": 1}).chia_remote(
@@ -38,15 +37,11 @@ def compile_software(source: str, case: Case) -> ObjectRef[RiscvBuildArtifact]:
         include_dump=True,
     )
 
-
 # ---------------------------------------------------------------------------
 # Hardware build node
 # ---------------------------------------------------------------------------
 
-# Verilator threads per simulation; each simulation holds this many
-# verilator_run tokens.
 SIM_THREADS = 1
-
 
 def build_hardware() -> ObjectRef[BuildArtifact]:
     node = ChiselBuildNode(
@@ -82,7 +77,6 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact) 
 # ---------------------------------------------------------------------------
 # LLM node
 # ---------------------------------------------------------------------------
-
 
 def prompt_llm(llm: AntigravityLLM, prompt: str, chipyard_bash: BashTool) -> ObjectRef[QueryResult]:
     return llm.prompt.options(resources={"antigravity_creds": 1}).chia_remote(
