@@ -6,6 +6,7 @@ the best design so far.
 ## Running
 
 ```bash
+conda activate chia_env
 export THIS_MACHINE=$(hostname -I | awk '{print $1}')
 cd chia-tutorial/accel
 chia up --yes cluster.yaml
