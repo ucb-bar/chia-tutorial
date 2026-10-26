@@ -1,0 +1,198 @@
+# Fixed tutorial implementation settings; edit config.yaml for normal use.
+# ${CPUS} is resolved to the host CPU affinity count when loading.
+# Chipyard checkout shipped in the pinned build image; base/chipyard.patch adds DMA/Embench.
+base:
+  chipyard_revision: 4ab72313087580a44d647b52923389a06ec0712f
+  embench_revision: 09c2ed8c3b7008c95d08b038de4a3f6dc103ed70
+
+storage: ./experiments
+
+chia: ./.deps/chia
+
+skydiscover: ./.deps/evolve-flows/skydiscover
+
+evolve_flows: ./.deps/evolve-flows
+
+dependencies:
+  evolve_flows_url: https://github.com/ucb-bar/evolve-flows.git
+  evolve_flows_revision: 62d271304d4675c21b946e327bf542a1f62c1012
+  chia_url: https://github.com/ucb-bar/chia.git
+  chia_revision: a4cedf24b131c459d7f176453d8e0cea97dda796
+  python_packages: [openai==3.35.1, pydantic==2.12.4, numpy==1.26.4, python-dotenv==1.2.1, tqdm==4.67.1]
+
+runtime:
+  task_timeout_seconds: 14400
+  cache_gb: 4
+
+agent:
+  model: null
+  timeout_seconds: 600
+  retries: 1
+  backends:
+    antigravity:
+      credentials: ${HOME}/.gemini
+      credential_target: /tmp/agent-home/.gemini
+      options:
+        extra_cli_args:
+        - --effort
+        - low
+      mounts: []
+    claude:
+      credentials: ${HOME}/.claude
+      credential_target: /tmp/agent-home/.claude
+      options:
+        projects_cwd: null
+        extra_cli_args:
+        - --tools
+        - ''
+        - --strict-mcp-config
+      mounts:
+      - --mount 'type=bind,src=${HOME}/.claude.json,dst=/credential-config,readonly'
+      setup_commands:
+      - cp /credential-config /tmp/agent-home/.claude.json
+    codex:
+      credentials: ${HOME}/.codex
+      credential_target: /tmp/agent-home/.codex
+      options: {}
+      setup_commands:
+      - npm install --prefix /tmp/codex --cache /tmp/npm-cache @openai/codex@0.163.0
+
+search:
+  random_seed: 42
+  inspirations: 3
+  num_islands: 2
+  population_size: 40
+  archive_size: 100
+  feature_dimensions:
+  - source_bytes
+  - dma_bytes_per_cycle
+  feature_bins: 8
+  exploration_ratio: 0.2
+  exploitation_ratio: 0.7
+  elite_selection_ratio: 0.1
+  migration_interval: 2
+  migration_rate: 0.1
+  island_guidance:
+  - Reduce small-copy latency and setup overhead.
+  - Increase large-copy throughput and overlap accelerator-local requests.
+  type: openevolve_native
+
+hardware:
+  config: DMARocketConfig
+  config_package: chipyard
+  allowlist:
+  - generators/chipyard/src/main/scala/dma/DMAController.scala
+  - generators/chipyard/src/main/scala/dma/RoCCDMA.scala
+  make_jobs: ${CPUS}
+  build_timeout_seconds: 3600
+  extra_make_args:
+    CXX: /home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++
+    JAVA_HEAP_SIZE: 32G
+  clean: false
+
+software:
+  metrics_parser: software/rocc-dma/scripts/metrics.py
+  build_command: [make, -C, software/rocc-dma, embench]
+  benchmark_inventory: tests/embench-iot/src
+  embench_elf: software/rocc-dma/build/embench/src/{benchmark}/{benchmark}
+  dram_ini: generators/testchipip/src/main/resources/dramsim2_ini
+  random_seed: 42
+  plusargs:
+    +cycle-count: ''
+    +loadmem: /test.elf
+  timeout_cycles: 1000000000
+  timeout_seconds: 10800
+
+fitness:
+  workload_weights: {}
+
+cache:
+  build: true
+  simulate: true
+
+bypass:
+  build: true
+  simulate: true
+
+cluster:
+  head_env_commands:
+  - source ${LOOP}/.venv/bin/activate
+  - export PYTHONPATH=${LOOP}
+  available_node_types:
+    build:
+      worker_env_commands:
+      - source /home/ray/chipyard/env.sh
+      - export PATH=/home/ray/anaconda3/bin:/home/ray/chipyard/.conda-env/riscv-tools/bin:/home/ray/chipyard/.conda-env/bin:/usr/local/bin:/usr/bin:/bin
+      - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+      - export CHIA_CPUS=${CPUS}
+      worker_setup_commands:
+      - &python_setup python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1 pydantic==2.12.4
+      - python -m pip install --disable-pip-version-check scons==4.11.1
+      - mkdir -p /home/ray/dma-build
+      - cp -a ${SEED}/tree/. /home/ray/dma-build/
+      - chmod -R u+w /home/ray/dma-build
+      - ln -sfnT /home/ray/chipyard/.sbt /home/ray/dma-build/.sbt
+      - ln -sfnT /home/ray/chipyard/.ivy2 /home/ray/dma-build/.ivy2
+      docker:
+        pull_before_run: true
+        run_options:
+        - --shm-size=2g
+        - --ulimit nofile=65536:65536
+        - --env RISCV=/home/ray/chipyard/.conda-env/riscv-tools
+        - --env 'JAVA_TOOL_OPTIONS=-Xmx32G -Xss8M -Djava.io.tmpdir=/tmp
+          -Duser.home=/home/ray'
+        - --env COURSIER_CACHE=/home/ray/.cache/coursier/v1
+        - --mount 'type=bind,src=${LOOP}/chia_dma,dst=/opt/loop/chia_dma,readonly'
+        - --mount 'type=bind,src=${CHIA},dst=/opt/chia,readonly'
+        - --mount 'type=bind,src=${SKY},dst=/opt/skydiscover,readonly'
+        - --mount 'type=bind,src=${RUN},dst=${RUN}'
+        - --mount 'type=bind,src=${SEED},dst=${SEED},readonly'
+        pull_timeout: 7200
+    simulation:
+      worker_env_commands:
+      - export PATH=/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
+      - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+      - export CHIA_CPUS=${CPUS}
+      worker_setup_commands:
+      - *python_setup
+      docker:
+        pull_before_run: true
+        run_options:
+        - --shm-size=2g
+        - --ulimit nofile=65536:65536
+        - --mount 'type=bind,src=${LOOP}/chia_dma,dst=/opt/loop/chia_dma,readonly'
+        - --mount 'type=bind,src=${CHIA},dst=/opt/chia,readonly'
+        - --mount 'type=bind,src=${SKY},dst=/opt/skydiscover,readonly'
+        - --mount 'type=bind,src=${RUN},dst=${RUN}'
+        - --mount 'type=bind,src=${SEED},dst=${SEED},readonly'
+        pull_timeout: 7200
+    generation:
+      worker_env_commands:
+      - export PATH=/tmp/codex/node_modules/.bin:/home/ray/.local/bin:/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
+      - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+      - export CHIA_CPUS=2
+      - export HOME=/tmp/agent-home
+      worker_setup_commands:
+      - *python_setup
+      - mkdir -p ${CREDENTIAL_TARGET}
+      - rsync -a --exclude conversations --exclude sessions --exclude projects --exclude
+        logs --exclude "*.log" --exclude tmp --exclude history.jsonl --exclude shell_snapshots
+        --exclude "*.sock" --exclude app-server-control --exclude app-server-daemon
+        /credentials/ ${CREDENTIAL_TARGET}/
+      docker:
+        pull_before_run: true
+        pull_timeout: 7200
+        run_options:
+        - --shm-size=256m
+        - --read-only
+        - --cap-drop=ALL
+        - --security-opt=no-new-privileges
+        - --tmpfs /tmp:rw,exec,mode=1777
+        - --user ${UID}:${GID}
+        - --mount 'type=bind,src=${LOOP}/chia_dma,dst=/opt/loop/chia_dma,readonly'
+        - --mount 'type=bind,src=${CHIA},dst=/opt/chia,readonly'
+        - --mount 'type=bind,src=${SKY},dst=/opt/skydiscover,readonly'
+        - --mount 'type=bind,src=${SEED}/tree,dst=/workspace,readonly'
+        - --mount 'type=bind,src=${WORK}/DMAController.scala,dst=/workspace/generators/chipyard/src/main/scala/dma/DMAController.scala'
+        - --mount 'type=bind,src=${WORK}/RoCCDMA.scala,dst=/workspace/generators/chipyard/src/main/scala/dma/RoCCDMA.scala'
+        - --mount 'type=bind,src=${CREDENTIALS},dst=/credentials,readonly'
