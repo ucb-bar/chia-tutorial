@@ -6,7 +6,13 @@ workloads with their build support and licenses. A DMA-only Makefile target call
 Embench’s SCons build; CHIA owns execution, caching, and saved outputs. The
 metrics parser accepts Embench results and passive DMA observations. The DMA
 hardware is captured from the local implementation; the supporting software is
-narrowed to this Embench-only tutorial. Standalone microbenchmarks are omitted.
+narrowed to this Embench-only tutorial. Standalone microbenchmarks are omitted
+from that patch.
+
+[memory-tests/](memory-tests/) contains six shorter baremetal workloads for the
+tutorial's DMA evaluation budget, with deterministic checksums and substantial
+copy traffic. Its Makefile reuses the existing DMA/HTIF runtime. The suite is
+staged separately; the active Embench inventory and preserved patch are unchanged.
 
 The patch applies to Chipyard `4ab72313087580a44d647b52923389a06ec0712f`, already
 initialized in the published CHIA chisel-build image pinned in `../config.yaml`.
