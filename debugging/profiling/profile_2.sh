@@ -1,5 +1,4 @@
 cd ~/chia-tutorial/debugging
-LOG=profiling/out/profile_iter_5/ChiaProfileCollector.log
-chia viz-profile $LOG --format html
-chia viz-profile $LOG --format svg
-chia viz-profile $LOG --format table
+chia viz-profile prof_half/ChiaProfileCollector.log --format html
+chia viz-profile prof_half/ChiaProfileCollector.log --format svg
+chia viz-profile prof_half/ChiaProfileCollector.log --format table

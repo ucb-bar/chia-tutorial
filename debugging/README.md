@@ -41,13 +41,14 @@ edits theirs.
 ### A. Profiling (2–8) — three slides
 
 **A1. Look at what already ran.** No code. Angela's run left
-`accel/out/profile_<ts>/ChiaProfileCollector.log`; we render it:
+`profiling/out/profile_iter_1-3/ChiaProfileCollector.log` (`prof_full` links
+to it); we render it:
 
 ```bash
-LOG=profiling/out/profile_20261019_030358/ChiaProfileCollector.log
-chia viz-profile $LOG --format html                                   # timeline
-chia viz-profile $LOG --format svg                                    # dependency graph
-chia viz-profile $LOG --format table                                  # time per function
+cd ~/chia-tutorial/debugging
+chia viz-profile prof_full/ChiaProfileCollector.log --format html     # timeline
+chia viz-profile prof_full/ChiaProfileCollector.log --format svg      # dependency graph
+chia viz-profile prof_full/ChiaProfileCollector.log --format table    # time per function
 ```
 
 * `..._profile.html` — the timeline: 17 compiles at `riscv_build: 4`, the
@@ -190,6 +191,11 @@ debugging/
   profiling/
     out/                  profiles this section records (git-ignored)
     debug_timing.py
+  prof_full   -> profiling/out/profile_iter_1-3   short links to each run's profile,
+  prof_bypass -> profiling/out/profile_iter_4     dangling until that run ends
+  prof_half   -> profiling/out/profile_iter_5
+  prof_eval   -> profiling/out/profile_iter_6
+  prof_boards -> profiling/out/profile_iter_7
 ```
 
 Run ours exactly as you run theirs:
