@@ -28,14 +28,14 @@ git checkout caching/replay.yaml
 
 # 3. profiling: list the profiles and render the real run
 ls -lsa profiling/out
-chia viz-profile prof_full/ChiaProfileCollector.log --format table
+chia viz-profile prof_full.log --format table
 
 # 4. profiling: render iter_5
-chia viz-profile prof_half/ChiaProfileCollector.log --format table
+chia viz-profile prof_half.log --format table
 
 # 5. profiling: run the loop with the evaluation ChiaFunction (iter_6) and render it
 ./submit_job.sh profiling
-chia viz-profile prof_eval/ChiaProfileCollector.log --format html
+chia viz-profile prof_eval.log --format html
 
 # 6. live status monitor (iter_7)
 ./submit_job.sh monitor

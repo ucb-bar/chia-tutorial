@@ -41,17 +41,17 @@ edits theirs.
 ### A. Profiling (2–8) — three slides
 
 **A1. Look at what already ran.** No code. Angela's run left
-`profiling/out/profile_iter_1-3/ChiaProfileCollector.log` (`prof_full` links
-to it); we render it:
+`profiling/out/profile_iter_1-3/ChiaProfileCollector.log` (`prof_full.log`
+links to it); we render it:
 
 ```bash
 cd ~/chia-tutorial/debugging
-chia viz-profile prof_full/ChiaProfileCollector.log --format html     # timeline
-chia viz-profile prof_full/ChiaProfileCollector.log --format svg      # dependency graph
-chia viz-profile prof_full/ChiaProfileCollector.log --format table    # time per function
+chia viz-profile prof_full.log --format html     # timeline
+chia viz-profile prof_full.log --format svg      # dependency graph
+chia viz-profile prof_full.log --format table    # time per function
 ```
 
-* `..._profile.html` — the timeline: 17 compiles at `riscv_build: 4`, the
+* `prof_full_profile.html` — the timeline: 17 compiles at `riscv_build: 4`, the
   Chisel build as the one long bar, 17 sims at `verilator_run: 8`, the LLM
   calls between them, each bar naming its worker.
 * `..._profile.svg` — the dependency graph: what waited for what.
@@ -191,11 +191,12 @@ debugging/
   profiling/
     out/                  profiles this section records (git-ignored)
     debug_timing.py
-  prof_full   -> profiling/out/profile_iter_1-3   short links to each run's profile,
-  prof_bypass -> profiling/out/profile_iter_4     dangling until that run ends
-  prof_half   -> profiling/out/profile_iter_5
-  prof_eval   -> profiling/out/profile_iter_6
-  prof_monitor -> profiling/out/profile_iter_7
+  prof_full.log    -> profiling/out/profile_iter_1-3/ChiaProfileCollector.log
+  prof_bypass.log  -> profiling/out/profile_iter_4/ChiaProfileCollector.log
+  prof_half.log    -> profiling/out/profile_iter_5/ChiaProfileCollector.log
+  prof_eval.log    -> profiling/out/profile_iter_6/ChiaProfileCollector.log
+  prof_monitor.log -> profiling/out/profile_iter_7/ChiaProfileCollector.log
+                      short links to each run's profile, dangling until that run ends
 ```
 
 Run ours exactly as you run theirs:
