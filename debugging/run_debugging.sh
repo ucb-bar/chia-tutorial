@@ -44,3 +44,6 @@ chia viz-profile prof_eval/ChiaProfileCollector.log --format html
 chia up --add --yes logging/cluster_storage.yaml
 ./submit_job.sh logging
 ssh -t -i ~/.ssh/chia-key chia-accel-memcpy-storage-0 "cd ~/chia_logs/sims && ls -lsa && exec bash -l"
+
+# 8. at the very end (not run here): every worker down and the storage VM deleted
+# chia down --yes cluster.yaml
