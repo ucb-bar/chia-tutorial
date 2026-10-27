@@ -100,9 +100,12 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         logger.info("[%s] building FastRTLSimRocketConfig", tag)
         build_cache.rtl_diff_hash = rtl_diff_hash
         build_cache.logged = False
-        # TODO: have the hardware build launch in parallel with software builds
         build_cache.build = get(build_hardware())
-        # END TODO
+    hw_build_artifact: BuildArtifact = build_cache.build
+    if not build_cache.logged:
+        iter_out_dir.log(f"{tag}_hw_build.stdout.txt", hw_build_artifact.stdout)
+        iter_out_dir.log(f"{tag}_hw_build.stderr.txt", hw_build_artifact.stderr)
+        build_cache.logged = True
 
     # 6. Get the compiled software artifacts
     elfs = {}
@@ -110,17 +113,8 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
         # TODO: get the result of the parallelized software build
         elfs[build_cache_name] = build_cache_ref
         # END TODO
-
-    # 7. Get the hardware build artifact
-    # TODO: get the result of the parallelized hardware build
-    hw_build_artifact: BuildArtifact = build_cache.build
-    # END TODO
-    if not build_cache.logged:
-        iter_out_dir.log(f"{tag}_hw_build.stdout.txt", hw_build_artifact.stdout)
-        iter_out_dir.log(f"{tag}_hw_build.stderr.txt", hw_build_artifact.stderr)
-        build_cache.logged = True
     
-    # 8. If sw compile or hardware build failed, return early
+    # 7. If sw compile or hardware build failed, return early
     sw_compile_failed = [name for name, elf in elfs.items() if not elf.success]
     for name in sw_compile_failed:
         elf = elfs[name]
@@ -140,9 +134,11 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
 
     if not hw_build_artifact.success:
         build_cache.build = None
-        return EvaluationResult("hardware build", f"rc={hw_build_artifact.returncode}", agent_prompt.feedback_hw_build(hw_build_artifact))
+        return EvaluationResult("hardware build", 
+                                f"rc={hw_build_artifact.returncode}", 
+                                agent_prompt.feedback_hw_build(hw_build_artifact))
 
-    # 9. Simulation: every case on the same simulator
+    # 8. Simulation: every case on the same simulator
     logger.info("[%s] running %d cases", tag, len(CASES))
     run_refs = {}
     for name, elf in elfs.items():

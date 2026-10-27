@@ -3,16 +3,20 @@
 An LLM co-designs a memcpy RoCC accelerator for a Rocket SoC. CHIA cross-compiles the software, builds the hardware into a Verilator simulator, runs a test-and-benchmark harness on it, and hands any failure back to the LLM to debug. Every iteration starts from
 the best design so far.
 
-## Running
+## Up the cluster
 
 ```bash
 conda activate chia_env
-export THIS_MACHINE=$(hostname -I | awk '{print $1}')
-cd chia-tutorial/accel
+cd ~/chia-tutorial/accel
 chia up --yes cluster.yaml
-chia job submit --chia-cluster cluster.yaml -- \
-    python "$(pwd)/accel_loop.py" --iterations 3
-chia down --yes accel/cluster.yaml
+```
+
+## Launch a job
+
+```bash
+conda activate chia_env
+cd ~/chia-tutorial/accel
+chia job submit --chia-cluster cluster.yaml -- python "$(pwd)/accel_loop.py"
 ```
 
 ## Files
@@ -30,7 +34,7 @@ chia down --yes accel/cluster.yaml
 
 ## TODO solutions
 
-Step 1, software compile dispatch:
+Parallelizing SW compile:
 
 ```python
             # TODO: make each software build launch in parallel
@@ -38,16 +42,7 @@ Step 1, software compile dispatch:
             # END TODO
 ```
 
-Step 2, hardware build dispatch (with step 1 fixed, this now runs while the
-compiles do):
-
-```python
-        # TODO: have the hardware build launch in parallel with software builds
-        build_cache.build = build_hardware()
-        # END TODO
-```
-
-Step 3, collect the compiled software:
+Getting the results of parallel SW compile:
 
 ```python
         # TODO: get the result of the parallelized software build
@@ -55,15 +50,7 @@ Step 3, collect the compiled software:
         # END TODO
 ```
 
-Step 4, collect the hardware build:
-
-```python
-    # TODO: get the result of the parallelized hardware build
-    hw_build_artifact: BuildArtifact = get(build_cache.build)
-    # END TODO
-```
-
-Step 6, simulation dispatch:
+Parallel simulation dispatch:
 
 ```python
         # TODO: run each simulation in parallel
@@ -71,7 +58,7 @@ Step 6, simulation dispatch:
         # END TODO
 ```
 
-Step 6, simulation results:
+Getting the simulation results:
 
 ```python
         # TODO: get the result of the parallelized simulation
