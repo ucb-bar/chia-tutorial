@@ -212,9 +212,9 @@ chia job submit --chia-cluster cluster.yaml -- \
 profiling, monitor, logging), with `--replay-iteration 2`.
 
 `cluster.yaml` here is the whole cluster: `logging/cluster_storage.yaml`, the accel
-cluster plus the storage VM. At the very end, `chia down --yes cluster.yaml` (from
-`debugging/`, with `GCP_PROJECT` set) stops every worker and deletes the storage VM;
-`accel/cluster.yaml` would leave the VM running.
+cluster plus the storage worker on chia-worker-1. At the very end,
+`chia down --yes cluster.yaml` (from `debugging/`) stops every worker, the storage
+one included; `accel/cluster.yaml` would leave the storage worker running.
 
 What the copies change (56 lines, `diff accel/accel_loop.py
 debugging/caching/accel_loop.py`):

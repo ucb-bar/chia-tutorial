@@ -6,7 +6,7 @@
 # that folder's loop as a chia job.
 set -e
 
-# 0. setup (the setup slide): chia_env, the debugging branch, THIS_MACHINE / GCP_PROJECT, cd debugging
+# 0. setup: chia_env, the debugging branch, THIS_MACHINE, cd debugging
 source ~/miniforge3/etc/profile.d/conda.sh
 conda activate chia_env
 cd ~/chia-tutorial
@@ -40,10 +40,10 @@ chia viz-profile prof_eval/ChiaProfileCollector.log --format html
 # 6. live status monitor (iter_7)
 ./submit_job.sh monitor
 
-# 7. logging on the storage VM (iter_8): add the VM, run, then a shell in its log folder (exit to come back)
+# 7. logging (iter_8): start the storage worker on chia-worker-1, run, then look at the logs it kept
 chia up --add --yes logging/cluster_storage.yaml
 ./submit_job.sh logging
-ssh -t -i ~/.ssh/chia-key chia-accel-memcpy-storage-0 "cd ~/chia_logs/sims && ls -lsa && exec bash -l"
+ssh chia-worker-1 "ls -lsa ~/chia_logs/sims"
 
-# 8. at the very end (not run here): every worker down and the storage VM deleted
+# 8. at the very end (not run here): every worker down, the storage one included
 # chia down --yes cluster.yaml

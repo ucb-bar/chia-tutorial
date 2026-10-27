@@ -64,8 +64,8 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact, 
     _accel = Path(__file__).resolve().parents[2] / "accel"
     dramsim_ini = {p.name: p.read_bytes() for p in sorted((_accel / "dramsim_ini").iterdir())}
     # LOGGING: the node chia_logs each run into its own file in log_dir, on the
-    # machine that advertises PERSISTENT_STORAGE (the storage VM of
-    # cluster_storage.yaml). log_dir is a path on that machine.
+    # worker that advertises PERSISTENT_STORAGE (the storage worker of
+    # cluster_storage.yaml, on chia-worker-1). log_dir is a path on that machine.
     node = VerilatorRunNode(log_dir=os.path.expanduser("~/chia_logs/sims"),
                             logging_resource="PERSISTENT_STORAGE")
     return node.run.options(resources={"verilator_run": SIM_THREADS}).chia_remote(
