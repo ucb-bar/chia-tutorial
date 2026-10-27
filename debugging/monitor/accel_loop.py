@@ -24,7 +24,7 @@ from ray import ObjectRef
 from chia.base.ChiaFunction import ChiaFunction, get
 from chia.base.tools.BashTool import BashTool
 from chia.trace.profiler import get_profiler, start_collector, stop_collector
-from chia.trace.status import report, watch
+from chia.trace.live_status_monitor import report, watch
 from chia.base.bypass import Bypass, get_active_bypass
 from chia.base.cache import get_active_cache, start_cache
 from chia.chipyard.state_def import BuildArtifact, RiscvBuildArtifact, RunResult
@@ -76,7 +76,7 @@ logger = logging.getLogger("accel")
 # ---------------------------------------------------------------------------
 
 
-# BOARDS: the cycle count the harness prints under +verbose
+# LIVE STATUS MONITOR: the cycle count the harness prints under +verbose
 _CYCLES_RE = re.compile(r"after\s+(\d+)\s+simulation cycles")
 
 
@@ -163,7 +163,7 @@ def evaluate_design(body: str | None, iter_out_dir: IterDir, tag: str, build_cac
     run_refs = {name: run_simulation(hw_build_artifact, elf,
                                      tag=f"sim_{_label(iter_out_dir)}_{tag}_{name}")
                 for name, elf in elfs.items()}
-    # BOARDS: one row per case. VerilatorRunNode does not report, so the driver
+    # LIVE STATUS MONITOR: one row per case. VerilatorRunNode does not report, so the driver
     # does: "submitted" now, then done/failed as each simulation comes back.
     # took = dispatch to result, so it includes waiting for a verilator_run slot.
     kinds = {c.name: c.kind for c in CASES}
@@ -427,7 +427,7 @@ def main() -> None:
     profile_dir = _profiles / f"profile_{time.strftime('%Y%m%d_%H%M%S')}"
     start_collector(log_dir=str(profile_dir))
 
-    # BOARDS: print the "sims" board into the job output every 5 s
+    # LIVE STATUS MONITOR: print the "sims" monitor into the job output every 5 s
     watch("sims", interval_s=5)
 
     # ----- CACHING -------------------------------------------------------
@@ -472,7 +472,7 @@ def main() -> None:
         best = best_design()
         logger.info("Best design: %s (avg speedup %.3f)", best.name, best.avg_speedup)
     finally:
-        time.sleep(6)       # BOARDS: one more watch() tick, so the last table shows every row done
+        time.sleep(6)       # LIVE STATUS MONITOR: one more watch() tick, so the last table shows every row done
         stop_collector()
         _rename_profile(profile_dir)
 

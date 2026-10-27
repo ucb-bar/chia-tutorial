@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The whole debugging section, in order, from the checkpoint (out/ up to iter_3).
 # Each run makes the next iteration: iter_4 (fully bypassed), iter_5 (half
-# bypassed), iter_6 (profiling loop), iter_7 (boards), iter_8 (logging).
+# bypassed), iter_6 (profiling loop), iter_7 (live status monitor), iter_8 (logging).
 # Every <section>/run_job.sh just launches that section's loop as a chia job.
 set -e
 
@@ -30,8 +30,8 @@ git -C ~/chia-tutorial checkout debugging/caching/replay.yaml
 cd ~/chia-tutorial/debugging
 chia viz-profile prof_eval/ChiaProfileCollector.log --format html
 
-# 6. boards (iter_7)
-~/chia-tutorial/debugging/boards/run_job.sh
+# 6. live status monitor (iter_7)
+~/chia-tutorial/debugging/monitor/run_job.sh
 
 # 7. logging on the storage VM (iter_8): add the VM, run, then a shell in its log folder (exit to come back)
 cd ~/chia-tutorial/debugging/logging

@@ -1,4 +1,4 @@
-# Half-bypassed replay for the boards block: the LLM and the Chisel build
+# Half-bypassed replay for the live status monitor block: the LLM and the Chisel build
 # are served from the cache; the compiles and the simulations run for real.
 #
 # The git nodes (reset_chipyard, apply_diff, collect_diff) are deliberately not

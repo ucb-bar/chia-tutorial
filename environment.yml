@@ -6,4 +6,5 @@ dependencies:
   - python=3.10.19
   - pip
   - pip:
-      - chialoops==2.0.1
+      # chia main with the live status monitor (PR #116); back to chialoops==<new release> once it is on PyPI
+      - "chialoops @ git+https://github.com/ucb-bar/chia.git@238e81f736b630354d7688fdd0c817f9b80303b8"

@@ -12,14 +12,14 @@ edits theirs.
 | `start_collector(...)` in `accel_loop.py` — every run writes `out/profile_<ts>/` | **Profiling block needs no code.** We just read the profile. |
 | `IterDir.log(...)` — rich per-iteration logs in `out/iter_N/logs/` | The driver-side logging path. We add the **node-side** one. |
 | `BuildCache` — reuses ELFs / simulator inside one run | The contrast: in-run memoisation vs CHIA cache, which survives runs. |
-| 12 tests + 5 evals, `verilator_run: 8` | Real parallelism to show in the timeline and on a board. |
-| `avg_speedup` per iteration | A ready-made scalar for the board. |
+| 12 tests + 5 evals, `verilator_run: 8` | Real parallelism to show in the timeline and on a live status monitor. |
+| `avg_speedup` per iteration | A ready-made scalar for the live status monitor. |
 
 | Missing | Our block |
 |---|---|
 | no cache, no bypass, no `_chia_tag` | **Cache + bypass** |
 | nodes never call `chia_log`; LLM `log_dir` unset | **Logging** |
-| no board | **Boards** |
+| no live status | **Live status monitor** |
 
 ---
 
@@ -31,7 +31,7 @@ edits theirs.
 | 2–8 | **Profiling** | zero code: their loop already wrote a profile |
 | 8–13 | **Logging** | read one stage; where each log actually lands |
 | 13–23 | **Cache + bypass** | the big one: replay a 20-minute build in seconds |
-| 23–28 | **Boards** | watch many iterations |
+| 23–28 | **Live status monitor** | watch many iterations |
 | 28–30 | Ray triage cheat sheet | — |
 
 ---
@@ -111,10 +111,10 @@ Nobody debugs orchestration at that price.
 4. **Fault injection:** serve a recorded *failed* `BuildArtifact` for one tag
    and their debug path runs on demand, deterministically.
 
-### D. Boards (23–28)
+### D. Live status monitor (23–28)
 
 * `MetricsLogger` — `avg_speedup` per iteration, the loop's own objective; or
-* `chia.trace.status` — `watch("sims")` on the driver, `report(...)` from each
+* `chia.trace.live_status_monitor` — `watch("sims")` on the driver, `report(...)` from each
   simulation, a live table of the 17 cases.
 
 (Which one — open decision below.)
@@ -128,7 +128,7 @@ debugging/README.md        this plan
 accel/debug_timing.py          run their baseline with phase markers     [A2]
 accel/debug_phase.py           the composite-bar ChiaFunction            [A3]
 accel/debug_nodes.py           tagged wrappers around accel/nodes.py     [C]
-accel/debug_loop.py            driver: cache + bypass + board            [C,D]
+accel/debug_loop.py            driver: cache + bypass + monitor           [C,D]
 accel/debug_bypass.yaml        cache: / bypass: config                   [C]
 ```
 
@@ -167,7 +167,7 @@ The Python lives **in `accel/`**, as new files: `accel_loop.py` sets
 
 ## 7. Open decisions
 
-1. Boards: `MetricsLogger` (convergence) or `chia.trace.status` (live table)?
+1. Live status: `MetricsLogger` (convergence) or `chia.trace.live_status_monitor` (live table)?
 2. Do we merge `qualname-keys` first, or stay on tag regexes?
 3. Does the section run on a pre-shipped cache only, or do we leave the 17
    simulations real so something still executes live?
@@ -195,7 +195,7 @@ debugging/
   prof_bypass -> profiling/out/profile_iter_4     dangling until that run ends
   prof_half   -> profiling/out/profile_iter_5
   prof_eval   -> profiling/out/profile_iter_6
-  prof_boards -> profiling/out/profile_iter_7
+  prof_monitor -> profiling/out/profile_iter_7
 ```
 
 Run ours exactly as you run theirs:
