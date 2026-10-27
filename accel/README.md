@@ -6,6 +6,7 @@ the best design so far.
 ## Running
 
 ```bash
+conda activate chia_env
 export THIS_MACHINE=$(hostname -I | awk '{print $1}')
 cd chia-tutorial/accel
 chia up --yes cluster.yaml
@@ -26,6 +27,60 @@ chia down --yes accel/cluster.yaml
 | `prompts/` | `software.md`, `hardware.md`, `debug.md` |
 | `cluster.yaml` | Single-machine cluster: chipyard, verilator-run, riscv-cross, antigravity containers |
 | `dramsim_ini/` | DRAMSim2 config for the simulator's SimDRAM |
+
+## TODO solutions
+
+Step 1, software compile dispatch:
+
+```python
+            # TODO: make each software build launch in parallel
+            build_cache.elfs[case.name] = compile_software(source, case)
+            # END TODO
+```
+
+Step 2, hardware build dispatch (with step 1 fixed, this now runs while the
+compiles do):
+
+```python
+        # TODO: have the hardware build launch in parallel with software builds
+        build_cache.build = build_hardware()
+        # END TODO
+```
+
+Step 3, collect the compiled software:
+
+```python
+        # TODO: get the result of the parallelized software build
+        elfs[build_cache_name] = get(build_cache_ref)
+        # END TODO
+```
+
+Step 4, collect the hardware build:
+
+```python
+    # TODO: get the result of the parallelized hardware build
+    hw_build_artifact: BuildArtifact = get(build_cache.build)
+    # END TODO
+```
+
+Step 6, simulation dispatch:
+
+```python
+        # TODO: run each simulation in parallel
+        run_refs[name] = run_simulation(hw_build_artifact, elf)
+        # END TODO
+```
+
+Step 6, simulation results:
+
+```python
+        # TODO: get the result of the parallelized simulation
+        run_results[name] = get(ref)
+        # END TODO
+```
+
+Fix a dispatch TODO and its collect TODO together. Calling `get` on an
+artifact that was already fetched raises a `ValueError`.
 
 ## Outputs
 
