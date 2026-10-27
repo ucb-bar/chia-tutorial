@@ -306,6 +306,9 @@ if do_step 5; then
     cat > "$STARTUP" <<'EOF'
 #!/bin/bash
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
+# graphviz: the "dot" binary that `chia viz-profile --format svg` shells out to.
+# The pip package is only the Python wrapper, so pip cannot supply it.
+command -v dot >/dev/null || { apt-get update -qq && apt-get install -y -qq graphviz; }
 EOF
 
     # bulk create takes a region and places VMs in whichever zone has capacity.

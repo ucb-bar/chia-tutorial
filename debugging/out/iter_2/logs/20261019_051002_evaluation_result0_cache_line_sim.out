@@ -1,0 +1,5 @@
+== Loading device model file '/home/ray/accel_sim/ffa9b2f0/dramsim_ini/DDR3_micron_64M_8B_x4_sg15.ini' == 
+== Loading system model file '/home/ray/accel_sim/ffa9b2f0/dramsim_ini/system.ini' == 
+===== MemorySystem 0 =====
+CH. 0 TOTAL_STORAGE : 4096MB | 1 Ranks | 16 Devices per rank
+DRAMSim2 Clock Frequency =666666666Hz, CPU Clock Frequency=500000000Hz
