@@ -12,7 +12,7 @@ auth:
 available_node_types:
     chipyard:
         resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker.
-        num_workers: 3  # TUTORIAL: builder workers; match the VM count below.
+        num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
         compatible_ips: ["chia-worker-1", "chia-worker-2", "chia-worker-3"] # TUTORIAL: add the correct IPs here.
         worker_setup_commands:
             - "source /home/ray/chipyard/env.sh"
@@ -27,8 +27,8 @@ available_node_types:
 
     verilator_run:
         resources: {verilator_run: 8}
-        num_workers: 2  # TUTORIAL: simulator workers; match the VM count below.
-        compatible_ips: ["chia-worker-4", "chia-worker-5"] # TUTORIAL: add the correct IPs here.
+        num_workers: 1  # TUTORIAL: simulator workers; match the VM count below.
+        compatible_ips: ["chia-worker-4"] # TUTORIAL: add the correct IPs here.
         docker:
             image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
             container_name: "scale-verilator-run-${USER}"
