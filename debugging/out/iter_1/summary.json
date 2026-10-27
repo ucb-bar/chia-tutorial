@@ -1,0 +1,17 @@
+{
+  "name": "iter_1",
+  "parent": "baseline",
+  "parent_avg_speedup": 1.0,
+  "config": "FastRTLSimRocketConfig",
+  "attempts": [
+    {
+      "evaluation_result": 0,
+      "stage": "passed",
+      "detail": "12 tests, 5 evals passed"
+    }
+  ],
+  "parent_diff_applied": false,
+  "llm_model": "gemini-4-argon-low",
+  "avg_speedup": 9.1847,
+  "status": "passed"
+}

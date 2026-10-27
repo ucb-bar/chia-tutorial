@@ -1,0 +1,833 @@
+mkdir -p /home/ray/chipyard/.classpath_cache/
+mkdir -p /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/
+cd /home/ray/chipyard && java -jar /home/ray/chipyard/scripts/sbt-launch.jar -Dsbt.ivy.home=/home/ray/chipyard/.ivy2 -Dsbt.global.base=/home/ray/chipyard/.sbt -Dsbt.boot.directory=/home/ray/chipyard/.sbt/boot/ -Dsbt.color=always -Dsbt.supershell=false -Dsbt.server.forcestart=true ";project chipyard; set assembly / assemblyOutputPath := file(\"/home/ray/chipyard/.classpath_cache/chipyard.jar\"); assembly" && touch /home/ray/chipyard/.classpath_cache/chipyard.jar
+echo "emittedLineLength=2048,noAlwaysComb,disallowLocalVariables,verifLabels,disallowPortDeclSharing,locationInfoStyle=wrapInAtSquareBracket" > /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/.mfc_lowering_options
+[0m[[0m[0minfo[0m] [0m[0mwelcome to sbt 1.8.2 (N/A Java 20.0.2-internal)[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project chipyard-build from plugins.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading project definition from /home/ray/chipyard/project[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project chipyardRoot from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project barf from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project constellation from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project icenet from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project cva6 from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project ibex from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project sodor from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project radiance from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project midas_target_utils from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mresolving key references (48737 settings) ...[0m
+[0m[[0m[0minfo[0m] [0m[0mset current project to chipyardRoot (in build file:/home/ray/chipyard/)[0m
+[0m[[0m[0minfo[0m] [0m[0mset current project to chipyard (in build file:/home/ray/chipyard/)[0m
+[0m[[0m[0minfo[0m] [0m[0mDefining assembly / assemblyOutputPath[0m
+[0m[[0m[0minfo[0m] [0m[0mThe new value will be used by assembly[0m
+[0m[[0m[0minfo[0m] [0m[0mReapplying settings...[0m
+[0m[[0m[0minfo[0m] [0m[0mset current project to chipyard (in build file:/home/ray/chipyard/)[0m
+[0m[[0m[0minfo[0m] [0m[0mcompiling 2 Scala sources to /home/ray/chipyard/generators/chipyard/target/scala-2.13/classes ...[0m
+[0m[[0m[33mwarn[0m] [0m[0m/home/ray/chipyard/generators/chipyard/src/main/scala/config/fragments/RoCCFragments.scala:30:24: method apply in class View is deprecated (since CDE 0.1): up(XYZ, site) is no longer necessary; remove the superfluous site argument[0m
+[0m[[0m[33mwarn[0m] [0m[0m  case MultiRoCCKey => up(MultiRoCCKey, site) ++ harts.distinct.map { i =>[0m
+[0m[[0m[33mwarn[0m] [0m[0m                       ^[0m
+[0m[[0m[33mwarn[0m] [0m[0m/home/ray/chipyard/generators/chipyard/src/main/scala/config/fragments/RoCCFragments.scala:31:11: method apply in class View is deprecated (since CDE 0.1): up(XYZ, site) is no longer necessary; remove the superfluous site argument[0m
+[0m[[0m[33mwarn[0m] [0m[0m    (i -> up(BuildRoCC, site))[0m
+[0m[[0m[33mwarn[0m] [0m[0m          ^[0m
+[0m[[0m[33mwarn[0m] [0m[0m/home/ray/chipyard/generators/chipyard/src/main/scala/config/fragments/RoCCFragments.scala:37:23: value LazyModule in package diplomacy is deprecated (since rocketchip 2.0.0): Diplomacy has been split to a standalone library[0m
+[0m[[0m[33mwarn[0m] [0m[0m    val accumulator = LazyModule(new AccumulatorExample(op, n = 4)(p))[0m
+[0m[[0m[33mwarn[0m] [0m[0m                      ^[0m
+[0m[[0m[33mwarn[0m] [0m[0m/home/ray/chipyard/generators/chipyard/src/main/scala/config/fragments/RoCCFragments.scala:44:19: value LazyModule in package diplomacy is deprecated (since rocketchip 2.0.0): Diplomacy has been split to a standalone library[0m
+[0m[[0m[33mwarn[0m] [0m[0m    val counter = LazyModule(new CharacterCountExample(op)(p))[0m
+[0m[[0m[33mwarn[0m] [0m[0m                  ^[0m
+[0m[[0m[33mwarn[0m] [0m[0mfour warnings found[0m
+[0m[[0m[0minfo[0m] [0m[0mdone compiling[0m
+[0m[[0m[33mwarn[0m] [0m[0mmultiple main classes detected: run 'show discoveredMainClasses' to see the list[0m
+[0m[[0m[0minfo[0m] [0m[0m78 file(s) merged using strategy 'Rename' (Run the task at debug level to see the details)[0m
+[0m[[0m[0minfo[0m] [0m[0m68 file(s) merged using strategy 'Rename (Custom)' (Run the task at debug level to see the details)[0m
+[0m[[0m[0minfo[0m] [0m[0m391 file(s) merged using strategy 'Discard' (Run the task at debug level to see the details)[0m
+[0m[[0m[0minfo[0m] [0m[0mBuilt: /home/ray/chipyard/.classpath_cache/chipyard.jar[0m
+[0m[[0m[0minfo[0m] [0m[0mJar hash: 58fdb3596afb11c019fbafebc87b6473e29b0a53[0m
+[0m[[0m[32msuccess[0m] [0m[0mTotal time: 55 s, completed Oct 18, 2026, 9:27:14 PM[0m
+[0Jmkdir -p /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig
+mkdir -p /home/ray/chipyard/.classpath_cache/
+cd /home/ray/chipyard && java -jar /home/ray/chipyard/scripts/sbt-launch.jar -Dsbt.ivy.home=/home/ray/chipyard/.ivy2 -Dsbt.global.base=/home/ray/chipyard/.sbt -Dsbt.boot.directory=/home/ray/chipyard/.sbt/boot/ -Dsbt.color=always -Dsbt.supershell=false -Dsbt.server.forcestart=true ";project tapeout; set assembly / assemblyOutputPath := file(\"/home/ray/chipyard/.classpath_cache/tapeout.jar\"); assembly" && touch /home/ray/chipyard/.classpath_cache/tapeout.jar
+(set -o pipefail && 	cd /home/ray/chipyard && java -cp /home/ray/chipyard/.classpath_cache/chipyard.jar chipyard.Generator  --target-dir /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig --name chipyard.harness.TestHarness.FastRTLSimRocketConfig --top-module chipyard.harness.TestHarness --legacy-configs chipyard:FastRTLSimRocketConfig   | tee /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.chisel.log)
+[0m[[0m[0minfo[0m] [0m[0mwelcome to sbt 1.8.2 (N/A Java 20.0.2-internal)[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project chipyard-build from plugins.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading project definition from /home/ray/chipyard/project[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project chipyardRoot from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project barf from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project constellation from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project icenet from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project cva6 from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project ibex from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project sodor from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project radiance from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mloading settings for project midas_target_utils from build.sbt ...[0m
+[0m[[0m[0minfo[0m] [0m[0mresolving key references (48737 settings) ...[0m
+L2 InclusiveCache Client Map:
+	0 <= debug
+	1 <= serial_tl_0_0
+	2 <= serial_tl_0_1
+	3 <= serial_tl_0_2
+	4 <= serial_tl_0_3
+	5 <= Core 0 DCache
+	6 <= Core 0 ICache
+
+[0m[[0m[0minfo[0m] [0m[0mset current project to chipyardRoot (in build file:/home/ray/chipyard/)[0m
+[0m[[0m[0minfo[0m] [0m[0mset current project to tapeout (in build file:/home/ray/chipyard/)[0m
+Interrupt map (2 harts 1 interrupts):
+  [1, 1] => uart_0
+
+[31m
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+WARNING: YOU ARE USING A DEADLOCKING DECOUPLED
+SERIAL PHY. THIS SHOULD ONLY BE USED IF YOU ARE
+CERTAIN THIS LINK WILL NOT BE HEAVILY LOADED.
+
+USE CreditedSourceSyncSerialPhyParams INSTEAD IF
+DEADLOCK-FREEDOM IS NECESSARY.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+[0m
+Clock sbus_0: using diplomatically specified frequency of 500.0.
+Clock pbus_0: using diplomatically specified frequency of 500.0.
+Clock fbus_0: using diplomatically specified frequency of 500.0.
+Clock mbus_0: using diplomatically specified frequency of 500.0.
+Clock cbus_0: using diplomatically specified frequency of 500.0.
+Leaving clock group uncore with synchronous reset
+/dts-v1/;
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	compatible = "ucb-bar,chipyard-dev";
+	model = "ucb-bar,chipyard";
+	L3: aliases {
+		serial0 = &L26;
+	};
+	L18: chosen {
+		stdout-path = &L26;
+	};
+	L2: cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <500000>;
+		L13: cpu@0 {
+			clock-frequency = <0>;
+			compatible = "sifive,rocket0", "riscv";
+			d-cache-block-size = <64>;
+			d-cache-sets = <64>;
+			d-cache-size = <32768>;
+			d-tlb-sets = <1>;
+			d-tlb-size = <32>;
+			device_type = "cpu";
+			hardware-exec-breakpoint-count = <1>;
+			i-cache-block-size = <64>;
+			i-cache-sets = <64>;
+			i-cache-size = <32768>;
+			i-tlb-sets = <1>;
+			i-tlb-size = <32>;
+			mmu-type = "riscv,sv39";
+			next-level-cache = <&L10>;
+			reg = <0x0>;
+			riscv,isa = "rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket";
+			riscv,pmpgranularity = <4>;
+			riscv,pmpregions = <8>;
+			status = "okay";
+			timebase-frequency = <500000>;
+			tlb-split;
+			L11: interrupt-controller {
+				#interrupt-cells = <1>;
+				compatible = "riscv,cpu-intc";
+				interrupt-controller;
+			};
+		};
+	};
+	L29: htif {
+		compatible = "ucb,htif0";
+	};
+	L24: memory@8000000 {
+		device_type = "memory";
+		reg = <0x8000000 0x10000>;
+		status = "disabled";
+	};
+	L21: memory@80000000 {
+		device_type = "memory";
+		reg = <0x80000000 0x10000000>;
+	};
+	L1: soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "ucb-bar,chipyard-soc", "simple-bus";
+		ranges;
+		L25: boot-address-reg@1000 {
+			reg = <0x1000 0x1000>;
+			reg-names = "control";
+		};
+		L10: cache-controller@2010000 {
+			cache-block-size = <64>;
+			cache-level = <2>;
+			cache-sets = <1024>;
+			cache-size = <524288>;
+			cache-unified;
+			compatible = "sifive,inclusivecache0", "cache";
+			next-level-cache = <&L21 &L24>;
+			reg = <0x2010000 0x1000>;
+			reg-names = "control";
+			sifive,mshr-count = <7>;
+		};
+		L7: cbus_clock {
+			#clock-cells = <0>;
+			clock-frequency = <500000000>;
+			clock-output-names = "cbus_clock";
+			compatible = "fixed-clock";
+		};
+		L14: clint@2000000 {
+			compatible = "riscv,clint0";
+			interrupts-extended = <&L11 3 &L11 7>;
+			reg = <0x2000000 0x10000>;
+			reg-names = "control";
+		};
+		L27: clock-gater@100000 {
+			reg = <0x100000 0x1000>;
+			reg-names = "control";
+		};
+		L16: debug-controller@0 {
+			compatible = "sifive,debug-013", "riscv,debug-013";
+			debug-attach = "jtag";
+			interrupts-extended = <&L11 65535>;
+			reg = <0x0 0x1000>;
+			reg-names = "control";
+		};
+		L8: error-device@3000 {
+			compatible = "sifive,error0";
+			reg = <0x3000 0x1000>;
+		};
+		L6: fbus_clock {
+			#clock-cells = <0>;
+			clock-frequency = <500000000>;
+			clock-output-names = "fbus_clock";
+			compatible = "fixed-clock";
+		};
+		L15: interrupt-controller@c000000 {
+			#interrupt-cells = <1>;
+			compatible = "riscv,plic0";
+			interrupt-controller;
+			interrupts-extended = <&L11 11 &L11 9>;
+			reg = <0xc000000 0x4000000>;
+			reg-names = "control";
+			riscv,max-priority = <1>;
+			riscv,ndev = <1>;
+		};
+		L9: mbus_clock {
+			#clock-cells = <0>;
+			clock-frequency = <500000000>;
+			clock-output-names = "mbus_clock";
+			compatible = "fixed-clock";
+		};
+		L5: pbus_clock {
+			#clock-cells = <0>;
+			clock-frequency = <500000000>;
+			clock-output-names = "pbus_clock";
+			compatible = "fixed-clock";
+		};
+		L23: rom@10000 {
+			compatible = "sifive,rom0";
+			reg = <0x10000 0x10000>;
+			reg-names = "mem";
+		};
+		L4: sbus_clock {
+			#clock-cells = <0>;
+			clock-frequency = <500000000>;
+			clock-output-names = "sbus_clock";
+			compatible = "fixed-clock";
+		};
+		L26: serial@10020000 {
+			clocks = <&L5>;
+			compatible = "sifive,uart0";
+			interrupt-parent = <&L15>;
+			interrupts = <1>;
+			reg = <0x10020000 0x1000>;
+			reg-names = "control";
+		};
+		L28: tile-reset-setter@110000 {
+			reg = <0x110000 0x1000>;
+			reg-names = "control";
+		};
+	};
+};
+
+Generated Address Map
+	       0 -     1000 ARWX  debug-controller@0
+	    1000 -     2000 ARW   boot-address-reg@1000
+	    3000 -     4000 ARWX  error-device@3000
+	   10000 -    20000  R X  rom@10000
+	  100000 -   101000 ARW   clock-gater@100000
+	  110000 -   111000 ARW   tile-reset-setter@110000
+	 2000000 -  2010000 ARW   clint@2000000
+	 2010000 -  2011000 ARW   cache-controller@2010000
+	 8000000 -  8010000 ARWXC memory@8000000
+	 c000000 - 10000000 ARW   interrupt-controller@c000000
+	10020000 - 10021000 ARW   serial@10020000
+	80000000 - 90000000 ARWXC memory@80000000
+
+IOCells generated by IOBinders:
+  IOBinder for interface sifive.blocks.devices.uart.HasPeripheryUART generated:
+    1 X GenericDigitalInIOCell
+    1 X GenericDigitalOutIOCell
+  IOBinder for interface testchipip.boot.CanHavePeripheryCustomBootPin generated:
+    1 X GenericDigitalInIOCell
+  IOBinder for interface freechips.rocketchip.devices.debug.HasPeripheryDebug generated:
+    4 X GenericDigitalInIOCell
+    1 X GenericDigitalOutIOCell
+  IOBinder for interface chipyard.clocking.CanHaveClockTap generated:
+    1 X GenericDigitalOutIOCell
+  IOBinder for interface testchipip.serdes.CanHavePeripheryTLSerial generated:
+    35 X GenericDigitalInIOCell
+    34 X GenericDigitalOutIOCell
+
+  Total generated 78 IOCells:
+    41 X GenericDigitalInIOCell
+    37 X GenericDigitalOutIOCell
+[31m
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+WARNING: YOU ARE USING A DEADLOCKING DECOUPLED
+SERIAL PHY. THIS SHOULD ONLY BE USED IF YOU ARE
+CERTAIN THIS LINK WILL NOT BE HEAVILY LOADED.
+
+USE CreditedSourceSyncSerialPhyParams INSTEAD IF
+DEADLOCK-FREEDOM IS NECESSARY.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+[0m
+Harness binder clock is 100.0
+[0m[[0m[0minfo[0m] [0m[0mDefining assembly / assemblyOutputPath[0m
+[0m[[0m[0minfo[0m] [0m[0mThe new value will be used by assembly[0m
+[0m[[0m[0minfo[0m] [0m[0mReapplying settings...[0m
+[0m[[0m[0minfo[0m] [0m[0mset current project to tapeout (in build file:/home/ray/chipyard/)[0m
+echo "$mfc_extra_anno_contents" > /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.extrafirtool.anno.json
+jq -s '[.[][]]' /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.anno.json /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.extrafirtool.anno.json > /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.appended.anno.json
+rm -rf /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral
+(set -o pipefail && firtool \
+		--format=fir \
+		--export-module-hierarchy \
+		--verify-each=true \
+		--warn-on-unprocessed-annotations \
+		--disable-annotation-classless \
+		--disable-annotation-unknown \
+		--mlir-timing \
+		--lowering-options=emittedLineLength=2048,noAlwaysComb,disallowLocalVariables,verifLabels,disallowPortDeclSharing,locationInfoStyle=wrapInAtSquareBracket \
+		--repl-seq-mem \
+		--repl-seq-mem-file=/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.mems.conf \
+		--annotation-file=/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.appended.anno.json \
+		--split-verilog \
+		 \
+		-o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral \
+		/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.fir |& tee /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.firtool.log)
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 12 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/AtomicAutomata.scala:36:9: warning: module contains 2 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:77:13: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/AtomicAutomata.scala:36:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/AtomicAutomata.scala:36:9: warning: module contains 2 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:77:13: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/AtomicAutomata.scala:36:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/devices/tilelink/Error.scala:21:9: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/devices/tilelink/Error.scala:34:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/devices/tilelink/Error.scala:21:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/amba/axi4/UserYanker.scala:36:9: warning: module contains 2 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/amba/axi4/UserYanker.scala:69:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/amba/axi4/UserYanker.scala:36:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/ToAXI4.scala:103:9: warning: module contains 20 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/ToAXI4.scala:280:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/ToAXI4.scala:103:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceA.scala:33:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Parameters.scala:222:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceA.scala:33:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceB.scala:33:7: warning: module contains 4 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceB.scala:59:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceB.scala:33:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceC.scala:35:7: warning: module contains 5 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceC.scala:64:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceC.scala:35:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceD.scala:48:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceD.scala:123:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SourceD.scala:48:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:36:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:86:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:36:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:36:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:86:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:36:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SinkC.scala:41:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SinkC.scala:90:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SinkC.scala:41:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SinkD.scala:34:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SinkD.scala:82:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/SinkD.scala:34:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Directory.scala:58:7: warning: module contains 5 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Directory.scala:88:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Directory.scala:58:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:36:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:86:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/ListBuffer.scala:36:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: warning: module contains 70 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:108:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: warning: module contains 70 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:108:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: warning: module contains 70 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:108:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: warning: module contains 70 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:108:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: warning: module contains 70 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:108:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: warning: module contains 70 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:108:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: warning: module contains 70 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:108:14: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/MSHR.scala:87:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Scheduler.scala:29:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Scheduler.scala:340:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Scheduler.scala:29:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/util/IDPool.scala:8:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/util/IDPool.scala:44:10: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/util/IDPool.scala:8:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/CacheCork.scala:42:9: warning: module contains 6 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/CacheCork.scala:116:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/CacheCork.scala:42:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/TLB.scala:318:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/TLB.scala:719:13: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/TLB.scala:318:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/DCache.scala:118:32: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/TLB.scala:719:13: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/DCache.scala:118:32: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/DCache.scala:99:7: warning: module contains 10 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/DCache.scala:1184:11: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/DCache.scala:99:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/ICache.scala:251:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/ICache.scala:413:11: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/ICache.scala:251:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/TLB.scala:318:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/TLB.scala:719:13: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/TLB.scala:318:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/Frontend.scala:82:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/Frontend.scala:96:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/Frontend.scala:82:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tile/FPU.scala:735:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tile/FPU.scala:823:11: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tile/FPU.scala:735:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/PTW.scala:219:7: warning: module contains 5 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/PTW.scala:395:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/PTW.scala:219:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/IBuf.scala:21:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/IBuf.scala:79:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/IBuf.scala:21:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/CSR.scala:378:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/CSR.scala:1023:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/CSR.scala:378:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/util/PlusArg.scala:58:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/util/PlusArg.scala:64:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/util/PlusArg.scala:58:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/rocket/RocketCore.scala:158:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/rocket/RocketCore.scala:885:11: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/rocket/RocketCore.scala:158:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/devices/tilelink/Plic.scala:132:9: warning: module contains 4 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/devices/tilelink/Plic.scala:249:11: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/devices/tilelink/Plic.scala:132:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/devices/tilelink/Error.scala:21:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/devices/tilelink/Error.scala:34:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/devices/tilelink/Error.scala:21:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/devices/debug/SBA.scala:273:9: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/devices/debug/SBA.scala:373:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/devices/debug/SBA.scala:273:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/devices/debug/Debug.scala:790:9: warning: module contains 5 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/devices/debug/Debug.scala:1505:15: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/devices/debug/Debug.scala:790:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/SRAM.scala:63:9: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/SRAM.scala:231:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/SRAM.scala:63:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Arbiter.scala:22:12: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Xbar.scala:74:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:214:16: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/tilelink/Fragmenter.scala:92:9: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:137:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:185:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:137:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:137:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:185:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:137:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:89:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:118:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:89:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:137:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:185:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:137:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:56:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:72:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/jtag/JtagShifter.scala:56:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/rocket-chip/src/main/scala/devices/debug/DebugTransport.scala:73:7: warning: module contains 3 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/devices/debug/DebugTransport.scala:203:9: note: example printf here, will just be a printf in the future
+generators/rocket-chip/src/main/scala/devices/debug/DebugTransport.scala:73:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/testchipip/src/main/scala/uart/SimUART.scala:26:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/testchipip/src/main/scala/uart/SimUART.scala:48:35: note: example printf here, will just be a printf in the future
+generators/testchipip/src/main/scala/uart/SimUART.scala:26:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/testchipip/src/main/scala/tsi/TSIToTileLink.scala:36:7: warning: module contains 1 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/testchipip/src/main/scala/tsi/TSIToTileLink.scala:137:15: note: example printf here, will just be a printf in the future
+generators/testchipip/src/main/scala/tsi/TSIToTileLink.scala:36:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+generators/chipyard/src/main/scala/harness/TestHarness.scala:19:7: warning: module contains 2 printf-encoded verification operation(s), which are deprecated and will be removed in the future
+generators/rocket-chip/src/main/scala/devices/debug/Periphery.scala:236:11: note: example printf here, will just be a printf in the future
+generators/chipyard/src/main/scala/harness/TestHarness.scala:19:7: note: For more information, see https://github.com/llvm/circt/issues/6970
+[0m[[0m[0minfo[0m] [0m[0m185 file(s) merged using strategy 'Rename (Custom)' (Run the task at debug level to see the details)[0m
+[0m[[0m[0minfo[0m] [0m[0m4 file(s) merged using strategy 'Rename' (Run the task at debug level to see the details)[0m
+[0m[[0m[0minfo[0m] [0m[0m331 file(s) merged using strategy 'Discard' (Run the task at debug level to see the details)[0m
+[0m[[0m[0minfo[0m] [0m[0mBuilt: /home/ray/chipyard/.classpath_cache/tapeout.jar[0m
+[0m[[0m[0minfo[0m] [0m[0mJar hash: 7513cadd4631ca143d6fb1af65c6ad0a0f9645c4[0m
+[0m[[0m[32msuccess[0m] [0m[0mTotal time: 6 s, completed Oct 18, 2026, 9:27:34 PM[0m
+[0Jgenerators/rocket-chip-inclusive-cache/design/craft/inclusivecache/src/Scheduler.scala:422:79: warning: unprocessed annotation:'midas.targetutils.AutoCounterFirrtlAnnotation' still remaining after LowerToHW
+===-------------------------------------------------------------------------===
+                         ... Execution time report ...
+===-------------------------------------------------------------------------===
+  Total Execution Time: 7.9327 seconds
+
+  ----User Time----  ----Wall Time----  ----Name----
+    1.2714 (  7.0%)    1.2714 ( 16.0%)  FIR Parser
+    0.0264 (  0.1%)    0.0264 (  0.3%)    Parse annotations
+    0.0000 (  0.0%)    0.0000 (  0.0%)    Parse OMIR
+    0.8196 (  4.5%)    0.8196 ( 10.3%)    Parse modules
+    0.4037 (  2.2%)    0.4037 (  5.1%)    Verify circuit
+   13.7105 ( 76.0%)    5.2757 ( 66.5%)  'firrtl.circuit' Pipeline
+    0.0491 (  0.3%)    0.0491 (  0.6%)    LowerOpenAggs
+    0.3118 (  1.7%)    0.3118 (  3.9%)    ResolvePaths
+    0.0201 (  0.1%)    0.0201 (  0.3%)      (A) circt::firrtl::InstanceGraph
+    0.3278 (  1.8%)    0.3278 (  4.1%)    LowerFIRRTLAnnotations
+    0.0199 (  0.1%)    0.0199 (  0.3%)    LowerIntmodules
+    0.0198 (  0.1%)    0.0198 (  0.2%)      (A) circt::firrtl::InstanceGraph
+    0.3477 (  1.9%)    0.0508 (  0.6%)    'firrtl.module' Pipeline
+    0.3058 (  1.7%)    0.0474 (  0.6%)      LowerIntrinsics
+    0.3360 (  1.9%)    0.3360 (  4.2%)    LowerSignatures
+    0.0000 (  0.0%)    0.0000 (  0.0%)    InjectDUTHierarchy
+    4.6218 ( 25.6%)    0.7972 ( 10.0%)    'firrtl.module' Pipeline
+    0.8489 (  4.7%)    0.2259 (  2.8%)      PassiveWires
+    1.4596 (  8.1%)    0.2142 (  2.7%)      DropName
+    1.2157 (  6.7%)    0.2304 (  2.9%)      CSE
+    0.0253 (  0.1%)    0.0066 (  0.1%)        (A) DominanceInfo
+    0.2280 (  1.3%)    0.0421 (  0.5%)      LowerCHIRRTLPass
+    0.6261 (  3.5%)    0.0997 (  1.3%)      LowerMatches
+    0.2453 (  1.4%)    0.2453 (  3.1%)    InferWidths
+    0.0001 (  0.0%)    0.0001 (  0.0%)      (A) SymbolTable
+    0.0105 (  0.1%)    0.0105 (  0.1%)      (A) circt::hw::InnerSymbolTableCollection
+    0.1202 (  0.7%)    0.1202 (  1.5%)    MemToRegOfVec
+    0.1757 (  1.0%)    0.1757 (  2.2%)    InferResets
+    0.0068 (  0.0%)    0.0068 (  0.1%)      (A) circt::firrtl::InstanceGraph
+    0.1394 (  0.8%)    0.1394 (  1.8%)    DropConst
+    0.0016 (  0.0%)    0.0016 (  0.0%)    HoistPassthrough
+    0.2521 (  1.4%)    0.2521 (  3.2%)    Dedup
+    0.0002 (  0.0%)    0.0002 (  0.0%)      (A) circt::firrtl::NLATable
+    0.0001 (  0.0%)    0.0001 (  0.0%)      (A) SymbolTable
+    0.2966 (  1.6%)    0.0690 (  0.9%)    'firrtl.module' Pipeline
+    0.2896 (  1.6%)    0.0673 (  0.8%)      FlattenMemory
+    0.2900 (  1.6%)    0.2900 (  3.7%)    LowerFIRRTLTypes
+    0.0000 (  0.0%)    0.0000 (  0.0%)      (A) SymbolTable
+    0.4380 (  2.4%)    0.0881 (  1.1%)    'any' Pipeline
+    0.4285 (  2.4%)    0.0872 (  1.1%)      ExpandWhens
+    0.8800 (  4.9%)    0.1976 (  2.5%)    'firrtl.module' Pipeline
+    0.2961 (  1.6%)    0.0699 (  0.9%)      SFCCompat
+    0.2714 (  1.5%)    0.0605 (  0.8%)      LayerMerge
+    0.2925 (  1.6%)    0.0640 (  0.8%)      LayerSink
+    0.0065 (  0.0%)    0.0026 (  0.0%)        (A) DominanceInfo
+    0.2375 (  1.3%)    0.2375 (  3.0%)    LowerLayers
+    0.2648 (  1.5%)    0.2648 (  3.3%)    Inliner
+    0.0001 (  0.0%)    0.0001 (  0.0%)      (A) SymbolTable
+    0.3098 (  1.7%)    0.0742 (  0.9%)    'firrtl.module' Pipeline
+    0.3069 (  1.7%)    0.0740 (  0.9%)      RandomizeRegisterInit
+    0.1820 (  1.0%)    0.1820 (  2.3%)    CheckCombLoops
+    0.0057 (  0.0%)    0.0057 (  0.1%)      (A) circt::firrtl::InstanceGraph
+    1.5409 (  8.5%)    0.3071 (  3.9%)    'firrtl.module' Pipeline
+    1.4052 (  7.8%)    0.2892 (  3.6%)      Canonicalizer
+    0.1324 (  0.7%)    0.0195 (  0.2%)      InferReadWrite
+    0.0713 (  0.4%)    0.0713 (  0.9%)    LowerMemory
+    0.0031 (  0.0%)    0.0031 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.0000 (  0.0%)    0.0000 (  0.0%)      (A) SymbolTable
+    0.0430 (  0.2%)    0.0430 (  0.5%)    PrefixModules
+    0.0031 (  0.0%)    0.0031 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.0000 (  0.0%)    0.0000 (  0.0%)      (A) circt::firrtl::NLATable
+    0.2242 (  1.2%)    0.2242 (  2.8%)    IMConstProp
+    0.0039 (  0.0%)    0.0039 (  0.0%)    HoistPassthrough
+    0.0026 (  0.0%)    0.0026 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.1814 (  1.0%)    0.1814 (  2.3%)  IMDeadCodeElim
+    0.0023 (  0.0%)    0.0023 (  0.0%)    (A) circt::firrtl::InstanceGraph
+    0.0000 (  0.0%)    0.0000 (  0.0%)    (A) SymbolTable
+    0.0046 (  0.0%)    0.0046 (  0.1%)    (A) circt::hw::InnerSymbolTableCollection
+    0.0013 (  0.0%)    0.0013 (  0.0%)  'firrtl.circuit' Pipeline
+    0.0013 (  0.0%)    0.0013 (  0.0%)    AddSeqMemPorts
+    0.0012 (  0.0%)    0.0012 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.0343 (  0.2%)    0.0343 (  0.4%)  CreateSiFiveMetadata
+    0.0011 (  0.0%)    0.0011 (  0.0%)    (A) circt::firrtl::InstanceGraph
+    0.1067 (  0.6%)    0.1067 (  1.3%)  'firrtl.circuit' Pipeline
+    0.0052 (  0.0%)    0.0052 (  0.1%)    ExtractInstances
+    0.0014 (  0.0%)    0.0014 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.0001 (  0.0%)    0.0001 (  0.0%)      (A) circt::firrtl::NLATable
+    0.0000 (  0.0%)    0.0000 (  0.0%)    GrandCentral
+    0.0290 (  0.2%)    0.0290 (  0.4%)    BlackBoxReader
+    0.0725 (  0.4%)    0.0725 (  0.9%)    SymbolDCE
+    0.0618 (  0.3%)    0.0618 (  0.8%)  InnerSymbolDCE
+    0.5238 (  2.9%)    0.2079 (  2.6%)  'firrtl.circuit' Pipeline
+    0.3159 (  1.8%)    0.0430 (  0.5%)    'firrtl.module' Pipeline
+    0.2410 (  1.3%)    0.0365 (  0.5%)      Canonicalizer
+    0.0681 (  0.4%)    0.0115 (  0.1%)      RegisterOptimizer
+    0.1485 (  0.8%)    0.1485 (  1.9%)    IMConstProp
+    0.0017 (  0.0%)    0.0017 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.1222 (  0.7%)    0.1222 (  1.5%)  IMDeadCodeElim
+    0.0012 (  0.0%)    0.0012 (  0.0%)    (A) circt::firrtl::InstanceGraph
+    0.0000 (  0.0%)    0.0000 (  0.0%)    (A) SymbolTable
+    0.0019 (  0.0%)    0.0019 (  0.0%)    (A) circt::hw::InnerSymbolTableCollection
+    0.3993 (  2.2%)    0.1642 (  2.1%)  'firrtl.circuit' Pipeline
+    0.0000 (  0.0%)    0.0000 (  0.0%)    EmitOMIR
+    0.2171 (  1.2%)    0.0303 (  0.4%)    'firrtl.module' Pipeline
+    0.0138 (  0.1%)    0.0023 (  0.0%)      MergeConnections
+    0.1973 (  1.1%)    0.0281 (  0.4%)      Vectorization
+    0.0087 (  0.0%)    0.0087 (  0.1%)    ResolveTraces
+    0.0000 (  0.0%)    0.0000 (  0.0%)      (A) circt::firrtl::NLATable
+    0.0020 (  0.0%)    0.0020 (  0.0%)      (A) circt::hw::InnerSymbolTableCollection
+    0.0385 (  0.2%)    0.0385 (  0.5%)    LowerXMR
+    0.0014 (  0.0%)    0.0014 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.0579 (  0.3%)    0.0579 (  0.7%)    LowerClasses
+    0.0012 (  0.0%)    0.0012 (  0.0%)      (A) circt::firrtl::InstanceGraph
+    0.0000 (  0.0%)    0.0000 (  0.0%)      (A) SymbolTable
+    0.0002 (  0.0%)    0.0002 (  0.0%)    VerifyObjectFields
+    0.0000 (  0.0%)    0.0000 (  0.0%)      (A) SymbolTable
+    0.0181 (  0.1%)    0.0026 (  0.0%)    'firrtl.module' Pipeline
+    0.0090 (  0.1%)    0.0014 (  0.0%)      Lint
+    0.1098 (  0.6%)    0.1098 (  1.4%)  LowerFIRRTLToHW
+    0.0012 (  0.0%)    0.0012 (  0.0%)    (A) circt::firrtl::InstanceGraph
+    0.0000 (  0.0%)    0.0000 (  0.0%)    (A) circt::firrtl::NLATable
+    0.5177 (  2.9%)    0.0732 (  0.9%)  'hw.module' Pipeline
+    0.1171 (  0.6%)    0.0204 (  0.3%)    CSE
+    0.0008 (  0.0%)    0.0002 (  0.0%)      (A) DominanceInfo
+    0.3972 (  2.2%)    0.0533 (  0.7%)    Canonicalizer
+    0.0021 (  0.0%)    0.0021 (  0.0%)  VerifyInnerRefNamespace
+    0.0003 (  0.0%)    0.0003 (  0.0%)  VerifyObjectFields
+    0.0001 (  0.0%)    0.0001 (  0.0%)    (A) SymbolTable
+    0.0029 (  0.0%)    0.0029 (  0.0%)  ExternalizeClockGate
+    0.0098 (  0.1%)    0.0098 (  0.1%)  LowerSimToSV
+    0.0441 (  0.2%)    0.0441 (  0.6%)  LowerSeqToSV
+    0.0564 (  0.3%)    0.0078 (  0.1%)  'hw.module' Pipeline
+    0.0498 (  0.3%)    0.0072 (  0.1%)    LowerVerifToSV
+    0.0115 (  0.1%)    0.0115 (  0.1%)  HWMemSimImpl
+    0.3041 (  1.7%)    0.0417 (  0.5%)  'hw.module' Pipeline
+    0.0946 (  0.5%)    0.0151 (  0.2%)    CSE
+    0.0020 (  0.0%)    0.0007 (  0.0%)      (A) DominanceInfo
+    0.1187 (  0.7%)    0.0166 (  0.2%)    Canonicalizer
+    0.0530 (  0.3%)    0.0083 (  0.1%)    CSE
+    0.0028 (  0.0%)    0.0010 (  0.0%)      (A) DominanceInfo
+    0.0257 (  0.1%)    0.0041 (  0.1%)    HWCleanup
+    0.0017 (  0.0%)    0.0017 (  0.0%)  VerifyInnerRefNamespace
+    0.0002 (  0.0%)    0.0002 (  0.0%)  VerifyObjectFields
+    0.0000 (  0.0%)    0.0000 (  0.0%)    (A) SymbolTable
+    0.0654 (  0.4%)    0.0089 (  0.1%)  'hw.module' Pipeline
+    0.0040 (  0.0%)    0.0006 (  0.0%)    HWLegalizeModules
+    0.0498 (  0.3%)    0.0074 (  0.1%)    PrettifyVerilog
+    0.0124 (  0.1%)    0.0124 (  0.2%)  StripDebugInfoWithPred
+    0.0088 (  0.0%)    0.0088 (  0.1%)  HWExportModuleHierarchy
+    0.0000 (  0.0%)    0.0000 (  0.0%)    (A) SymbolTable
+    0.0018 (  0.0%)    0.0018 (  0.0%)  VerifyInnerRefNamespace
+    0.0002 (  0.0%)    0.0002 (  0.0%)  VerifyObjectFields
+    0.1344 (  0.7%)    0.1344 (  1.7%)  ExportSplitVerilog
+    0.2362 (  1.3%)    0.0507 (  0.6%)  'builtin.module' Pipeline
+    0.0121 (  0.1%)    0.0121 (  0.2%)    HWLowerInstanceChoices
+    0.1855 (  1.0%)    0.0272 (  0.3%)    'hw.module' Pipeline
+    0.1800 (  1.0%)    0.0267 (  0.3%)      PrepareForEmission
+   -0.0420 ( -0.2%)   -0.0420 ( -0.5%)  Rest
+   18.0476 (100.0%)    7.9327 (100.0%)  Total
+sed -i 's/.*/& /' /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.mems.conf # need trailing space for SFC macrocompiler
+# If there are no BB's then the file might not be generated; ensure it exists
+touch /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/firrtl_black_box_resource_files.f
+/home/ray/chipyard/scripts/uniquify-module-names.py \
+	--model-hier-json /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/model_module_hierarchy.json \
+	--top-hier-json /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/top_module_hierarchy.json \
+	--in-all-filelist /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/filelist.f \
+	--in-bb-filelist /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/firrtl_black_box_resource_files.f \
+	--dut ChipTop \
+	--model TestHarness \
+	--target-dir /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral \
+	--out-dut-filelist /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.f \
+	--out-model-filelist /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.f \
+	--out-model-hier-json /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/model_module_hierarchy.uniquified.json \
+	--gcpath /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral
+sed -e 's;^;/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/;' /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/firrtl_black_box_resource_files.f > /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.bb.f
+sed -i 's/\.\///' /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.f
+sed -i 's/\.\///' /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.f
+sed -i 's/\.\///' /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.bb.f
+sort -u /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.bb.f > /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.all.f
+cp -f /home/ray/chipyard/generators/rocket-chip/src/main/resources/vsrc/TestDriver.v /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral
+/home/ray/chipyard/scripts/split-mems-conf.py \
+	--in-smems-conf /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.mems.conf \
+	--in-model-hrchy-json /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/model_module_hierarchy.uniquified.json \
+	--dut-module-name ChipTop \
+	--model-module-name TestHarness \
+	--out-dut-smems-conf /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.conf \
+	--out-model-smems-conf /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.mems.conf
+echo "/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/TestDriver.v" >> /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/sim_files.f;
+[ -f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/custom.mems.conf ] && cat /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/custom.mems.conf >> /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.conf
+cd /home/ray/chipyard && java -cp /home/ray/chipyard/.classpath_cache/tapeout.jar tapeout.macros.MacroCompiler -n /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.conf -v /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.v -f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.fir --mode synflops
+cd /home/ray/chipyard && java -cp /home/ray/chipyard/.classpath_cache/tapeout.jar tapeout.macros.MacroCompiler  -n /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.mems.conf -v /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.mems.v -f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.mems.fir --mode synflops
+touch /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.mems.v /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.mems.fir
+touch /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.v /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.fir
+rm -f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/sim_files.common.f
+sort -u /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/sim_files.f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig.all.f | grep -v '.*\.\(svh\|h\|conf\)$' >> /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/sim_files.common.f
+echo "/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/chipyard.harness.TestHarness.FastRTLSimRocketConfig.top.mems.v" >> /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/sim_files.common.f
+echo "/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/chipyard.harness.TestHarness.FastRTLSimRocketConfig.model.mems.v" >> /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/sim_files.common.f
+rm -rf /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig
+mkdir -p /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig
+verilator --main --timing --cc --exe -CFLAGS " -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR" -LDFLAGS " -L/home/ray/chipyard/.conda-env/riscv-tools/lib -Wl,-rpath,/home/ray/chipyard/.conda-env/riscv-tools/lib -L/home/ray/chipyard/sims/verilator -L/home/ray/chipyard/tools/DRAMSim2 -lriscv -lfesvr -ldramsim "   --threads 1 --threads-dpi all -O3 --x-assign fast --x-initial fast --output-split 10000 --output-split-cfuncs 100 --assert -Wno-fatal --timescale 1ns/1ps --max-num-width 1048576 +define+CLOCK_PERIOD=1.0 +define+RESET_DELAY=777.7 +define+PRINTF_COND=TestDriver.printf_cond +define+STOP_COND=!TestDriver.reset +define+MODEL=TestHarness +define+RANDOMIZE_MEM_INIT +define+RANDOMIZE_REG_INIT +define+RANDOMIZE_GARBAGE_ASSIGN +define+RANDOMIZE_INVALID_ASSIGN +define+SIMULATION +define+GPR_RESET +define+GPR_DUPLICATED +define+DBG_TRACE_CORE_PIPELINE_VCS +define+PERF_ENABLE +define+ICACHE_DISABLE +define+DCACHE_DISABLE +define+GBAR_ENABLE +define+GBAR_CLUSTER_ENABLE +define+FPU_FPNEW /home/ray/chipyard/generators/radiance/src/main/resources/vsrc/vortex/third_party/fpnew/src/fpnew_pkg.sv /home/ray/chipyard/generators/radiance/src/main/resources/vsrc/vortex/third_party/fpnew/src/fpu_div_sqrt_mvp/hdl/defs_div_sqrt_mvp.sv  +define+VERILATOR --top-module TestDriver --vpi +incdir+/home/ray/chipyard/generators/radiance/src/main/resources/vsrc/vortex/third_party/fpnew/src/common_cells/include +incdir+/home/ray/chipyard/generators/radiance/src/main/resources/vsrc/vortex/third_party/fpnew/src/common_cells/include/common_cells +incdir+/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral -f /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/sim_files.common.f  -o /home/ray/chipyard/sims/verilator/simulator-chipyard.harness-FastRTLSimRocketConfig -Mdir /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig
+touch /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig/VTestDriver.mk
+make VM_PARALLEL_BUILDS=1 -C /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig -f VTestDriver.mk
+make[1]: Entering directory '/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig'
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o SimDRAM.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/SimDRAM.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o SimJTAG.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/SimJTAG.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o SimTSI.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/SimTSI.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o SimUART.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/SimUART.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o mm.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/mm.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o mm_dramsim2.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/mm_dramsim2.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o remote_bitbang.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/remote_bitbang.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o testchip_htif.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/testchip_htif.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o testchip_tsi.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/testchip_tsi.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -Os -c -o uart.o /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/uart.cc
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -c -o verilated.o /home/ray/chipyard/.conda-env/share/verilator/include/verilated.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -c -o verilated_dpi.o /home/ray/chipyard/.conda-env/share/verilator/include/verilated_dpi.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -c -o verilated_vpi.o /home/ray/chipyard/.conda-env/share/verilator/include/verilated_vpi.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -c -o verilated_timing.o /home/ray/chipyard/.conda-env/share/verilator/include/verilated_timing.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -c -o verilated_threads.o /home/ray/chipyard/.conda-env/share/verilator/include/verilated_threads.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -x c++-header VTestDriver__pch.h -o VTestDriver__pch.h.fast.gch
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -x c++-header VTestDriver__pch.h -o VTestDriver__pch.h.slow.gch
+echo "" > VTestDriver__ALL.verilator_deplist.tmp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver.o VTestDriver.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_h662e1026__0.o VTestDriver___024root__DepSet_h662e1026__0.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_h662e1026__1.o VTestDriver___024root__DepSet_h662e1026__1.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_h662e1026__2.o VTestDriver___024root__DepSet_h662e1026__2.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_h662e1026__3.o VTestDriver___024root__DepSet_h662e1026__3.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_h662e1026__4.o VTestDriver___024root__DepSet_h662e1026__4.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_h662e1026__5.o VTestDriver___024root__DepSet_h662e1026__5.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_h662e1026__6.o VTestDriver___024root__DepSet_h662e1026__6.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__0.o VTestDriver___024root__DepSet_hbb6e3b65__0.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__1.o VTestDriver___024root__DepSet_hbb6e3b65__1.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__2.o VTestDriver___024root__DepSet_hbb6e3b65__2.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__3.o VTestDriver___024root__DepSet_hbb6e3b65__3.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__4.o VTestDriver___024root__DepSet_hbb6e3b65__4.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__5.o VTestDriver___024root__DepSet_hbb6e3b65__5.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__6.o VTestDriver___024root__DepSet_hbb6e3b65__6.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__7.o VTestDriver___024root__DepSet_hbb6e3b65__7.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__8.o VTestDriver___024root__DepSet_hbb6e3b65__8.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__9.o VTestDriver___024root__DepSet_hbb6e3b65__9.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__10.o VTestDriver___024root__DepSet_hbb6e3b65__10.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__11.o VTestDriver___024root__DepSet_hbb6e3b65__11.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__12.o VTestDriver___024root__DepSet_hbb6e3b65__12.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__13.o VTestDriver___024root__DepSet_hbb6e3b65__13.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__14.o VTestDriver___024root__DepSet_hbb6e3b65__14.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__15.o VTestDriver___024root__DepSet_hbb6e3b65__15.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__16.o VTestDriver___024root__DepSet_hbb6e3b65__16.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__17.o VTestDriver___024root__DepSet_hbb6e3b65__17.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__18.o VTestDriver___024root__DepSet_hbb6e3b65__18.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__19.o VTestDriver___024root__DepSet_hbb6e3b65__19.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__20.o VTestDriver___024root__DepSet_hbb6e3b65__20.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__21.o VTestDriver___024root__DepSet_hbb6e3b65__21.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__22.o VTestDriver___024root__DepSet_hbb6e3b65__22.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__23.o VTestDriver___024root__DepSet_hbb6e3b65__23.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024root__DepSet_hbb6e3b65__24.o VTestDriver___024root__DepSet_hbb6e3b65__24.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver___024unit__DepSet_hf172cd27__0.o VTestDriver___024unit__DepSet_hf172cd27__0.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver__main.o VTestDriver__main.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++ -Os  -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.fast -c -o VTestDriver__Dpi.o VTestDriver__Dpi.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver__ConstPool_0.o VTestDriver__ConstPool_0.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__Slow.o VTestDriver___024root__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_h662e1026__0__Slow.o VTestDriver___024root__DepSet_h662e1026__0__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__0__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__0__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__1__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__1__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__2__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__2__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__3__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__3__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__4__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__4__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__5__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__5__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__6__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__6__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__7__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__7__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__8__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__8__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__9__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__9__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__10__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__10__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__11__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__11__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__12__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__12__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__13__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__13__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__14__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__14__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__15__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__15__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__16__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__16__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__17__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__17__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__18__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__18__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__19__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__19__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__20__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__20__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__21__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__21__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__22__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__22__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__23__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__23__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024root__DepSet_hbb6e3b65__24__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__24__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024unit__Slow.o VTestDriver___024unit__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver___024unit__DepSet_h44496666__0__Slow.o VTestDriver___024unit__DepSet_h44496666__0__Slow.cpp
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++   -I.  -MMD -I/home/ray/chipyard/.conda-env/share/verilator/include -I/home/ray/chipyard/.conda-env/share/verilator/include/vltstd -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-shadow -Wno-sign-compare -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable    -O3 -std=c++17 -I/home/ray/chipyard/.conda-env/riscv-tools/include -I/home/ray/chipyard/tools/DRAMSim2 -I/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral   -DVERILATOR -DVL_TIME_CONTEXT   -fcoroutines -include VTestDriver__pch.h.slow -c -o VTestDriver__Syms.o VTestDriver__Syms.cpp
+Archive /home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-ar -rcs VTestDriver__ALL.a VTestDriver.o VTestDriver___024root__DepSet_h662e1026__0.o VTestDriver___024root__DepSet_h662e1026__1.o VTestDriver___024root__DepSet_h662e1026__2.o VTestDriver___024root__DepSet_h662e1026__3.o VTestDriver___024root__DepSet_h662e1026__4.o VTestDriver___024root__DepSet_h662e1026__5.o VTestDriver___024root__DepSet_h662e1026__6.o VTestDriver___024root__DepSet_hbb6e3b65__0.o VTestDriver___024root__DepSet_hbb6e3b65__1.o VTestDriver___024root__DepSet_hbb6e3b65__2.o VTestDriver___024root__DepSet_hbb6e3b65__3.o VTestDriver___024root__DepSet_hbb6e3b65__4.o VTestDriver___024root__DepSet_hbb6e3b65__5.o VTestDriver___024root__DepSet_hbb6e3b65__6.o VTestDriver___024root__DepSet_hbb6e3b65__7.o VTestDriver___024root__DepSet_hbb6e3b65__8.o VTestDriver___024root__DepSet_hbb6e3b65__9.o VTestDriver___024root__DepSet_hbb6e3b65__10.o VTestDriver___024root__DepSet_hbb6e3b65__11.o VTestDriver___024root__DepSet_hbb6e3b65__12.o VTestDriver___024root__DepSet_hbb6e3b65__13.o VTestDriver___024root__DepSet_hbb6e3b65__14.o VTestDriver___024root__DepSet_hbb6e3b65__15.o VTestDriver___024root__DepSet_hbb6e3b65__16.o VTestDriver___024root__DepSet_hbb6e3b65__17.o VTestDriver___024root__DepSet_hbb6e3b65__18.o VTestDriver___024root__DepSet_hbb6e3b65__19.o VTestDriver___024root__DepSet_hbb6e3b65__20.o VTestDriver___024root__DepSet_hbb6e3b65__21.o VTestDriver___024root__DepSet_hbb6e3b65__22.o VTestDriver___024root__DepSet_hbb6e3b65__23.o VTestDriver___024root__DepSet_hbb6e3b65__24.o VTestDriver___024unit__DepSet_hf172cd27__0.o VTestDriver__main.o VTestDriver__Dpi.o VTestDriver__ConstPool_0.o VTestDriver___024root__Slow.o VTestDriver___024root__DepSet_h662e1026__0__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__0__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__1__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__2__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__3__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__4__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__5__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__6__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__7__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__8__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__9__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__10__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__11__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__12__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__13__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__14__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__15__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__16__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__17__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__18__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__19__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__20__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__21__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__22__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__23__Slow.o VTestDriver___024root__DepSet_hbb6e3b65__24__Slow.o VTestDriver___024unit__Slow.o VTestDriver___024unit__DepSet_h44496666__0__Slow.o VTestDriver__Syms.o
+/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++    SimDRAM.o SimJTAG.o SimTSI.o SimUART.o mm.o mm_dramsim2.o remote_bitbang.o testchip_htif.o testchip_tsi.o uart.o verilated.o verilated_dpi.o verilated_vpi.o verilated_timing.o verilated_threads.o VTestDriver__ALL.a   -L/home/ray/chipyard/.conda-env/riscv-tools/lib -Wl,-rpath,/home/ray/chipyard/.conda-env/riscv-tools/lib -L/home/ray/chipyard/sims/verilator -L/home/ray/chipyard/tools/DRAMSim2 -lriscv -lfesvr -ldramsim  -pthread -lpthread -latomic   -o /home/ray/chipyard/sims/verilator/simulator-chipyard.harness-FastRTLSimRocketConfig
+rm VTestDriver__ALL.verilator_deplist.tmp
+make[1]: Leaving directory '/home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/chipyard.harness.TestHarness.FastRTLSimRocketConfig'
