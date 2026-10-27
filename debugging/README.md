@@ -201,10 +201,15 @@ debugging/
 Run ours exactly as you run theirs:
 
 ```bash
-chia job submit --chia-cluster ../../accel/cluster.yaml -- \
-    python "$(pwd)/accel_loop.py" --iterations 3            # record
-    python "$(pwd)/accel_loop.py" --iterations 3 --replay   # replay
+cd ~/chia-tutorial/debugging
+chia job submit --chia-cluster cluster.yaml -- \
+    python "$(pwd)/caching/accel_loop.py" --iterations 3 --record   # record
+chia job submit --chia-cluster cluster.yaml -- \
+    python "$(pwd)/caching/accel_loop.py" --iterations 3            # replay
 ```
+
+`./submit_job.sh <folder>` is that replay line for any folder (caching,
+profiling, monitor, logging), with `--replay-iteration 2`.
 
 What the copies change (56 lines, `diff accel/accel_loop.py
 debugging/caching/accel_loop.py`):
@@ -213,7 +218,7 @@ debugging/caching/accel_loop.py`):
 * `accel_loop.py` — each call site passes a tag built from the iteration and
   attempt, e.g. `hw_iter_3_evaluation_result1`
 * `accel_loop.py` — `start_cache` + `Bypass` + provider/cond in `main()`,
-  right after their `start_collector()`, and a `--replay` flag
+  right after their `start_collector()`, and a `--record` flag (replay is the default)
 
 `accel/` is still the source of `results`, `agent_prompt`, `dramsim_ini` and
 `out/`, so the hill climb keeps reading the same designs.

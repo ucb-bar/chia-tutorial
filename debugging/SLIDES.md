@@ -53,11 +53,12 @@ it is safe to replay — without it a cold cache raises instead of running.
 ### Run it
 
 ```bash
-cd ~/chia-tutorial/debugging/caching
-chia job submit --chia-cluster ../../accel/cluster.yaml -- \
-    python "$(pwd)/accel_loop.py" --iterations 3            # record
-chia job submit --chia-cluster ../../accel/cluster.yaml -- \
-    python "$(pwd)/accel_loop.py" --iterations 3 --replay   # replay
+cd ~/chia-tutorial/debugging
+chia job submit --chia-cluster cluster.yaml -- \
+    python "$(pwd)/caching/accel_loop.py" --iterations 3 --record   # record
+chia job submit --chia-cluster cluster.yaml -- \
+    python "$(pwd)/caching/accel_loop.py" --replay-iteration 2      # replay
+./submit_job.sh caching                                             # the same replay line (what the slides run)
 ```
 
 ---

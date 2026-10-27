@@ -347,9 +347,10 @@ def main() -> None:
                         help="iterations to run after the baseline exists (default 1)")
     parser.add_argument("--baseline-only", action="store_true",
                         help="(re)generate accel/out/baseline and stop")
-    # CACHING: replay the recorded results instead of running them
-    parser.add_argument("--replay", action="store_true",
-                        help="serve builds, simulations and LLM answers from the cache")
+    # CACHING: replay the recorded results (replay.yaml) unless --record
+    parser.add_argument("--record", action="store_true",
+                        help="record builds, simulations and LLM answers into the "
+                             "cache (cache.yaml) instead of serving them from it")
     parser.add_argument("--replay-iteration", type=int, metavar="N",
                         help="replay iteration N's calls, whatever this run's "
                              "output directory is called")
@@ -379,7 +380,7 @@ def main() -> None:
     # Started after ray.init() and after start_collector(): get_profiler()
     # latches whether a collector exists the first time anything calls it,
     # and start_cache() makes chia calls.
-    config = Path(__file__).resolve().parent / ("replay.yaml" if args.replay else "cache.yaml")
+    config = Path(__file__).resolve().parent / ("cache.yaml" if args.record else "replay.yaml")
     cache_dir = Path(__file__).resolve().parents[1] / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache = start_cache(size=64, units="GB", cache_dir_path=str(cache_dir),
