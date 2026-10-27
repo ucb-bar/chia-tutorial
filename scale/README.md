@@ -8,11 +8,6 @@ Run commands from the `scale` folder.
 source load-env.sh
 ```
 
-Increase vCPU quota by running:
-```bash
-./increase-quota.sh
-```
-
 ## 2. Adjust values
 
 Increase these starting values under `TUTORIAL` in `settings.yaml`:
