@@ -1,0 +1,4 @@
+[UART] UART0 is here (stdin/stdout).
+[3000001000] %Fatal: TestDriver.v:168: Assertion failed in TOP.TestDriver
+%Error: /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/TestDriver.v:168: Verilog $stop
+Aborting...
