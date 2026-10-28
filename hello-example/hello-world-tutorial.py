@@ -16,8 +16,10 @@ def main():
 
     # ------------ START TUTORIAL PART 2 ------------
 
+    llm = AntigravityLLM()
     # TODO 2: Prompt an AntigravityLLM to say hello using chia_remote
 
+    print("LLM Responded:")
     # TODO 2: Print the result of the LLM call
 
     # ------------ END TUTORIAL PART 2 ------------
