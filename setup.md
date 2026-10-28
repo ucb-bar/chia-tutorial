@@ -42,7 +42,7 @@ If the script exits immediately, having only printed "Using gcloud signed in as 
 
 7. Towards the end, the script will open an Antigravity CLI session. Sign in with the following steps:
    1. Choose **Use a Google Cloud Project**.
-   2. Choose **Continue with Google CloudAuth**.
+   2. Choose **Continue with Google Cloud**.
    3. Open the link provided, and select the account provided to you in the email you received.
    4. Copy the code back into the Antigravity CLI and press Enter.
    5. Enter the Project Name from the email you received as the Google Cloud Project ID
