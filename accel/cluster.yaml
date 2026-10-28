@@ -17,7 +17,6 @@ available_node_types:
         docker:
             image: "ghcr.io/ucb-bar/chia-chisel-build:latest"
             container_name: "accel-chipyard-${USER}"
-            pull_before_run: True
             pull_timeout: 7200  # the image is large; the default 600 s is too short
             run_options:
                 - --ulimit nofile=65536:65536
@@ -30,7 +29,6 @@ available_node_types:
         docker:
             image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
             container_name: "accel-verilator-run-${USER}"
-            pull_before_run: True
             run_options:
                 - --ulimit nofile=65536:65536
                 - --shm-size=10.24gb
@@ -42,7 +40,6 @@ available_node_types:
         docker:
             image: "ghcr.io/ucb-bar/chia-riscv-cross:latest"
             container_name: "accel-riscv-cross-${USER}"
-            pull_before_run: True
             run_options:
                 - --ulimit nofile=65536:65536
 
@@ -53,7 +50,6 @@ available_node_types:
         docker:
             image: "ghcr.io/ucb-bar/chia-antigravity:latest"
             container_name: "accel-antigravity-${USER}"
-            pull_before_run: True
             run_options:
                 - --ulimit nofile=65536:65536
                 - --shm-size=10.24gb
@@ -65,7 +61,6 @@ available_node_types:
                 # agy's working directory (work_dir in accel_loop.py), kept empty
                 - mkdir -p /home/ray/agy_workspace
 
-# chia runs the head's commands over SSH in a login shell that has neither
 head_env_commands:
     - export PATH="${CONDA_PREFIX}/bin:$PATH"
 
@@ -73,6 +68,7 @@ head_start_ray_commands:
     - >-
       ulimit -c unlimited &&
       ray start --head --port=6395
+      --dashboard-host=127.0.0.1 
       --dashboard-port=8095 
       --include-dashboard=True
       --temp-dir=/tmp/ray_accel/${USER}

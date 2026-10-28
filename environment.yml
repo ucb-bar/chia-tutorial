@@ -6,4 +6,4 @@ dependencies:
   - python=3.10.19
   - pip
   - pip:
-      - chialoops
+      - chialoops==2.1.0

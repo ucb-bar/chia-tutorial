@@ -1,0 +1,13 @@
+name,status,ret,mismatches
+zero_bytes,PASS,1,0
+one_byte,PASS,1,0
+seven_bytes,PASS,1,0
+one_word,PASS,1,0
+one_word_src_unalign,PASS,1,0
+one_word_dst_unalign,PASS,1,0
+nine_bytes,PASS,1,0
+same_misalign,PASS,1,0
+diff_misalign,PASS,1,0
+cache_line,PASS,1,0
+cache_line_plus_one,PASS,1,0
+odd_large,PASS,1,0

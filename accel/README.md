@@ -3,15 +3,20 @@
 An LLM co-designs a memcpy RoCC accelerator for a Rocket SoC. CHIA cross-compiles the software, builds the hardware into a Verilator simulator, runs a test-and-benchmark harness on it, and hands any failure back to the LLM to debug. Every iteration starts from
 the best design so far.
 
-## Running
+## Up the cluster
 
 ```bash
-export THIS_MACHINE=$(hostname -I | awk '{print $1}')
-cd chia-tutorial/accel
+conda activate chia_env
+cd ~/chia-tutorial/accel
 chia up --yes cluster.yaml
-chia job submit --chia-cluster cluster.yaml -- \
-    python "$(pwd)/accel_loop.py" --iterations 3
-chia down --yes accel/cluster.yaml
+```
+
+## Launch a job
+
+```bash
+conda activate chia_env
+cd ~/chia-tutorial/accel
+chia job submit --chia-cluster cluster.yaml -- python "$(pwd)/accel_loop.py"
 ```
 
 ## Files
@@ -26,6 +31,43 @@ chia down --yes accel/cluster.yaml
 | `prompts/` | `software.md`, `hardware.md`, `debug.md` |
 | `cluster.yaml` | Single-machine cluster: chipyard, verilator-run, riscv-cross, antigravity containers |
 | `dramsim_ini/` | DRAMSim2 config for the simulator's SimDRAM |
+
+## TODO solutions
+
+Parallelizing SW compile:
+
+```python
+            # TODO: make each software build launch in parallel
+            build_cache.elfs[case.name] = compile_software(source, case)
+            # END TODO
+```
+
+Getting the results of parallel SW compile:
+
+```python
+        # TODO: get the result of the parallelized software build
+        elfs[build_cache_name] = get(build_cache_ref)
+        # END TODO
+```
+
+Parallel simulation dispatch:
+
+```python
+        # TODO: run each simulation in parallel
+        run_refs[name] = run_simulation(hw_build_artifact, elf)
+        # END TODO
+```
+
+Getting the simulation results:
+
+```python
+        # TODO: get the result of the parallelized simulation
+        run_results[name] = get(ref)
+        # END TODO
+```
+
+Fix a dispatch TODO and its collect TODO together. Calling `get` on an
+artifact that was already fetched raises a `ValueError`.
 
 ## Outputs
 

@@ -17,28 +17,31 @@ from chia.chipyard.state_def import BuildArtifact, BuildTarget, RiscvBuildArtifa
 from chia.chipyard.verilator_run_node import VerilatorRunNode
 from chia.models.antigravity import AntigravityLLM
 
+from results import Case
+
 logger = logging.getLogger("accel.nodes")
 
 # ---------------------------------------------------------------------------
 # Software compile node
 # ---------------------------------------------------------------------------
 
-
-def compile_software(source: str, name: str, cflags: str) -> ObjectRef[RiscvBuildArtifact]:
+def compile_software(source: str, case: Case) -> ObjectRef[RiscvBuildArtifact]:
     node = RiscvBuildNode(timeout_seconds=300)
     return node.build.options(resources={"riscv_build": 1}).chia_remote(
-        node, source.encode(), name, "/tmp/accel_sw",
-        target="verilator", extra_cflags=cflags, include_dump=True,
+        node,
+        source.encode(),
+        case.name,
+        "/tmp/accel_sw",
+        target="verilator",
+        extra_cflags=case.cflags,
+        include_dump=True,
     )
 
 # ---------------------------------------------------------------------------
 # Hardware build node
 # ---------------------------------------------------------------------------
 
-# Verilator threads per simulation; each simulation holds this many
-# verilator_run tokens.
 SIM_THREADS = 1
-
 
 def build_hardware() -> ObjectRef[BuildArtifact]:
     node = ChiselBuildNode(
@@ -59,7 +62,11 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact) 
     dramsim_ini = {p.name: p.read_bytes() for p in sorted((Path(__file__).resolve().parent / "dramsim_ini").iterdir())}
     node = VerilatorRunNode()
     return node.run.options(resources={"verilator_run": SIM_THREADS}).chia_remote(
-        node, artifact, elf.binary_content, elf.binary_name, "/home/ray/accel_sim",
+        node,
+        artifact,
+        elf.binary_content,
+        elf.binary_name,
+        "/home/ray/accel_sim",
         plusargs={"+loadmem": elf.binary_name},
         timeout_cycles=3_000_000,
         timeout_seconds=3600,
@@ -67,16 +74,16 @@ def run_simulation(artifact: ObjectRef[BuildArtifact], elf: RiscvBuildArtifact) 
         verbose=False,
     )
 
-
 # ---------------------------------------------------------------------------
 # LLM node
 # ---------------------------------------------------------------------------
 
-
 def prompt_llm(llm: AntigravityLLM, prompt: str, chipyard_bash: BashTool) -> ObjectRef[QueryResult]:
-    """Send *prompt* on *llm*'s conversation, on an antigravity_creds worker.
-    ``get`` re-raises agy's rate-limit, auth and billing errors."""
-    return llm.prompt.options(resources={"antigravity_creds": 1}).chia_remote(llm, prompt, [chipyard_bash])
+    return llm.prompt.options(resources={"antigravity_creds": 1}).chia_remote(
+        llm,
+        prompt,
+        [chipyard_bash],
+    )
 
 # ---------------------------------------------------------------------------
 # Chipyard git nodes

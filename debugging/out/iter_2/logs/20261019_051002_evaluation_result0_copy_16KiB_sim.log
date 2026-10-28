@@ -1,0 +1,4 @@
+[UART] UART0 is here (stdin/stdout).
+EVAL copy_16KiB PASS bytes=16384 cycles=7590 ret=1 mismatches=0
+DONE
+- /home/ray/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.FastRTLSimRocketConfig/gen-collateral/TestDriver.v:179: Verilog $finish

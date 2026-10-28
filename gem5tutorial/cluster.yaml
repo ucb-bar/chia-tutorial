@@ -6,12 +6,10 @@ connection: vpc
 available_node_types:
     llm:
         resources: {"antigravity_creds": 1}
-        balance_level: cluster
         num_workers: 1
         docker:
             image: "ghcr.io/ucb-bar/chia-antigravity:latest"
             container_name: "gem5_crypto_agy_llm_${USER}"
-            pull_before_run: True
             run_options:
                 - --ulimit nofile=65536:65536
                 - --shm-size=10.24gb
@@ -24,12 +22,9 @@ available_node_types:
     gem5_worker:
         resources: {"gem5": 1}
         num_workers: 1
-        compatible_ips:
-            - "@gem5_gcp:0"
         docker:
             image: "ghcr.io/ucb-bar/chia-gem5:latest"
             container_name: "g5gcp-worker-${USER}"
-            pull_before_run: True
             pull_timeout: 3600
             run_options:
                 - --ulimit nofile=65536:65536
@@ -38,17 +33,7 @@ available_node_types:
         worker_setup_commands:
                 - "pip install pycryptodome"
                 - "sudo apt-get update -qq && sudo apt-get install -y -qq lld binutils-riscv64-linux-gnu"
-
-gcp_nodes:
-    project: ${GCP_PROJECT}
-    zone: us-central1-a
-    gem5_gcp:
-        machine_type: c2d-highcpu-56   # AMD Milan compute-optimized, 56 vCPUs (28 cores), 112 GB
-        count: 1
-        image: projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts
-        disk_size_gb: 300              # gem5 image + build tree + workspaces + traces
-        ssh_user: ubuntu               # user the guest agent creates on the VM
-        ssh_private_key: ${HOME}/.ssh/chia-key
+        compatible_ips: ["chia-worker-1"]
 
 provider:
     head_ip: ${CHIA_HEAD}
@@ -56,7 +41,7 @@ provider:
 auth:
     ssh_user: ${USER}
 
-head_env_commands: ["source ~/.bashrc && conda activate g5tut_env"]
+head_env_commands: ["source ~/.bashrc && conda activate chia_env"]
 
 head_start_ray_commands:
     - ray stop --force
