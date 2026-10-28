@@ -16,27 +16,27 @@ WRAPS := -Wl,--wrap=atexit,--wrap=main,--wrap=verify_benchmark,--wrap=memcpy,--u
 
 .PHONY: all baremetal host check
 all: baremetal
-# Each ELF lives at src/NAME/NAME (Embench layout).
+# Each workload has its own ELF at src/NAME/NAME.
 baremetal: $(foreach name,$(NAMES),$(BUILD)/src/$(name)/$(name))
 host: $(NAMES:%=$(BUILD)/native/%)
 check: host
 	python3 $(SUITE)/check.py --build-dir $(BUILD)/native
 
 define BENCHMARK_RULES
-$(BUILD)/native/$(1): $(SUITE)/src/$(1)/$(1).c $(COMMON) $(HEADERS) $(SUITE)/support/native_copy.c $(SUITE)/Makefile
+$(BUILD)/native/$(1): $(SUITE)/src/$(1)/$(1).c $(SUITE)/src/$(1)/checksum.c $(COMMON) $(HEADERS) $(SUITE)/support/native_copy.c $(SUITE)/Makefile
 	mkdir -p $$(@D)
 	$(HOST_CC) $(HOST_CFLAGS) $(COPY_FLAGS) -DMEMORY_NATIVE -DMEMORY_TEST_NAME='"$(1)"' \
-	  $(SUITE)/src/$(1)/$(1).c $(COMMON) $(SUITE)/support/native_copy.c \
+	  $(SUITE)/src/$(1)/$(1).c $(SUITE)/src/$(1)/checksum.c $(COMMON) $(SUITE)/support/native_copy.c \
 	  -Wl,--wrap=memcpy -o $$@
 
-$(BUILD)/src/$(1)/$(1): $(SUITE)/src/$(1)/$(1).c $(COMMON) $(HEADERS) $(SUITE)/Makefile \
+$(BUILD)/src/$(1)/$(1): $(SUITE)/src/$(1)/$(1).c $(SUITE)/src/$(1)/checksum.c $(COMMON) $(HEADERS) $(SUITE)/Makefile \
     $(DMA_DIR)/rocc_dma.c $(DMA_DIR)/rocc_dma.h $(DMA_DIR)/memcpy_wrap.c \
-    $(DMA_DIR)/embench/boardsupport.c $(DMA_DIR)/../../tests/atexit-workaround.c
+    $(DMA_DIR)/boardsupport.c $(DMA_DIR)/../../tests/atexit-workaround.c
 	mkdir -p $$(@D)
 	$(CROSS_CC) $(TARGET_CFLAGS) $(COPY_FLAGS) -fno-builtin-printf -fno-common \
 	  -I$(DMA_DIR) -DMEMORY_TEST_NAME='"$(1)"' \
-	  $(SUITE)/src/$(1)/$(1).c $(COMMON) $(DMA_DIR)/rocc_dma.c \
-	  $(DMA_DIR)/memcpy_wrap.c $(DMA_DIR)/embench/boardsupport.c \
+	  $(SUITE)/src/$(1)/$(1).c $(SUITE)/src/$(1)/checksum.c $(COMMON) $(DMA_DIR)/rocc_dma.c \
+	  $(DMA_DIR)/memcpy_wrap.c $(DMA_DIR)/boardsupport.c \
 	  $(DMA_DIR)/../../tests/atexit-workaround.c $(TARGET_LDFLAGS) $(WRAPS) -o $$@
 endef
 $(foreach name,$(NAMES),$(eval $(call BENCHMARK_RULES,$(name))))

@@ -28,10 +28,10 @@ from chia_dma.experiment import (
     Experiment,
     RunLock,
     fork,
-    read_accelerator_files,
+    read_candidate_files,
     read_json,
 )
-from chia_dma.runtime import Runtime, prepare, prepare_benchmarks
+from chia_dma.runtime import Runtime, prepare
 
 
 def run_experiment(configuration, run_directory, action, candidate_id=None):
@@ -45,7 +45,6 @@ def run_experiment(configuration, run_directory, action, candidate_id=None):
         with Runtime(configuration, run_directory), closing(
             Experiment(configuration, run_directory)
         ) as experiment:
-            prepare_benchmarks(configuration, run_directory, seed_directory)
             with closing(
                 DMAEvaluator(configuration, experiment, seed_directory)
             ) as evaluator:
@@ -119,7 +118,7 @@ def create_search_controller(configuration, experiment, evaluator):
 
 
 async def evaluate_seed(configuration, experiment, evaluator, seed_directory):
-    source = read_accelerator_files(Path(seed_directory) / "tree")
+    source = read_candidate_files(Path(seed_directory) / "tree")
     seed_solution = json.dumps({"proposal_id": "seed-dma", "source": source})
     seed_program = Program(
         id="seed-dma", solution=seed_solution, language="json", metadata={"island": 0}

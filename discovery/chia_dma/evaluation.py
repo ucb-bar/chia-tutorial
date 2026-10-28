@@ -1,13 +1,12 @@
-"""Build the candidate, run Embench, verify the results, and score it."""
+"""CHIA DAG: build the DMA simulator, run six memory tests, verify, then score."""
 
 import asyncio
 from contextlib import closing
 from dataclasses import asdict
-import importlib.util
 import json
 import math
+import re
 from pathlib import Path
-import shutil
 import subprocess
 import threading
 import time
@@ -20,11 +19,10 @@ from skydiscover.evaluation.evaluation_result import EvaluationResult
 
 from chia_dma.config import digest, frozen
 from chia_dma.experiment import (
-    read_accelerator_files,
+    read_candidate_files,
     read_json,
-    validate_accelerator_files,
+    validate_candidate_files,
     validate_integration,
-    write_json,
 )
 
 
@@ -35,8 +33,7 @@ class DMAEvaluator:
         self.seed = str(seed)
         self.tree = Path(seed) / "tree"
         self.stopped = threading.Event()
-        software_manifest = read_json(experiment.run / "software/manifest.json")
-        self.workloads = software_manifest["workloads"]
+        self.expected = read_json(self.tree / configuration["software"]["workloads"])
         dram_directory = self.tree / configuration["software"]["dram_ini"]
         self.dram_settings = {
             path.name: path.read_bytes() for path in dram_directory.glob("*.ini")
@@ -51,6 +48,7 @@ class DMAEvaluator:
             raise
 
     def evaluate(self, solution, program_id=""):
+        """Read the saved proposal, then follow build → simulate → parse → score."""
         candidate = json.loads(solution)
         candidate_id = candidate["proposal_id"]
         recorded_metrics = self.experiment.evaluation_result(candidate_id)
@@ -70,28 +68,36 @@ class DMAEvaluator:
                 self.configuration, self.seed, source, _chia_tag=cache_tag + "/build"
             )
             completed_builds = dict(self.collect({"build": build_task}))
-            simulator = completed_builds["build"]
+            built = completed_builds["build"]
+            (log_directory / "software-build.log").write_text(built["software_log"])
+            simulator = built["simulator"]
+            if simulator is None:
+                raise ValueError("Candidate C compilation failed")
             (log_directory / "build.log").write_text(
                 simulator.stdout + "\n" + simulator.stderr
             )
             if not simulator.success:
                 raise ValueError("Simulator build failed")
 
-            simulations = self.submit_benchmarks(ray.put(simulator), cache_tag)
+            simulations = self.submit_benchmarks(ray.put(simulator), built["software"], cache_tag)
             with closing(self.collect(simulations)) as completed:
                 for workload, result in completed:
                     log_file = log_directory / (workload + ".log")
                     log_file.write_text(result.log + "\n" + result.out)
-                    measurements[workload] = parse(
-                        asdict(result), self.configuration, self.tree
+                    measurements[workload] = parse.chia_remote_blocking(
+                        asdict(result), self.expected[workload]["checksum"]
                     )
 
             if candidate_id == "seed-dma":
                 reference = measurements
             else:
                 reference = self.experiment.benchmarks("seed-dma")
-            metrics, benchmarks = aggregate(
-                measurements, reference, self.configuration, source
+            metrics, benchmarks = aggregate.chia_remote_blocking(
+                measurements,
+                reference,
+                self.expected,
+                self.configuration["fitness"]["workload_weights"],
+                source,
             )
         except ValueError as error:
             metrics = {"validity": 0, "combined_score": 0.0}
@@ -104,15 +110,14 @@ class DMAEvaluator:
             metrics=metrics, artifacts={"proposal_id": candidate_id}
         )
 
-    def submit_benchmarks(self, simulator, cache_tag):
+    def submit_benchmarks(self, simulator, software, cache_tag):
         simulations = {}
         try:
-            for workload, specification in self.workloads.items():
-                elf_file = self.experiment.run / "software" / specification["file"]
+            for workload in self.expected:
                 simulations[workload] = simulate.chia_remote(
                     self.configuration,
                     simulator,
-                    elf_file.read_bytes(),
+                    software[workload],
                     workload,
                     self.dram_settings,
                     _chia_tag=cache_tag + "/" + workload,
@@ -153,52 +158,34 @@ class DMAEvaluator:
 
 
 def apply_source(tree, source, baseline):
-    validate_accelerator_files(source)
+    validate_candidate_files(source)
     validate_integration(source, baseline)
     for name, text in source.items():
-        (tree / name).write_text(text)
-
-
-@ChiaFunction(resources={"chipyard": 1}, max_retries=0)
-def build_benchmarks(configuration, run, seed):
-    tree = Path("/home/ray/dma-build")
-    baseline = read_accelerator_files(Path(seed) / "tree")
-    apply_source(tree, baseline, baseline)
-    with open(Path(run) / "software-build.log", "w") as log:
-        subprocess.run(
-            configuration["software"]["build_command"],
-            cwd=tree,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
-    target = Path(run) / "software"
-    target.mkdir(exist_ok=True)
-    benchmarks = sorted(
-        p.name
-        for p in (tree / configuration["software"]["benchmark_inventory"]).iterdir()
-        if p.is_dir()
-    )
-    workloads = {}
-    for benchmark in benchmarks:
-        elf_path = configuration["software"]["embench_elf"].format(benchmark=benchmark)
-        target_elf = target / (benchmark + ".elf")
-        shutil.copyfile(tree / elf_path, target_elf)
-        workloads[benchmark] = {
-            "file": target_elf.name,
-            "sha256": digest(target_elf.read_bytes()),
-        }
-    manifest = {"workloads": workloads}
-    write_json(target / "manifest.json", manifest)
-    return manifest
+        path = tree / name
+        if path.read_text() != text:
+            path.write_text(text)
 
 
 @ChiaFunction(resources={"chipyard": 1}, max_retries=0)
 def build(configuration, seed, source):
     tree = Path("/home/ray/dma-build")
-    apply_source(tree, source, read_accelerator_files(Path(seed) / "tree"))
+    apply_source(tree, source, read_candidate_files(Path(seed) / "tree"))
+    # Keep hardware and C compilation in the same serial build node: another
+    # candidate must not overwrite this checkout before its ELFs are captured.
+    compiled = subprocess.run(
+        configuration["software"]["build_command"], cwd=tree,
+        capture_output=True, text=True,
+    )
+    software_log = compiled.stdout + "\n" + compiled.stderr
+    if compiled.returncode:
+        return {"simulator": None, "software": {}, "software_log": software_log}
+    workloads = read_json(Path(seed) / "tree" / configuration["software"]["workloads"])
+    software = {
+        name: (tree / configuration["software"]["elf"].format(benchmark=name)).read_bytes()
+        for name in workloads
+    }
     hw = configuration["hardware"]
-    return ChiselBuildNode(
+    simulator = ChiselBuildNode(
         str(tree),
         hw["config"],
         config_package=hw["config_package"],
@@ -208,6 +195,7 @@ def build(configuration, seed, source):
         clean=hw["clean"],
         bundle_runtime_libs=True,
     ).build()
+    return {"simulator": simulator, "software": software, "software_log": software_log}
 
 
 @ChiaFunction(resources={"verilator_run": 1}, max_retries=0)
@@ -229,62 +217,69 @@ def simulate(configuration, artifact, content, name, ini):
     )
 
 
-def parse(result, configuration, seed):
-    """Delegate validation to the existing parser from the immutable seed."""
-    root = Path(seed)
-    path = root / configuration["software"]["metrics_parser"]
-    spec = importlib.util.spec_from_file_location("frozen_dma_metrics", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    data = module.parse(
-        result.get("log", "") + "\n" + result.get("out", ""),
-        success=result.get("success", False),
-        returncode=result.get("returncode"),
+@ChiaFunction(num_cpus=1, max_retries=0)
+def parse(result, expected_checksum):
+    """Verify one simulation using only its output and the fixed expected checksum."""
+    text = result.get("log", "") + "\n" + result.get("out", "")
+    require(
+        result.get("success") and result.get("returncode") == 0,
+        "Simulator failed or timed out",
     )
+    require(
+        not re.search(
+            r"Assertion failed|%Error|\*\*\* FAILED|DMA_PROTOCOL_FAIL|\bFAIL\b", text
+        ),
+        "Correctness/protocol failure",
+    )
+    software = single_record(text, "MEMORY_METRICS")
+    try:
+        require(
+            software["result"] == 0
+            and software["verification_result"] == 1
+            and software["benchmark_result"] == expected_checksum,
+            "Benchmark checksum verification failed",
+        )
+        require(software["benchmark_cycles"] > 0, "Invalid benchmark cycle count")
+        require(software["benchmark_instructions"] > 0, "Invalid retired instruction count")
+    except KeyError as error:
+        raise ValueError("Missing metric: " + str(error)) from error
+    # DMA activity is diagnostic: a valid co-design may use fewer copies or none.
     return {
-        **data["software"],
-        "hardware": data["hardware"],
-        "copy_events": data["copies"],
+        **software,
+        "cpi": software["benchmark_cycles"] / software["benchmark_instructions"],
+        "hardware": metric_records(text, "DMA_HW"),
+        "copy_events": metric_records(text, "DMA_COPY"),
     }
 
 
-def aggregate(records, reference, configuration, source):
+@ChiaFunction(num_cpus=1, max_retries=0)
+def aggregate(records, reference, workloads, weights, source):
+    """Maximize geometric-mean cycle speedup for all correctly checksummed tests."""
     vector = {}
     values = []
-    timed_bytes = timed_cycles = 0
-    weights = configuration["fitness"]["workload_weights"]
-    if not reference or set(reference) != set(records):
-        raise ValueError("Full Embench suite results are required")
+    total_cycles = total_instructions = 0
+    if not workloads or set(reference) != set(records) or set(records) != set(workloads):
+        raise ValueError("Full memory-test suite results are required")
     for name in sorted(reference):
         row, seed = records[name], reference[name]
+        if (
+            row["benchmark_result"] != workloads[name]["checksum"]
+            or row["verification_result"] != 1
+        ):
+            raise ValueError(f"{name}: memory-test checksum verification failed")
         if (row["benchmark_result"], row["verification_result"]) != (
             seed["benchmark_result"],
             seed["verification_result"],
         ):
             raise ValueError(f"{name}: deterministic benchmark output changed")
-        activity = (
-            "intercepted",
-            "offloaded",
-            "fallback",
-            "bytes",
-            "region_offloaded",
-            "region_bytes",
-        )
-        if any(row[k] != seed[k] for k in activity):
-            raise ValueError(
-                f"{name}: DMA activity changed; investigate before admission"
-            )
-        speedup = seed["benchmark_cycles"] / row["benchmark_cycles"]
-        vector[name] = {
-            **row,
-            "speedup": speedup,
-        }
-        if seed["region_offloaded"]:
-            values.append((speedup, weights.get(name, 1.0)))
-            timed_bytes += row["region_bytes"]
-            timed_cycles += row["benchmark_cycles"]
-    if not values:
-        raise ValueError("No Embench workload exercises DMA in its timed region")
+        cycles = row["benchmark_cycles"]
+        instructions = row["benchmark_instructions"]
+        require(cycles > 0 and instructions > 0, "Invalid iron-law counters")
+        speedup = seed["benchmark_cycles"] / cycles
+        vector[name] = {**row, "speedup": speedup, "cpi": cycles / instructions}
+        values.append((speedup, weights.get(name, 1.0)))
+        total_cycles += cycles
+        total_instructions += instructions
     weighted_log_speedup = 0
     total_weight = 0
     for speedup, weight in values:
@@ -301,9 +296,38 @@ def aggregate(records, reference, configuration, source):
         "combined_score": score,
         "validity": 1,
         "source_bytes": sum(len(s.encode()) for s in source.values()),
-        "dma_bytes_per_cycle": timed_bytes / timed_cycles,
+        "cycles": total_cycles,
+        "instructions": total_instructions,
+        "cpi": total_cycles / total_instructions,
         "source_hash": digest(source),
     }, vector
+
+
+def metric_records(text, tag):
+    result = []
+    for line in text.splitlines():
+        if not line.startswith(tag + " "):
+            continue
+        record = {}
+        for token in line.split()[1:]:
+            require(re.fullmatch(r"\w+=-?\d+", token), "Malformed metric record")
+            name, value = token.split("=")
+            require(name not in record, "Duplicate metric: " + name)
+            record[name] = int(value)
+        require(record.get("metrics_version") == 1, "Unsupported metrics version")
+        result.append(record)
+    return result
+
+
+def single_record(text, tag):
+    found = metric_records(text, tag)
+    require(len(found) == 1, "Expected one " + tag + " completion record")
+    return found[0]
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
 
 
 def evaluate(program_path):

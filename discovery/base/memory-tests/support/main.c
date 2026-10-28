@@ -7,9 +7,10 @@ int main(int argc, char **argv)
     (void)argc;
     (void)argv;
     initialise_board();
-    initialise_benchmark();
     start_trigger();
-    int result = benchmark();
+    initialise_benchmark();
+    benchmark();
+    int result = benchmark_checksum();
     stop_trigger();
     int valid = verify_benchmark(result);
     printf("MEMORY_TEST name=%s checksum=%d verification_result=%d\n",

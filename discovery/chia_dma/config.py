@@ -8,10 +8,18 @@ import os
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWLIST = (
+HARDWARE_FILES = (
     "generators/chipyard/src/main/scala/dma/DMAController.scala",
     "generators/chipyard/src/main/scala/dma/RoCCDMA.scala",
 )
+SOFTWARE_FILES = tuple(
+    f"tests/memory-tests/src/{name}/{name}.c"
+    for name in (
+        "copy-small", "copy-stream", "copy-gather",
+        "copy-scatter", "copy-chain", "copy-mixed",
+    )
+)
+ALLOWLIST = HARDWARE_FILES + SOFTWARE_FILES
 
 
 def digest(value):
@@ -37,9 +45,21 @@ def load(path=ROOT / "config.yaml"):
     for key in ("storage", "chia", "skydiscover", "evolve_flows"):
         configuration[key] = str((ROOT / configuration[key]).resolve())
     configuration["base"]["files"] = {
-        name: digest((ROOT / "base" / name).read_bytes())
-        for name in ("chipyard.patch", "prepare.sh")
+        str(path.relative_to(ROOT / "base")): digest(path.read_bytes())
+        for pattern in (
+            "chipyard.patch",
+            "prepare.sh",
+            "memory-tests/Makefile",
+            "memory-tests/workloads.json",
+            "memory-tests/check.py",
+            "memory-tests/src/*/*.c",
+            "memory-tests/support/*.[ch]",
+        )
+        for path in sorted((ROOT / "base").glob(pattern))
     }
+    configuration["base"]["evaluator"] = digest(
+        (ROOT / "chia_dma/evaluation.py").read_bytes()
+    )
     for backend in configuration["agent"]["backends"].values():
         backend["credentials"] = str((ROOT / backend["credentials"]).resolve())
     workers = configuration["cluster"]["available_node_types"]
@@ -52,10 +72,12 @@ def load(path=ROOT / "config.yaml"):
         raise ValueError(
             "Each private build checkout requires one serial chipyard slot; increase num_workers for parallel builds"
         )
-    if tuple(configuration["hardware"]["allowlist"]) != ALLOWLIST:
+    if tuple(configuration["hardware"]["allowlist"]) != HARDWARE_FILES:
         raise ValueError(
             "The DMA implementation allowlist is fixed; establish a new integration to expand it"
         )
+    if tuple(configuration["software"]["allowlist"]) != SOFTWARE_FILES:
+        raise ValueError("The six editable C workload files are fixed")
     if configuration["search"]["type"] != "openevolve_native":
         raise ValueError("This tutorial uses SkyDiscover openevolve_native")
     configuration["_config_file"] = str(ROOT / "backend.yaml")

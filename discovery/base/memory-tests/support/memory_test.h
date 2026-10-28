@@ -23,15 +23,14 @@ static inline uint32_t fold(uint32_t hash, uint64_t word)
 
 void fill_pattern(uint64_t *data, size_t words);
 void fill_guard(uint64_t *data, size_t words);
-int check_pattern(const uint64_t *data, size_t words);
 uint32_t checksum(const uint64_t *data, size_t words);
 
 void initialise_board(void);
 void start_trigger(void);
 void stop_trigger(void);
 void initialise_benchmark(void);
-void warm_caches(int heat);
-int benchmark(void) __attribute__((noinline));
+void benchmark(void) __attribute__((noinline));
+int benchmark_checksum(void);
 int verify_benchmark(int result);
 
 #endif

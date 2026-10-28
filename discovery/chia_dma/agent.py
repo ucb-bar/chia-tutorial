@@ -9,62 +9,51 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from chia.base.ChiaFunction import ChiaFunction, get, chia_cancel
 from chia.base.tools.BashTool import BashTool
 from skydiscover.llm.base import LLMInterface, LLMResponse
-from .experiment import save_proposal, load_proposal, read_accelerator_files
+from .experiment import save_proposal, load_proposal, read_candidate_files
 
-CONSTRAINTS = """You are optimizing an existing, functional bare-metal RV64 RoCC DMA accelerator implemented in Chisel/Scala.
+CONSTRAINTS = """Co-design the RV64 RoCC DMA hardware and the six baremetal C workloads.
 
-Your objective is to make ONE focused microarchitectural improvement per iteration that could reduce DMA latency, improve throughput, reduce stalls, or improve hardware efficiency.
+OBJECTIVE
+Minimize total cycles for each correctly checksummed test. At the modeled fixed
+clock, time = instructions * CPI / frequency, so minimize instructions * CPI.
+The score is the weighted geometric mean of seed cycles / candidate cycles
+across ALL six tests. Retired instructions and CPI explain the result; neither
+IPC nor DMA throughput is the objective by itself.
 
-The evolutionary evaluator will independently compile, test, benchmark, and measure your changes. Your responsibility is only to produce a valid candidate implementation.
+CORRECTNESS
+The only workload correctness condition is each test's original checksum.
+A fixed checksum.c computes the checksum from the actual output storage, and
+workloads.json holds the expected values. Both are read-only. The harness times
+initialization, benchmark execution, and checksum calculation together.
+You may change algorithms, data movement, layout, batching, and DMA usage.
+You need not preserve memcpy call counts, bytes transferred, intermediate
+states, or DMA use. Fixed-input precomputation is allowed by this checksum-only
+objective. Do not change or bypass the checksum reader or measurement harness.
 
-HARD CONSTRAINTS:
-- Preserve the existing RV64 custom0 instruction ABI, including command encoding, arguments, responses, and completion behavior.
-- Preserve all validation, status, error, and unsupported-request semantics.
-- Preserve memory ordering, cache coherence, and DMA correctness for all supported transfers.
-- Maintain correct TileLink ready/valid handshakes, request/response tracking, backpressure handling, and transaction completion.
-- Continue using only the existing coherent tlNode memory interface. Do not introduce additional TileLink ports or memory paths.
-- Keep WithRoCCDMA and the disabled io.mem assignments unchanged.
-- Do not modify Rocket's datapath, caches, memory hierarchy, interconnect, or SoC topology.
-- Do not modify software, benchmarks, tests, instrumentation, counters, evaluator logic, or fitness calculations.
-- Do not specialize behavior for particular benchmarks, input patterns, memory addresses, or evaluation conditions.
+EDITABLE FILES
+- generators/chipyard/src/main/scala/dma/DMAController.scala
+- generators/chipyard/src/main/scala/dma/RoCCDMA.scala
+- tests/memory-tests/src/copy-small/copy-small.c
+- tests/memory-tests/src/copy-stream/copy-stream.c
+- tests/memory-tests/src/copy-gather/copy-gather.c
+- tests/memory-tests/src/copy-scatter/copy-scatter.c
+- tests/memory-tests/src/copy-chain/copy-chain.c
+- tests/memory-tests/src/copy-mixed/copy-mixed.c
 
-EDITING RULES:
-- Use dma_bash_run_command to inspect and edit files under /workspace.
-- ONLY the two existing accelerator Scala files are writable. Do not modify any other files.
-- Modify the existing files in place. They are bind-mounted: never delete, rename, move, or replace the mounted files or their inodes.
-- Preserve existing public interfaces and integration points.
-- Avoid unrelated refactoring, formatting changes, or large rewrites.
-- Make exactly ONE small, concrete, logically coherent optimization per iteration.
+Use dma_bash_run_command to edit these mounted files in place; do not delete,
+rename, or replace their inodes. The fixed SoC integration (WithRoCCDMA and the
+disabled io.mem assignments), checksum readers, output storage definitions,
+manifest, Makefile, runtime, counters, and evaluator are not editable.
 
-OPTIMIZATION GUIDANCE:
-- Inspect the existing implementation and identify a specific opportunity for improvement before editing.
-- Prefer changes with a clear hardware-performance rationale, such as eliminating unnecessary FSM cycles, reducing stalls, improving request scheduling, reducing redundant logic, or improving datapath utilization.
-- Consider hardware cost and critical-path impact. More parallelism or buffering is not automatically better.
-- Do not introduce speculative operations that could violate correctness, ordering, or coherence.
-- Preserve functionality across different transfer sizes, alignments, cache states, and memory response latencies.
-- Ensure the change is compatible with the existing Chisel/Scala interfaces and remains synthesizable.
-- Do not add artificial shortcuts, hardcoded results, benchmark detection, or other mechanisms intended to manipulate performance measurements.
-- If an optimization requires changing a protected interface or file, choose a different optimization.
+WORKFLOW
+1. Read the selected parent's hardware, C code, and recorded cycle/instruction data.
+2. Choose a focused hardware/software change that could reduce total cycles.
+3. Edit hardware, C workloads, or both, preserving their callable interfaces.
+4. Finish with a short description and the expected instruction-count/CPI tradeoff.
 
-EXECUTION:
-1. Inspect the relevant accelerator source code.
-2. Identify one specific microarchitectural bottleneck or inefficiency.
-3. Implement one small optimization directly in the permitted files.
-4. Review the change for correctness and compatibility.
-5. Finish immediately after the edit.
-
-Do NOT compile, elaborate, synthesize, run simulations, execute benchmarks, or invoke the evaluator. The evolutionary framework handles all validation and measurement.
-
-Do not claim a performance improvement without measurement.
-
-FINAL RESPONSE:
-Briefly report:
-- Which file(s) and logic were changed.
-- What single optimization was implemented.
-- Why it might improve latency, throughput, or hardware efficiency.
-- Any correctness or performance tradeoffs the evaluator should check.
-
-Do not make additional changes after completing the selected optimization.
+The framework rebuilds BOTH hardware and candidate C tests, runs all six, checks
+their checksums, and measures the results. Do not compile or run the evaluator
+inside this generation worker. Do not claim an improvement without measurement.
 """
 
 
@@ -131,7 +120,7 @@ def generate(configuration, sql, task):
             "response": result.result,
             "transcript": result.stream_result,
         }
-        source = read_accelerator_files("/workspace")
+        source = read_candidate_files("/workspace")
         return save_proposal(sql, task["id"], source, generation, remote=True)
     finally:
         tool.stop()

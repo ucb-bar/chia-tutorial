@@ -235,7 +235,7 @@ def load_proposal(sql, candidate_id, *, remote=False):
 
 def save_proposal(sql, candidate_id, source, generation, *, remote=False):
     """Save the proposal before generation returns; never replace it."""
-    validate_accelerator_files(source)
+    validate_candidate_files(source)
     args = (
         "UPDATE proposals SET source=?,source_hash=?,generation=?,backend=?,model=? WHERE id=? AND source IS NULL",
         (
@@ -368,14 +368,14 @@ def preserve_source(configuration):
     return seed_directory
 
 
-def read_accelerator_files(tree):
+def read_candidate_files(tree):
     return {name: (Path(tree) / name).read_text() for name in ALLOWLIST}
 
 
-def validate_accelerator_files(bundle):
+def validate_candidate_files(bundle):
     if not isinstance(bundle, dict) or set(bundle) != set(ALLOWLIST):
         raise ValueError(
-            "Candidate must contain exactly the two allowlisted implementation files"
+            "Candidate must contain exactly the two DMA files and six C workload files"
         )
     return bundle
 

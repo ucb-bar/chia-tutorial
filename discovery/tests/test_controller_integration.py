@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import shutil
 from pathlib import Path
 import time
 import pytest
@@ -14,7 +13,7 @@ from chia.base.bypass import Bypass
 from chia.trace.profiler import start_collector, stop_collector, reset_profiler
 from chia.chipyard.state_def import BuildArtifact, RunResult
 from skydiscover.search.base_database import Program
-from chia_dma.config import load, ALLOWLIST, digest
+from chia_dma.config import load, ALLOWLIST, SOFTWARE_FILES, digest
 from chia_dma.experiment import (
     read_json,
     write_json,
@@ -80,29 +79,16 @@ def flow(tmp_path, monkeypatch, request, base_tree):
             1
         ]: "class Adapter {\n io.mem.req.valid := false.B\n}\nclass WithRoCCDMA() extends Config(fixed)\n",
     }
+    source.update({name: "/* candidate C workload */\n" for name in SOFTWARE_FILES})
     for name, text in source.items():
         p = tree / name
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
-    fixture = root / "tests/fixtures/embench-observation.txt"
-    parser = tree / configuration["software"]["metrics_parser"]
-    parser.parent.mkdir(parents=True)
-    parser.write_text(
-        (base_tree / configuration["software"]["metrics_parser"]).read_text()
-    )
+    fixture = root / "tests/fixtures/memory-observation.txt"
+    specifications = read_json(base_tree / configuration["software"]["workloads"])
+    write_json(tree / configuration["software"]["workloads"], specifications)
     output = fixture.read_text()
     elf = b"fixture ELF"
-    write_json(
-        run / "software/manifest.json",
-        {
-            "workloads": {
-                n: {"file": n + ".elf", "sha256": digest(elf)}
-                for n in ("aha-mont64", "crc32")
-            }
-        },
-    )
-    for name in ("aha-mont64", "crc32"):
-        (run / "software" / (name + ".elf")).write_bytes(elf)
     counts = Counts.remote()
 
     @ChiaFunction(resources={"generation": 1})
@@ -142,7 +128,7 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     def build(configuration, seed, child):
         ray.get(counts.add.remote("build"))
         validate_integration(child, source)
-        return BuildArtifact(
+        simulator = BuildArtifact(
             "fixture",
             b"ELF",
             "fixture",
@@ -154,24 +140,36 @@ def flow(tmp_path, monkeypatch, request, base_tree):
             "",
             0,
         )
+        return {
+            "simulator": simulator,
+            "software": {name: elf for name in specifications},
+            "software_log": "fixture C compiler output",
+        }
 
     @ChiaFunction(resources={"verilator_run": 1})
     def simulate(configuration, artifact, content, name, ini):
         ray.get(counts.add.remote("simulate"))
-        return RunResult(name, output, "", 0, True)
+        log = output.replace(
+            "benchmark_result=1",
+            "benchmark_result=" + str(specifications[name]["checksum"]),
+        )
+        return RunResult(name, log, "", 0, True)
 
     monkeypatch.setattr(agent, "generate", generate)
     monkeypatch.setattr(evaluation, "build", build)
     monkeypatch.setattr(evaluation, "simulate", simulate)
 
-    def aggregate(records, reference, configuration, source):
+    @ChiaFunction(num_cpus=1)
+    def aggregate(records, reference, workloads, weights, source):
         assert set(reference) == set(records)
         return (
             {
                 "validity": 1,
                 "combined_score": 1.0,
                 "source_bytes": sum(map(len, source.values())),
-                "dma_bytes_per_cycle": 1.0,
+                "cycles": 480,
+                "instructions": 240,
+                "cpi": 2.0,
             },
             {},
         )
@@ -219,7 +217,6 @@ def test_tutorial_flow_evaluates_seed_before_search(flow):
     configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
     configuration["search"]["iterations"] = 0
     fresh_run = tmp_path / "fresh-run"
-    shutil.copytree(experiment.run / "software", fresh_run / "software")
     fresh = Experiment(configuration, fresh_run)
     try:
         evaluator = DMAEvaluator(configuration, fresh, seed)
@@ -244,7 +241,7 @@ def test_full_controller_concurrent_context_invalid_cache_profile_and_resume(flo
     )
     values, peak = get(counts.read.remote())
     assert peak == 2
-    assert values == {"build": 3, "simulate": 4, "generate": 2}
+    assert values == {"build": 3, "simulate": 12, "generate": 2}
     requests = [r for r in experiment.selections() if r["kind"] == "search"]
     assert {r["island"] for r in requests} == {0, 1}
     valid = next(r for r in requests if r["island"] == 0)
@@ -277,7 +274,7 @@ def test_full_controller_concurrent_context_invalid_cache_profile_and_resume(flo
         assert result.metrics["validity"] == 1
         current, _ = get(counts.read.remote())
         assert current["build"] == values["build"] + int(flush)
-        assert current["simulate"] == values["simulate"] + 2 * int(flush)
+        assert current["simulate"] == values["simulate"] + 6 * int(flush)
         assert current["generate"] == 2
     experiment.close()
     restored = Experiment(configuration, experiment.run)
@@ -413,7 +410,7 @@ def test_historical_fork_retains_pending_context_excludes_future_and_replay_is_i
         )
         assert (
             after["build"] == before["build"] + 1
-            and after["simulate"] == before["simulate"] + 2
+            and after["simulate"] == before["simulate"] + 6
         )
         assert child.admitted == {"seed-dma", selected["id"]}
         assert (experiment.run / "latest.json").read_bytes() == original_latest

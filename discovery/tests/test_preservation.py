@@ -5,8 +5,79 @@ import shutil
 import subprocess
 import pytest
 import yaml
-from chia_dma.config import ALLOWLIST, ROOT, digest, load
-from chia_dma.experiment import preserve_source, read_json, read_accelerator_files
+from chia_dma.config import ALLOWLIST, ROOT, SOFTWARE_FILES, digest, frozen, load
+from chia_dma.experiment import preserve_source, read_json, read_candidate_files
+
+
+def test_build_recompiles_candidate_c_and_captures_its_elf(tmp_path, base_tree, monkeypatch):
+    from types import SimpleNamespace
+    from chia_dma import evaluation
+
+    tree = tmp_path / "worker"
+    seed = tmp_path / "seed"
+    shutil.copytree(base_tree, tree)
+    shutil.copytree(base_tree, seed / "tree")
+    source = read_candidate_files(base_tree)
+    configuration = load()
+    configuration["software"]["build_command"] = [
+        "make", "-s", "-C", "tests/memory-tests", "-j2", "host",
+    ]
+    configuration["software"]["elf"] = "tests/memory-tests/build/native/{benchmark}"
+    monkeypatch.setattr(evaluation, "Path", lambda p: tree if p == "/home/ray/dma-build" else Path(p))
+    simulator = SimpleNamespace(success=True)
+    monkeypatch.setattr(evaluation, "ChiselBuildNode",
+                        lambda *args, **kwargs: SimpleNamespace(build=lambda: simulator))
+    original = evaluation.build._chia_original(configuration, seed, source)
+    changed = dict(source)
+    changed[SOFTWARE_FILES[0]] = "void initialise_benchmark(void) {}\nvoid benchmark(void) {}\n"
+    candidate = evaluation.build._chia_original(configuration, seed, changed)
+    assert original["software"]["copy-small"] != candidate["software"]["copy-small"]
+    for result, expected_exit in ((original, 0), (candidate, 1)):
+        executable = tmp_path / "captured-test"
+        executable.write_bytes(result["software"]["copy-small"])
+        executable.chmod(0o755)
+        assert subprocess.run([str(executable)], capture_output=True).returncode == expected_exit
+    checksum = "tests/memory-tests/src/copy-small/checksum.c"
+    assert (tree / checksum).read_bytes() == (base_tree / checksum).read_bytes()
+    changed[SOFTWARE_FILES[0]] = "#error invalid candidate C\n"
+    failed = evaluation.build._chia_original(configuration, seed, changed)
+    assert failed["simulator"] is None and "invalid candidate C" in failed["software_log"]
+
+
+def test_generation_mounts_all_candidate_files_but_not_checksum_readers(tmp_path, base_tree):
+    from chia_dma.runtime import render
+
+    seed = tmp_path / "seed"
+    shutil.copytree(base_tree, seed / "tree")
+    run = tmp_path / "run"
+    run.mkdir()
+    deployment = yaml.safe_load(render(load(), run, seed).read_text())
+    for index in (0, 1):
+        options = deployment["available_node_types"][f"generation-{index}"]["docker"]["run_options"]
+        writable = [option for option in options if f"src={run}/work/" in option]
+        assert len(writable) == 8
+        assert all(any(f"dst=/workspace/{name}'" in option for option in writable) for name in ALLOWLIST)
+        assert not any("checksum.c" in option for option in writable)
+
+
+def test_c_sources_and_evaluator_change_the_frozen_contract(tmp_path, monkeypatch):
+    from chia_dma import config
+
+    shutil.copytree(ROOT / "base", tmp_path / "base",
+                    ignore=shutil.ignore_patterns("build", "__pycache__"))
+    (tmp_path / "chia_dma").mkdir()
+    shutil.copyfile(ROOT / "chia_dma/evaluation.py", tmp_path / "chia_dma/evaluation.py")
+    for name in ("backend.yaml", "config.yaml"):
+        shutil.copyfile(ROOT / name, tmp_path / name)
+    monkeypatch.setattr(config, "ROOT", tmp_path)
+    before = frozen(config.load(tmp_path / "config.yaml"))
+    source = tmp_path / "base/memory-tests/src/copy-small/copy-small.c"
+    source.write_text(source.read_text() + "\n/* changed workload */\n")
+    after = frozen(config.load(tmp_path / "config.yaml"))
+    assert digest(before) != digest(after)
+    evaluator = tmp_path / "chia_dma/evaluation.py"
+    evaluator.write_text(evaluator.read_text() + "\n# changed verifier\n")
+    assert digest(after) != digest(frozen(config.load(tmp_path / "config.yaml")))
 
 
 def test_image_seed_is_immutable_reusable_and_restores_candidates(
@@ -40,17 +111,18 @@ def test_image_seed_is_immutable_reusable_and_restores_candidates(
     assert seed.name == digest(manifest)
     assert preserve_source(configuration) == seed and len(calls) == 1
     assert not (seed / "tree" / ALLOWLIST[0]).stat().st_mode & 0o222
-    assert len(list((seed / "tree/tests/embench-iot/src").iterdir())) == 19
+    assert len(list((seed / "tree/tests/memory-tests/src").iterdir())) == 6
+    assert not (seed / "tree/tests/embench-iot").exists()
     restored = tmp_path / "restored"
     shutil.copytree(seed / "tree", restored)
-    parent = read_accelerator_files(seed / "tree")
+    parent = read_candidate_files(seed / "tree")
     candidate = {name: text + "// candidate\n" for name, text in parent.items()}
     for name, text in candidate.items():
         (restored / name).chmod(0o644)
         (restored / name).write_text(text)
-    assert read_accelerator_files(restored) == candidate
-    parser = configuration["software"]["metrics_parser"]
-    assert (restored / parser).read_bytes() == (base_tree / parser).read_bytes()
+    assert read_candidate_files(restored) == candidate
+    test = "tests/memory-tests/src/copy-small/checksum.c"
+    assert (restored / test).read_bytes() == (base_tree / test).read_bytes()
 
 
 @pytest.mark.parametrize("repository", ["none", "unborn", "committed"])
@@ -65,7 +137,7 @@ def test_copied_loop_prepares_and_relocates_without_requiring_a_commit(
         ROOT,
         copied,
         ignore=shutil.ignore_patterns(
-            ".deps", ".venv", "experiments", "__pycache__", ".pytest_cache", ".git"
+            ".deps", ".venv", "build", "experiments", "__pycache__", ".pytest_cache", ".git"
         ),
     )
     if repository != "none":

@@ -1,9 +1,8 @@
 # Fixed tutorial implementation settings; edit config.yaml for normal use.
 # ${CPUS} is resolved to the host CPU affinity count when loading.
-# Chipyard checkout shipped in the pinned build image; base/chipyard.patch adds DMA/Embench.
+# Chipyard comes from the pinned build image; base/ adds DMA and six memory tests.
 base:
   chipyard_revision: 4ab72313087580a44d647b52923389a06ec0712f
-  embench_revision: 09c2ed8c3b7008c95d08b038de4a3f6dc103ed70
 
 storage: ./experiments
 
@@ -65,7 +64,7 @@ search:
   archive_size: 100
   feature_dimensions:
   - source_bytes
-  - dma_bytes_per_cycle
+  - instructions
   feature_bins: 8
   exploration_ratio: 0.2
   exploitation_ratio: 0.7
@@ -73,8 +72,8 @@ search:
   migration_interval: 2
   migration_rate: 0.1
   island_guidance:
-  - Reduce small-copy latency and setup overhead.
-  - Increase large-copy throughput and overlap accelerator-local requests.
+  - Reduce instruction count through C algorithm and data-layout changes.
+  - Reduce cycles and memory stalls through coordinated C and DMA changes.
   type: openevolve_native
 
 hardware:
@@ -91,17 +90,23 @@ hardware:
   clean: false
 
 software:
-  metrics_parser: software/rocc-dma/scripts/metrics.py
-  build_command: [make, -C, software/rocc-dma, embench]
-  benchmark_inventory: tests/embench-iot/src
-  embench_elf: software/rocc-dma/build/embench/src/{benchmark}/{benchmark}
+  allowlist:
+  - tests/memory-tests/src/copy-small/copy-small.c
+  - tests/memory-tests/src/copy-stream/copy-stream.c
+  - tests/memory-tests/src/copy-gather/copy-gather.c
+  - tests/memory-tests/src/copy-scatter/copy-scatter.c
+  - tests/memory-tests/src/copy-chain/copy-chain.c
+  - tests/memory-tests/src/copy-mixed/copy-mixed.c
+  build_command: [make, -C, tests/memory-tests, '-j${CPUS}', baremetal]
+  workloads: tests/memory-tests/workloads.json
+  elf: tests/memory-tests/build/src/{benchmark}/{benchmark}
   dram_ini: generators/testchipip/src/main/resources/dramsim2_ini
   random_seed: 42
   plusargs:
     +cycle-count: ''
     +loadmem: /test.elf
-  timeout_cycles: 1000000000
-  timeout_seconds: 10800
+  timeout_cycles: 10000000
+  timeout_seconds: 300
 
 fitness:
   workload_weights: {}
@@ -127,7 +132,6 @@ cluster:
       - export CHIA_CPUS=${CPUS}
       worker_setup_commands:
       - &python_setup python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1 pydantic==2.12.4
-      - python -m pip install --disable-pip-version-check scons==4.11.1
       - mkdir -p /home/ray/dma-build
       - cp -a ${SEED}/tree/. /home/ray/dma-build/
       - chmod -R u+w /home/ray/dma-build
@@ -193,6 +197,13 @@ cluster:
         - --mount 'type=bind,src=${CHIA},dst=/opt/chia,readonly'
         - --mount 'type=bind,src=${SKY},dst=/opt/skydiscover,readonly'
         - --mount 'type=bind,src=${SEED}/tree,dst=/workspace,readonly'
-        - --mount 'type=bind,src=${WORK}/DMAController.scala,dst=/workspace/generators/chipyard/src/main/scala/dma/DMAController.scala'
-        - --mount 'type=bind,src=${WORK}/RoCCDMA.scala,dst=/workspace/generators/chipyard/src/main/scala/dma/RoCCDMA.scala'
+        # Writable candidate files overlay the read-only seed above.
+        - --mount 'type=bind,src=${WORK}/generators/chipyard/src/main/scala/dma/DMAController.scala,dst=/workspace/generators/chipyard/src/main/scala/dma/DMAController.scala'
+        - --mount 'type=bind,src=${WORK}/generators/chipyard/src/main/scala/dma/RoCCDMA.scala,dst=/workspace/generators/chipyard/src/main/scala/dma/RoCCDMA.scala'
+        - --mount 'type=bind,src=${WORK}/tests/memory-tests/src/copy-small/copy-small.c,dst=/workspace/tests/memory-tests/src/copy-small/copy-small.c'
+        - --mount 'type=bind,src=${WORK}/tests/memory-tests/src/copy-stream/copy-stream.c,dst=/workspace/tests/memory-tests/src/copy-stream/copy-stream.c'
+        - --mount 'type=bind,src=${WORK}/tests/memory-tests/src/copy-gather/copy-gather.c,dst=/workspace/tests/memory-tests/src/copy-gather/copy-gather.c'
+        - --mount 'type=bind,src=${WORK}/tests/memory-tests/src/copy-scatter/copy-scatter.c,dst=/workspace/tests/memory-tests/src/copy-scatter/copy-scatter.c'
+        - --mount 'type=bind,src=${WORK}/tests/memory-tests/src/copy-chain/copy-chain.c,dst=/workspace/tests/memory-tests/src/copy-chain/copy-chain.c'
+        - --mount 'type=bind,src=${WORK}/tests/memory-tests/src/copy-mixed/copy-mixed.c,dst=/workspace/tests/memory-tests/src/copy-mixed/copy-mixed.c'
         - --mount 'type=bind,src=${CREDENTIALS},dst=/credentials,readonly'

@@ -1,15 +1,17 @@
 # DMA discovery with CHIA and SkyDiscover
 
-This tutorial evolves the two DMA accelerator Scala files and evaluates them
-against Embench. CHIA deploys the workers and runs/caches builds and simulations;
+This tutorial co-designs two DMA accelerator Scala files and six baremetal C
+workloads, preserving each workload’s original checksum. CHIA deploys the workers and runs/caches
+builds and simulations;
 SkyDiscover's `DiscoveryController` owns the search through `openevolve_native`.
 
 ```mermaid
 flowchart LR
     parent[SkyDiscover selects parent] --> agent[Generate candidate]
-    agent --> build[Build simulator]
-    build --> benchmarks[Run Embench in parallel]
-    benchmarks --> score[Verify and score]
+    agent --> build[Build candidate hardware and C tests]
+    build --> benchmarks[Simulate six memory tests in parallel]
+    benchmarks --> verify[Parse and verify each result]
+    verify --> score[Score against seed]
     score --> checkpoint[Admit valid candidate and checkpoint]
     checkpoint --> parent
 ```
@@ -119,7 +121,8 @@ these are not upstream CHIA subcommands.
 
 The base implementation is [base/chipyard.patch](base/chipyard.patch), applied to
 the initialized Chipyard source in the published CHIA build image. It contains
-the DMA hardware, observer, software/parser, and required Embench sources. See
+the DMA hardware, passive observer, and DMA/HTIF runtime. Preparation also copies
+[base/memory-tests/](base/memory-tests/) into the immutable seed. See
 [base/README.md](base/README.md) for source revisions and baseline updates.
 No Chipyard submodule initialization or `build-setup.sh` is needed.
 
@@ -155,7 +158,7 @@ chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 
 `prepare` launches the pinned CHIA build image, applies the bundled patch, and
 preserves a complete read-only source seed. Its identity includes the image and
-patch/script hashes. Repeated preparation reuses that seed; checkpoint restores
+patch, preparation-script, evaluator, and C test hashes. Repeated preparation reuses that seed; checkpoint restores
 use the run's recorded seed. Native build workers copy it into a private checkout
 for `ChiselBuildNode`; generation sees it read-only. The original development
 checkout is never read or modified. `chia up` pulls the pinned worker images.
@@ -166,7 +169,7 @@ for a live fork.
 
 Antigravity/Claude binaries come from their upstream images. Codex is installed
 with pinned npm inside its generation container, using the upstream Claude
-image's Node runtime. SCons is installed inside the build container. Provider logins are copied
+image's Node runtime. Provider logins are copied
 from read-only mounts into a private worker home. Existing login files can be
 reused. Refresh expired credential files through the provider's container CLI
 and redeploy workers to refresh their private copies.
@@ -291,13 +294,14 @@ from the directory containing `loop.py`. Set `RUN` to the experiment to share:
 RUN=run-001
 tar -czf ../loop-tutorial.tar.gz \
   --exclude=__pycache__ --exclude=.writer.lock \
+  --exclude=base/memory-tests/build \
   --exclude="experiments/$RUN/cache" --exclude="experiments/$RUN/artifacts" \
   --exclude="experiments/$RUN/deployment" --exclude="experiments/$RUN/work" \
   *.py *.yaml chia_dma base tests README.md INTEGRATION.md pytest.ini \
   "experiments/$RUN" experiments/seeds
 ```
 
-This includes saved population/SQL state and frozen ELFs, preserves seed links
+This includes saved population/SQL hardware and C sources, preserves seed links
 and permissions, and leaves installed environments and generated work out.
 
 Attendees complete the Docker, SSH, provider login, and `uv` host setup under
@@ -428,20 +432,53 @@ backup API rather than copying `metrics.db` alone while its WAL is active.
 ## Evaluation, replay, and validation
 
 Each generation initializes a separate workspace from its selected parent. The
-frozen tree is read-only and only the two accelerator files are writable; other
+frozen tree is read-only except for the two accelerator files and six C workload
+files; other
 candidates, evaluator inputs, and historical SQL proposals are not writable or
 mounted as candidate archives. BashTool runs on that same restricted worker.
 The native CHIA trusted-agent/host-network model applies.
 
-One simulator build is shared by 19 independent Embench ELF tasks. Both the seed
-and candidates run DMA mode. Embench’s existing SCons build runs through one
-Makefile target in the build container. The evaluator checks simulator assertions,
-Embench verification, candidate output agreement, full coverage,
-and DMA activity consistency. Fitness is a weighted
-geometric mean of seed/candidate timed cycles on workloads with timed DMA
-activity. Remaining workloads are correctness checks. Invalid candidates cannot
-enter valid native archives. MAP-Elites uses source size and timed DMA bytes per
-benchmark cycle.
+One serial CHIA build node compiles the candidate C code and hardware, then
+returns the simulator and all six ELF byte strings together. This prevents one
+candidate from using another candidate’s executables in the shared checkout. Each candidate then follows these explicit CHIA nodes:
+
+| Node | Inputs | Output |
+| --- | --- | --- |
+| `build` | Configuration, immutable seed, candidate Scala and C sources | Simulator artifact, six ELF byte strings, compiler output |
+| `simulate` (one per test) | Configuration, simulator artifact, ELF bytes, test name, DRAM settings | Captured run result |
+| `parse` (one per result) | Run result and fixed expected checksum | Verified software/hardware measurements |
+| `aggregate` | Measurements, seed results, workload specifications, weights, candidate sources | Fitness and per-test metrics |
+
+The functions appear in execution order in `chia_dma/evaluation.py`. Parsing
+and scoring use their supplied data and do not read an experiment or load code
+from a seed. The existing controller adapter collects results and persists them
+through CHIA SQLite; it does not implement another task scheduler.
+
+The workload acceptance condition is the original checksum for all six tests.
+Each read-only `checksum.c` owns the output storage and computes its checksum;
+the editable workload cannot pass by returning the expected number. The fixed
+harness times initialization, execution, and checksum calculation together.
+There is no requirement to preserve copy counts, transferred bytes, intermediate
+states, or DMA use. DMA counters and copy events remain diagnostic output.
+
+The iron law is `time = instructions × CPI / frequency`. At the modeled fixed
+frequency, the objective is **total simulated cycles**, not IPC or DMA bandwidth.
+Fitness is the weighted geometric mean of `seed cycles / candidate cycles` over
+all six tests, including tests that use no DMA. Retired instructions and CPI are
+reported per test and in total. MAP-Elites uses source size and instruction count.
+This evaluates fixed-clock performance; it does not estimate synthesis Fmax or
+critical-path changes. See the [CS 61C performance equation](https://notes.cs61c.org/content/parallel-tlp/)
+and [RISC-V cycle/instruction counters](https://docs.riscv.org/reference/isa/priv/machine.html).
+
+With fixed inputs and checksum-only acceptance, precomputed outputs and checksum
+collisions are admissible. Requiring general inputs or minimum memory activity
+would be a different objective.
+
+Each simulation has a 300-second wall-time limit and a 10-million-cycle limit.
+Tests are scheduled across the configured simulation CPU slots. A time limit
+rejects a slow run; it does not establish that the baseline meets the tutorial's
+budget under parallel load. The new suite changes the frozen evaluation contract:
+**start a new run** rather than resuming a hardware-only or Embench checkpoint.
 
 Replay is an optional fresh evaluation of saved source, independent of restoring
 search state. It makes no generation call and does not change the population:
@@ -476,8 +513,9 @@ requirements, and validation evidence.
 | --- | --- |
 | `config.yaml` | CHIA cluster resources, container names/images, startup, and tutorial search controls. |
 | `backend.yaml` | Fixed implementation, deployment, and evaluation settings. |
-| `base/chipyard.patch` | DMA/Embench changes applied to the pinned build image’s Chipyard source. |
-| `base/prepare.sh` | Materialize that image-plus-patch source seed inside Docker. |
+| `base/chipyard.patch` | DMA hardware, observer, and HTIF runtime applied to the pinned build image’s Chipyard source. |
+| `base/prepare.sh` | Materialize the image, patch, and fixed memory-test sources inside Docker. |
+| `base/memory-tests/` | Six C tests, expected checksums, Makefile, and native correctness checks. |
 | `base/README.md` | Base source revisions and baseline update procedure. |
 | `bootstrap.py` | Prepare pinned CHIA/evolve-flows sources and install the host head's Python packages. |
 | `loop.py` | Experiment flow, seed evaluation, native controller setup, replay, and CLI commands. |
@@ -493,8 +531,7 @@ requirements, and validation evidence.
 | `tests/native_fixture.py` | Temporary localhost SSH fixture for native cluster tests. |
 | `tests/test_preservation.py` | Immutable seed reuse, candidate restoration, and archive relocation. |
 | `tests/conftest.py` | Load test source inputs from the bundled patch. |
-| `tests/fixtures/rtl-measurements.json` | Recorded Embench inputs for aggregation tests. |
-| `tests/fixtures/embench-observation.txt` | Recorded hardware plus synthetic software counters for parser integration. |
+| `tests/fixtures/memory-observation.txt` | Recorded hardware plus synthetic software counters for parser integration. |
 | `pytest.ini` | Test import paths. |
 | `README.md` | Tutorial procedure and file map. |
 | `INTEGRATION.md` | Infrastructure choices and validation evidence. |

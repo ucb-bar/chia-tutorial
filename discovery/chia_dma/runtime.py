@@ -14,10 +14,9 @@ from .experiment import (
     git,
     read_json,
     preserve_source,
-    read_accelerator_files,
+    read_candidate_files,
     write_json,
 )
-from .evaluation import build_benchmarks
 
 
 def prepare(configuration, run):
@@ -71,11 +70,13 @@ def render(configuration, run, seed):
     )
     deployment = expand(configuration["cluster"], bindings)
     generation_template = deployment["available_node_types"].pop("generation")
+    source = read_candidate_files(Path(seed) / "tree")
     for worker_index in range(generation_template["num_workers"]):
         workspace = Path(run) / "work" / f"generation-{worker_index}"
         workspace.mkdir(parents=True, exist_ok=True)
-        for name, text in read_accelerator_files(Path(seed) / "tree").items():
-            path = workspace / Path(name).name
+        for name, text in source.items():
+            path = workspace / name
+            path.parent.mkdir(parents=True, exist_ok=True)
             if not path.exists():
                 path.write_text(text)
         worker = expand(
@@ -135,16 +136,3 @@ class Runtime:
             stop_cache()
         finally:
             ray.shutdown()
-
-
-def prepare_benchmarks(configuration, run, seed):
-    path = run / "software/manifest.json"
-    manifest = (
-        read_json(path)
-        if path.exists()
-        else get(build_benchmarks.chia_remote(configuration, str(run), str(seed)))
-    )
-    for row in manifest["workloads"].values():
-        if digest((run / "software" / row["file"]).read_bytes()) != row["sha256"]:
-            raise ValueError("Frozen ELF changed")
-    return manifest

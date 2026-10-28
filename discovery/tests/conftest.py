@@ -1,5 +1,6 @@
 """Tutorial inputs come from the bundled patch, never the enclosing checkout."""
 
+import shutil
 import subprocess
 import pytest
 from chia_dma.config import ROOT
@@ -17,5 +18,9 @@ def base_tree(tmp_path_factory):
         ],
         cwd=tree,
         check=True,
+    )
+    shutil.copytree(
+        ROOT / "base/memory-tests", tree / "tests/memory-tests",
+        ignore=shutil.ignore_patterns("build", "__pycache__"),
     )
     return tree

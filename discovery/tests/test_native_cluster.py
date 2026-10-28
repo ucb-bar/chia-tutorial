@@ -10,7 +10,7 @@ import time
 import pytest
 import ray
 from chia.base.ChiaFunction import ChiaFunction, get
-from chia_dma.config import ALLOWLIST, ROOT
+from chia_dma.config import ALLOWLIST, ROOT, SOFTWARE_FILES
 from chia_dma.runtime import Runtime, render
 from native_fixture import native_ssh
 
@@ -30,7 +30,7 @@ def cluster(configuration, base, name, *, pools=False):
     run = base / (name + "-" + base.name[-8:])
     run.mkdir()
     seed = run / "seed"
-    for n in (*ALLOWLIST, "build.sbt", "software/benchmark.c"):
+    for n in (*ALLOWLIST, "build.sbt", "software/benchmark.c", "tests/memory-tests/src/copy-small/checksum.c"):
         p = seed / "tree" / n
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("FROZEN")
@@ -97,7 +97,9 @@ p=Path('/workspace/"""
             + """')
 print('PARENT='+p.read_text())
 p.write_text(p.read_text()+' edited')
-for name in ['/workspace/build.sbt','/workspace/software/benchmark.c','/opt/loop/chia_dma/evaluation.py']:
+c=Path('/workspace/tests/memory-tests/src/copy-small/copy-small.c')
+c.write_text(c.read_text()+' C edited')
+for name in ['/workspace/build.sbt','/workspace/software/benchmark.c','/opt/loop/chia_dma/evaluation.py','/workspace/tests/memory-tests/src/copy-small/checksum.c']:
  try: Path(name).write_text('FORBIDDEN')
  except OSError as error:
   assert error.errno in [errno.EROFS,errno.EACCES,errno.EPERM], str(error)
@@ -112,13 +114,13 @@ assert not Path('/opt/loop/experiments').exists()
         assert (Path("/workspace") / ALLOWLIST[0]).read_text() == mark + " edited"
         assert (Path("/workspace") / ALLOWLIST[1]).read_text() == mark
         from chia_dma.experiment import save_proposal
-        from chia_dma.experiment import read_accelerator_files
+        from chia_dma.experiment import read_candidate_files
 
         assert not Path(sql.db_path).exists()
         save_proposal(
             sql,
             mark,
-            read_accelerator_files("/workspace"),
+            read_candidate_files("/workspace"),
             {"response": "BashTool boundary proof"},
             remote=True,
         )
@@ -172,11 +174,12 @@ def test_native_generation_parent_separation_forbidden_writes_and_serial_reuse(
         assert len({r["node"] for r in results}) == 2
         for mark, result in zip(("parent-A", "parent-B", "parent-C"), results):
             assert "PARENT=" + mark in result["output"]
-            assert result["output"].count("DENIED=") == 3
+            assert result["output"].count("DENIED=") == 4
             assert (
                 experiment.load_proposal(mark)["source"][ALLOWLIST[0]]
                 == mark + " edited"
             )
+            assert experiment.load_proposal(mark)["source"][SOFTWARE_FILES[0]] == mark + " C edited"
         for a, b in [(results[i], results[j]) for i in range(3) for j in range(i)]:
             if a["node"] == b["node"]:
                 assert a["started"] >= b["ended"] or b["started"] >= a["ended"]
@@ -200,7 +203,7 @@ def test_native_generation_parent_separation_forbidden_writes_and_serial_reuse(
         experiment.close()
         assert all(
             (seed / "tree" / n).read_text() == "FROZEN"
-            for n in (*ALLOWLIST, "build.sbt", "software/benchmark.c")
+            for n in (*ALLOWLIST, "build.sbt", "software/benchmark.c", "tests/memory-tests/src/copy-small/checksum.c")
         )
     finally:
         ray.shutdown()
@@ -341,7 +344,7 @@ def cli_checksum_probe(configuration, source):
     from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
     from chia.base.tools.BashTool import BashTool
     from chia_dma.agent import make_agent
-    from chia_dma.experiment import read_accelerator_files
+    from chia_dma.experiment import read_candidate_files
 
     for name, text in source.items():
         (Path("/workspace") / name).write_text(text)
@@ -367,7 +370,7 @@ def cli_checksum_probe(configuration, source):
         return {
             "response": result.result,
             "transcript": result.stream_result,
-            "source": read_accelerator_files("/workspace"),
+            "source": read_candidate_files("/workspace"),
         }
     finally:
         tool.stop()

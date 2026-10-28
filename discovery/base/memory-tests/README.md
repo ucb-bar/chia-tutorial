@@ -23,32 +23,30 @@ set. The first five workloads use disjoint, 8-byte-aligned ranges and lengths
 eligible for the current DMA wrapper. The mixed workload also exercises software
 fallback; 112 calls, totaling 130,048 B, are eligible at the 64 B threshold.
 
-For comparison, the saved Embench RTL measurements in
-`../../tests/fixtures/rtl-measurements.json` include 1,686 intercepted calls in
-`nettle-sha256`, 249,600 offloaded bytes in `matmult-int`, 83,184 in `wikisort`,
-and 12,400 in `sglib-combined`. These are comparisons of **copy traffic**; total
-Embench CPU loads and stores were not measured. `/scratch/embench-iot` was
-inspected for workload shapes; these tests do not depend on that checkout.
-
 ## Correctness and measurement
 
-The tests expose Embench's `initialise_benchmark`, `warm_caches`, `benchmark`,
-and `verify_benchmark` entry points. Initialization creates position-dependent
-64-bit data and destination canaries. `benchmark()` performs the transfers and
-returns an order-sensitive, positive 31-bit checksum of the entire output,
-including padding. `verify_benchmark()` checks every output word or boundary
-byte against an expected layout, the fixed checksum, source preservation, and
-canaries. `copy-chain` checks both final buffers, accumulates observations of
-every intermediate copy, and latches transient canary failures.
+The six `src/NAME/NAME.c` files are editable co-design workloads. Each implements
+`initialise_benchmark()` and `benchmark()`. It may change algorithms, copying,
+data layout, batching, or DMA usage.
 
-`workloads.json` records expected checksums and traffic. `check.py` independently
-derives the expected final layouts in Python without executing the C copy loops.
-Copies and checksum computation are inside `start_trigger`/`stop_trigger`;
-initialization, full verification, and reporting are outside that interval but
-still contribute to simulation wall time. Success returns status 0 and prints
-`MEMORY_TEST`; a failed check returns 1. The existing board runtime also prints
-the normal `EMBENCH` record for the existing metrics parser. The RTL simulator
-supplies its usual `DMA_HW` and `DMA_COPY` records separately.
+Each neighboring `checksum.c` is fixed: it owns the output storage, computes the
+checksum, and compares it with the original expected value. The harness calls
+that reader after the candidate workload returns. Returning a constant from the
+editable workload cannot replace the checksum of its actual output buffers.
+The original 31-bit checksum algorithm and expected values are unchanged.
+
+The only functional acceptance condition is matching all six expected checksums.
+Full output equality, source preservation, unchanged intermediate states, copy
+counts, payload volume, and DMA use are not required. Fixed-input precomputation
+and checksum collisions are therefore admissible under this objective.
+`workloads.json` holds the fixed expected values and original traffic counts.
+`check.py` independently derives the baseline checksums in Python.
+
+The fixed harness times initialization, execution, and checksum calculation in
+one interval. `MEMORY_METRICS` reports `benchmark_cycles` and
+`benchmark_instructions`; CPI is their ratio. The score maximizes geometric-mean
+cycle speedup across all six tests at the modeled fixed clock. DMA observations
+are recorded for inspection. Reporting is outside the timed interval.
 
 ## Build and validate
 
@@ -71,8 +69,8 @@ make -C base/memory-tests -j6 check
 ```
 
 This checks all six results and exact copy call/byte counts, and requires each
-test to reject skipped copies, truncated copies, one-byte overruns, and source
-corruption. The traffic auditor and fault injection code are host-only.
+baseline test to reject skipped and truncated copies. These are development
+checks of the original workload, not fixed traffic constraints on evolved code. The traffic auditor and fault injection code are host-only.
 
 Baremetal builds use the existing DMA wrapper, board instrumentation, exit
 workaround, RV64GC ABI, and HTIF runtime. Set `DMA_DIR` to `software/rocc-dma`
@@ -84,23 +82,25 @@ make -C base/memory-tests -j6 baremetal \
   DMA_DIR=/path/to/prepared/tree/software/rocc-dma
 ```
 
-ELFs appear at `base/memory-tests/build/src/NAME/NAME`, matching Embench's
-directory convention. The worker can override `CROSS_CC`, `BUILD`,
+ELFs appear at `base/memory-tests/build/src/NAME/NAME`. The worker can override `CROSS_CC`, `BUILD`,
 `TARGET_CFLAGS`, and `TARGET_LDFLAGS`. The Makefile preserves real `memcpy` calls
 with `-fno-builtin-memcpy` and disables LTO. Host fortification is disabled for
 these builds because fortified inline copies would bypass the linker wrapper;
 the native traffic audit checks that interception works.
 
-This change stages the suite under `base/`; the active workload inventory and
-`backend.yaml` are unchanged. Before selecting it in the loop, include the suite
-in the preserved seed and its content hash, use this Makefile as the software
-build command, and set the inventory/ELF templates to its `src` and `build/src`
-directories. Each executable can then run as an independent CHIA task.
+The loop actively selects this suite in `backend.yaml`. Source preparation
+copies its build inputs into `tests/memory-tests/` in the preserved seed; their
+hashes enter the frozen evaluation contract. For every candidate, the serial `build`
+CHIA node applies the hardware and C sources and captures its simulator and all
+six ELFs. Six `simulate` calls run them, `parse` checks each fixed checksum, and
+`aggregate` scores cycle speedup against the seed. Source hashes include both
+hardware and C code, so a software-only edit gets a new build/evaluation key.
 
 ## Timing budget
 
-Defaults target a 3–5 minute **per-test RTL simulation** budget, with tests
-distributed across host cores. Calibrate on the tutorial machine under the
+The loop enforces a 300-second wall-time limit and a 10-million-cycle limit
+per test, with tests distributed across host cores. Calibrate on the tutorial
+machine under the
 intended parallel load: native execution and ISA simulation do not establish
 RTL wall time. Simulator compilation and agent generation remain separate costs.
 

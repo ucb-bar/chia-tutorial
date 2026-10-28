@@ -56,7 +56,7 @@ files. This configuration is single-host; bind paths are local to its Docker dae
 | Location | Tools and integration |
 | --- | --- |
 | Host head | `.venv` beside `loop.py`: Python 3.10.19/Ray 2.54.0, pinned CHIA, and SkyDiscover from the evolve-flows submodule. Bootstrap installs the selected OpenEvolve dependencies, omitting the unused AlphaEvolve backend. |
-| Build: CHIA chisel-build | Image Java/sbt/Verilator/RISC-V/C++ tools and dependency caches; setup installs pinned SCons inside the container. Ray uses the image's base Python 3.10.19 to match the head exactly. |
+| Build: CHIA chisel-build | Image Java/sbt/Verilator/RISC-V/C++ tools, Make, and dependency caches. Ray uses the image's base Python 3.10.19 to match the head exactly. |
 | Simulation: CHIA verilator-run | Image Python/Ray, spike-dasm, and runtime support; simulator/shared libraries arrive in the build artifact. |
 | Generation: CHIA Antigravity or Claude Code | Published provider executable; Codex uses the Claude image's Node/npm to install its pinned CLI in private scratch. |
 
@@ -74,14 +74,14 @@ merge overlays these on the fixed backend settings. Cache/bypass read their fixe
 the backend YAML. Host CPU affinity supplies compilation jobs and simulation
 slots automatically; both build heap settings are fixed at 32 GiB.
 [base/chipyard.patch](base/chipyard.patch) carries DMA hardware/configuration,
-observer, software/parser, and required Embench sources. `base/prepare.sh` runs in
+observer, and DMA/HTIF runtime. The six C tests come from `base/memory-tests/`. `base/prepare.sh` runs in
 the pinned build image, copies tracked Chipyard/submodule inputs, and applies the
 patch. The image's Chipyard revision is checked before applying it. Image digest,
-base revisions, and patch/script hashes identify the immutable seed; patch/script
-hashes also enter the frozen experiment contract. No host Chipyard source is read.
+base revision, patch/script hashes, evaluator hash, and C build-input hashes
+identify the immutable seed and enter the frozen experiment contract. No host Chipyard source is read.
 Builds use a fresh `/home/ray/dma-build` initialized from that preserved seed. Generation mounts the
-same seed read-only at `/workspace`, with only its two worker-specific Scala
-files writable. Each generation worker has one serial scheduling slot.
+same seed read-only at `/workspace`, with its two Scala and six C workload
+files writable. Checksum readers and instrumentation remain read-only. Each generation worker has one serial scheduling slot.
 
 Native BashTool uses public node affinity to stay inside its caller's restricted
 worker. CLI credentials/scratch live in a private temporary home. Ordinary host
@@ -119,9 +119,12 @@ would add code and lose callback/cancellation behavior.
 The retained collector uses standard Ray wait, CHIA get, and CHIA cancellation.
 It holds the callback handle until collection and passes only raw refs to
 wait/cancel. There is no second scheduler. The pipeline loads a SQL proposal,
-builds once, submits Embench ELF tasks, parses captured results through
-the frozen existing DMA parser, and calculates DMA-specific fitness. Simulator
-assertions and Embench verification remain enabled. Compilation
+compiles each candidate’s hardware and C sources in one serial build node,
+captures its six ELFs, submits their simulation tasks, then calls `parse` and
+`aggregate` CHIA nodes with explicit data inputs. No parser is dynamically
+loaded from the seed. Fixed checksums and simulator assertions remain enabled. Changed DMA activity
+is allowed; fitness scores all six tests by cycle speedup. Retired instructions
+and CPI explain the iron-law result at the modeled fixed clock. Compilation
 failure and invalid measurements reject a candidate; infrastructure timeout or
 interruption cancels unfinished tasks and leaves completed proposals recoverable.
 
@@ -176,24 +179,23 @@ Paths below are relative to `experiments/NAME/` beside `loop.py`, except for the
 | `latest.json` | Name of the latest committed checkpoint, used by resume. |
 | `checkpoints/SEQUENCE-SUFFIX/state.json` | Frozen settings hash, admitted candidate IDs, and generated/evaluated flags for SQL requests at that boundary. |
 | `checkpoints/SEQUENCE-SUFFIX/population/` | SkyDiscover's native program and population checkpoint files. |
-| `software/manifest.json` and `software/*.elf` | Frozen Embench inventory, ELF hashes, and toolchain provenance. Verified before evaluation/resume. |
 | `deployment/cluster.yaml` | Rendered native CHIA configuration with absolute paths. Regenerate after relocation; retain the old copy until its cluster is down. |
-| `work/generation-N/` | Transient two-file writable workspace for one serial generation worker. Reinitialized from the chosen parent before each invocation. |
+| `work/generation-N/` | Transient eight-file writable workspace for one serial generation worker. Reinitialized from the chosen parent before each invocation. |
 | `cache/` | CHIA's evictable expensive-task outputs. Not the authoritative proposal or population archive. |
 | `artifacts/ID/build.log` | Collected build stdout/stderr for a candidate. |
 | `artifacts/ID/BENCHMARK.log` | Collected DMA-mode simulator output. |
 | `artifacts/profile/ChiaProfileCollector.log` | Native CHIA JSONL task profiling; `chia viz-profile ... --format table` aggregates task durations. |
-| `software-build.log` | Embench compiler output. |
+| `artifacts/ID/software-build.log` | Candidate C compiler output. |
 | `driver.log`, `cluster-up.log` | Optional terminal captures created by the README's `tee` commands. |
 | `../seeds/HASH/manifest.json` and `tree/` | Complete image-plus-patch implementation/evaluation source and provenance hashes. Shared read-only across forks. |
 
 The `proposals` table is keyed by candidate `id`. It holds `parent`, `island`,
 `sequence`, `kind` (`seed`, `search`, or `replay`), selected request context, the
-two complete sources in JSON, `source_hash`, generation response/transcript,
+eight complete Scala/C sources in JSON, `source_hash`, generation response/transcript,
 provider/model, final numerical `metrics`, and native `program_id` linkage.
 A missing `source` means generation is unfinished; a present source with missing
 `metrics` means evaluation is unfinished. `metrics.validity = 0` means rejection.
-`combined_score`, `source_bytes`, and `dma_bytes_per_cycle` live in that metrics
+`combined_score`, `source_bytes`, `cycles`, `instructions`, and `cpi` live in that metrics
 JSON. A program ID by itself does not prove committed admission: check the
 checkpoint's `admitted` set.
 
@@ -211,15 +213,15 @@ provide worker diagnostics while tasks are still running.
 
 A standalone native population directory is insufficient for this tutorial:
 its program payloads refer to proposal IDs, and evaluation also needs SQL, the
-fixed source seed, frozen ELFs, and matching settings. Preserve the following:
+fixed source seed and matching settings. Candidate ELFs are rebuilt from the
+saved hardware/C source bundle or reused from the evictable CHIA build cache. Preserve the following:
 
 1. The selected committed checkpoint, including its `population/` and `state.json`.
-2. Consistent `metrics.db` history, `run.json`, `latest.json`, and the frozen
-   `software/` directory. Use `fork` to collect/filter this set while the source
+2. Consistent `metrics.db` history, `run.json`, and `latest.json`. Use `fork` to collect/filter this set while the source
    is running; do not copy a live SQLite main file without its WAL or a backup.
 3. The entire referenced seed directory, including `manifest.json`, the full
    tree, executable permissions, and symlinks. The seed is fixed and self-contained;
-   restoring sources overwrites its two Scala files in a private worker checkout.
+   restoring sources overwrites the two Scala and six C files in a private checkout.
 4. The matching loop implementation/configuration and pinned dependencies, plus
    the pinned published images, credentials, Docker, and SSH access.
 
@@ -236,7 +238,7 @@ and regenerates the deployment with local paths. It does not audit the seed's
 contents against its manifest.
 
 Historical forks remain optional: `fork` copies the selected native checkpoint,
-filtered SQL, and frozen ELFs, retaining a reference to the source seed. Raw
+filtered SQL, retaining a reference to the source seed. Raw
 logs, task caches, deployments, and workspaces remain in the source run.
 
 Compatibility is deliberately limited:
@@ -246,7 +248,7 @@ Compatibility is deliberately limited:
   `run.json` records a Git revision and dirty flag when available, not an archive
   of loop code. A copied loop needs no repository or commits: revision is null
   without a commit, and the dirty flag is null outside a repository.
-- `prepare` rejects a changed frozen configuration. Fixed baseline patch/script, hardware/software,
+- `prepare` rejects a changed frozen configuration. Fixed baseline patch/script, memory-test build inputs, evaluator code, hardware/software,
   fitness, native search policy, dependency pins, and build/simulation worker
   image/mount/environment/setup contracts are part of that hash. It is not a
   complete toolchain binary fingerprint.
@@ -268,57 +270,29 @@ Compatibility is deliberately limited:
 
 ## Validation
 
-The [copied-loop checks](experiments/copied-loop-tests.log) passed 11 tests,
-including preparation outside Git, in an empty repository, and with a committed
-revision. A [standalone setup](experiments/copied-loop-setup-proof.json) also
-created a fresh Python 3.10.19 environment, fetched and installed dependencies,
-and ran real Docker source preparation from a copied folder outside any Git
-repository. It recorded null Git provenance and generated native deployment YAML.
+The current checks cover the six-test workload contract, fixed checksums,
+weighted scoring, incomplete/changed results, passive DMA observations, source
+preservation, candidate C recompilation, captured ELF/checksum isolation,
+relocation, and the frozen-input hashes.
+Baseline native C checks audit original copy counts/bytes and reject skipped
+and truncated copies. Evolved candidates need only match the fixed checksums.
 
-The [host-head suite](experiments/host-head-suite.log) passed 18 checks; three
-authenticated provider calls were skipped. It uses an isolated Python 3.10.19
-environment, independent of Chipyard/Conda. Native CHIA starts the host head and
-Docker workers, then tears them down. Tests verify mount namespaces, head/worker
-imports, concurrent generation and forbidden writes, simulator staging, and a
-`chia job submit` entrypoint using the host venv. Controller tests cover cache,
-profiling, invalid admission, interruption, historical forks/replay, and resume.
-The final [worker check](experiments/host-head-toolchain.log) additionally verifies
-that build tools resolve inside the image after replacing inherited host PATH.
+```sh
+make -C base/memory-tests -j6 check
+python -m pytest -q tests/test_contract.py tests/test_preservation.py
+```
 
-The native-head change removes `container.sh`, its package volume, and the
-corresponding render bindings. Application Python/shell drops from 1,432 to
-1,373 lines; worker dependency setup stays in native YAML.
+The six baremetal ELFs compile from the reduced Chipyard patch plus the staged
+memory-test sources, with the existing RV64GC/HTIF runtime. Software-fallback
+Spike runs check RV64 execution and the new `MEMORY_METRICS` output. They do not
+validate custom DMA hardware or RTL timing. Distributed controller/worker tests
+require local sockets, Docker, and SSH; observer regression tests require
+Verilator.
 
-The [suite](experiments/readability-trim-suite.log) passed 18 checks; the three
-opt-in provider calls were skipped.
-They cover concurrent parent/island contexts, forbidden writes, invalid admission,
-benchmark fan-out, warm/cold cache and profiling, interruption, resume, migration,
-and historical fork/replay. The native worker test exercises the production
-`simulate()` wrapper with inexpensive executable artifacts.
+Each simulation is limited to 300 seconds and 10 million cycles. Calibrate the
+baseline under the tutorial machine's intended parallel load before relying on
+that budget. Simulator compilation and agent generation have separate limits.
 
-[Parser checks](experiments/readability-trim-verification.log) cover failed or
-unverified Embench results, pending DMA transactions, missing acknowledgements,
-and failed copy events. The frozen parser retains these acceptance checks while
-removing CPU comparisons, standalone benchmark modes, and histogram/latency
-bookkeeping checks. Numerical observations are still recorded in SQL.
-
-[Fresh build evidence](experiments/readability-trim-live/proof.json) records a
-simulator and 19 DMA-only Embench ELFs built in the upstream CHIA image. No host
-Chipyard source/toolchain was mounted. The old Python Embench build/run script
-has been replaced by one Makefile target calling the benchmark's own SCons build.
-The build completed in 126 seconds. The shortened parser also accepted a
-[previously recorded real DMA Wikisort run](experiments/readability-trim-final-bundle.json).
-That check also confirms the final bundle’s 55 other patched inputs match the
-fresh build; only the parser’s required-field check changed afterward.
-No full Embench simulation campaign is part of this refactor validation.
-
-Earlier experiment logs, checkpoints, and build/simulation artifacts remain under
-`experiments/`. They require their matching loop implementation and source
-contract. The DMA-only software manifest uses plain benchmark names such as
-`wikisort`; it does not import older CPU/DMA manifests or checkpoint formats.
-
-[Size accounting](experiments/readability-trim-size.json) records 335 fewer
-Python/shell lines: the main application goes from 1,526 to 1,432 lines, and
-bundled Python goes from 490 to 249. `config.yaml` goes from 82 to 58 lines;
-`backend.yaml` goes from 331 to 196. The application still has eight Python files;
-no additional runtime framework or compatibility layer was introduced.
+The previous Embench bundle, SCons build target/setup, dynamic parser loader,
+and old benchmark measurement fixture have been removed. Its checkpoints require
+the previous code and evaluation contract; create a new run for this suite.
