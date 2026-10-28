@@ -1,4 +1,5 @@
 from chia.base.ChiaFunction import ChiaFunction, get
+from chia.models.antigravity import AntigravityLLM, AntigravityQueryResult
 
 # ------------ START TUTORIAL PART 1 ------------
 
