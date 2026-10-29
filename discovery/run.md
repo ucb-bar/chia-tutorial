@@ -2,12 +2,12 @@
 
 ## 1. Prep
 
-Complete [setup.md](../setup.md) and the host Python environment setup in
-[README.md](README.md#set-up-and-run). Run commands on
-`chia-dev`, inside `chia-tutorial/discovery`, with `.venv` activated. The experiment
+Complete [setup.md](../setup.md). Run commands on
+`chia-dev`, inside `chia-tutorial/discovery`. The experiment
 is named `DMADiscovery`; adjust `tutorial.search.iterations` in `cluster.yaml`
 to set the total proposal budget.
 
+- **Load environment:** `source load-env.sh` activates the setup script's `chia_env` and installs SkyDiscover on the head.
 - **Prepare:** `python loop.py prepare --run DMADiscovery` preserves the baseline and renders the deployment configuration.
 - **Start workers:** `chia up experiments/DMADiscovery/deployment/cluster.yaml -y`
 - **Run:** `chia job submit --chia-cluster experiments/DMADiscovery/deployment/cluster.yaml --submission-id DMADiscovery -- python "$PWD/loop.py" run --run DMADiscovery` (choose a fresh submission ID for each submission).
@@ -26,13 +26,14 @@ checkpoint state are retained.
 ## 2. Tutorial attendee run
 
 Clone the matching tutorial repository revision, complete the same setup, and
-work in `chia-tutorial/discovery` with `.venv` activated. Place the distributed
+work in `chia-tutorial/discovery`. Place the distributed
 tarball at `checkpoints/tutorial.tar.gz`. Increase
 `tutorial.search.iterations` above the number of proposals already saved to
 generate additional candidates. Extract into a checkout without an existing
 `experiments/tutorial` run.
 
 - **Extract:** `tar -xzf checkpoints/tutorial.tar.gz` restores the run, all history through the selected checkpoint, and source seeds under `experiments`.
+- **Load environment:** `source load-env.sh`
 - **Prepare restored paths:** `python loop.py prepare --run tutorial`
 - **Start workers:** `chia up experiments/tutorial/deployment/cluster.yaml -y`
 - **Resume:** `chia job submit --chia-cluster experiments/tutorial/deployment/cluster.yaml --submission-id attendee -- python "$PWD/loop.py" resume --run tutorial` (choose a fresh submission ID for each resume).

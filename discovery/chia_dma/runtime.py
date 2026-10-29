@@ -13,7 +13,7 @@ from chia.trace.profiler import start_collector, stop_collector
 from .config_loader import ROOT, digest
 from .defaults import AGENT_SETUP
 from .profiling import export_profiles
-from .experiment import (
+from .source import (
     git,
     read_json,
     preserve_source,
@@ -59,8 +59,6 @@ def render(configuration, run, seed):
         LOOP=str(ROOT),
         RUN=str(run),
         SEED=str(seed),
-        CHIA=configuration["chia"],
-        SKY=configuration["skydiscover"],
         NAME=Path(run).name,
         UID=str(os.getuid()),
         GID=str(os.getgid()),
@@ -75,7 +73,7 @@ def render(configuration, run, seed):
     if public.exists():
         shutil.rmtree(public)
     public.mkdir(parents=True, exist_ok=True)
-    for name in ("__init__.py", "agent.py", "config_loader.py", "defaults.py", "experiment.py", "runtime.py", "profiling.py"):
+    for name in ("__init__.py", "agent.py", "config_loader.py", "defaults.py", "source.py", "runtime.py", "profiling.py"):
         shutil.copyfile(ROOT / "chia_dma" / name, public / name)
     deployment["file_mounts"][bindings["REMOTE"] + "/generation"] = str(public) + "/"
     deployment["initialization_commands"].append("mkdir -p " + bindings["REMOTE"] + "/generation")

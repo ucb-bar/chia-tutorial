@@ -1,7 +1,7 @@
 # Reused infrastructure and validation
 
-The tutorial pins CHIA `a4cedf24`, evolve-flows `62d27130`, and SkyDiscover
-`78833ea6`. Tutorial integrations stay under `discovery/`. CHIA is unpatched.
+The tutorial uses the CHIA installed in `chia_env` by `setup_gcp.sh` and pins
+SkyDiscover `78833ea6`. Tutorial integrations stay under `discovery/`. CHIA is unpatched.
 Native HTML profiles display score metadata; native CSV tables summarize
 execution durations by function.
 
@@ -13,7 +13,7 @@ execution durations by function.
 | Sampling, islands, MAP-Elites, migration, population save/load | Native `openevolve_native` |
 | Build and simulation artifacts | CHIA nodes and cache/bypass |
 | Numerical history and pending/completed proposals | CHIA `SQLiteNode` |
-| Fixed base Chipyard/evaluator inputs | Pinned build image + bundled patch, materialized as one immutable seed |
+| Fixed base Chipyard/evaluator inputs | Build image + bundled patch, materialized as one immutable seed |
 | Materialized accelerator sources | Separate native worker workspaces |
 
 ## Operating the tutorial
@@ -23,7 +23,7 @@ execution durations by function.
 Commands run from the directory containing `loop.py` and `cluster.yaml`: the
 repository's `discovery/` directory or the root of a copied tutorial folder.
 
-- [Setup and run](README.md#set-up-and-run): bootstrap the host Python environment,
+- [Setup and run](README.md#set-up-and-run): `source load-env.sh`,
   `prepare` the bundled baseline inside the build image, native `chia up`,
   then `chia job submit` with the tutorial entrypoint. Routine commands run on the host.
 - [Stop and resume](README.md#stop-and-resume): use `chia job stop` for the submitted
@@ -35,7 +35,7 @@ repository's `discovery/` directory or the root of a copied tutorial folder.
   `state.json` envelopes, then `fork --checkpoint NAME --new-run OTHER` or
   `fork --candidate ID --new-run OTHER`. No checkpoint selector lives in YAML.
 - [Restore the tutorial archive](README.md#restore-the-tutorial-archive): extract
-  the supplied code/state/seed archive, bootstrap the host Python environment,
+  the supplied code/state/seed archive, `source load-env.sh`,
   then `prepare`, `chia up`, and submit a `resume` job. Attendees use their own
   provider credentials; no Git checkout, rsync, fork, or metadata edits are needed.
 - [Inspect logs and metrics](README.md#logs-and-consolidated-metrics): `chia job logs`,
@@ -47,8 +47,8 @@ points at that snapshot.
 
 ## Images and environment
 
-`cluster.yaml` starts the Ray head directly on the current machine and pins Linux
-amd64 upstream CHIA worker image manifests by digest. Native `chia up/down`
+`cluster.yaml` starts the Ray head directly on the current machine and uses Linux
+amd64 upstream CHIA worker images tagged `:latest`. Native `chia up/down`
 manages that head and the hardware-build, RISC-V-build, simulation, generation, and verification containers. There is
 no top-level Docker configuration or head-container wrapper. The host supplies
 Python 3.10.19, Git, Bash, Docker, SSH/Docker access, state storage, and credential
@@ -61,33 +61,33 @@ Worker names pass directly to CHIA/SSH; this tutorial performs no cloud inventor
 
 | Location | Tools and integration |
 | --- | --- |
-| Host head | `.venv` beside `loop.py`: Python 3.10.19/Ray 2.54.0, pinned CHIA, and SkyDiscover from the evolve-flows submodule. Bootstrap installs the selected OpenEvolve dependencies, omitting the unused AlphaEvolve backend. |
+| Host head | `chia_env` from `setup_gcp.sh` (Python 3.10.19/Ray 2.54.0 and CHIA). `load-env.sh` adds SkyDiscover and its OpenEvolve dependencies, omitting the unused AlphaEvolve backend. SkyDiscover is head-only. |
 | Build: CHIA chisel-build | Image Java/sbt/Verilator/RISC-V/C++ tools, Make, and dependency caches. Ray uses the image's base Python 3.10.19 to match the head exactly. |
 | Software: CHIA riscv-cross | `RiscvBuildNode.build_program` receives inputs and builds each ELF in an isolated task directory; six slots permit parallel compilation. |
 | Simulation: CHIA verilator-run | Image Python/Ray, spike-dasm, and runtime support; simulator/shared libraries arrive in the build artifact. |
 | Generation: CHIA Antigravity | Published CLI with the setup.md login copied into a private worker home. |
 | Verification: CHIA verilator-run | Private reference, parsing, and scoring; private RTL tasks run on simulation workers alongside public tasks. |
 
-Missing worker Python packages are installed inside each container's private
-`/tmp/dma-python`; framework packages are mounted read-only. No host venv,
+Workers use the CHIA installed in each image; only `chia_dma` is synchronized and
+mounted read-only. Worker modules import no SkyDiscover. No host environment,
 Conda tools, agent executable, sbt cache, or JVM is mounted as a dependency.
 Builds use the image's dependency caches and explicit image C++ compiler path.
 There is no derived image, host build-tool installation, job-level import
-override, or CHIA package patch. Native YAML activates the host head's venv and
+override, or CHIA package patch. Native YAML activates the host head's `chia_env` and
 owns worker import environments. No host agent CLI is invoked.
 
 The tutorial-facing `cluster.yaml` contains native infrastructure and four loop
 knobs: model, effort, total iterations, and concurrent candidate rounds. Python
-`defaults.py` supplies credential paths, retries, dependency pins, fixed search
+`defaults.py` supplies credential paths, retries, fixed search
 policy, and build/runtime defaults. Native cache/bypass settings remain in YAML.
 Host CPU affinity supplies hardware compilation jobs and simulation slots;
 software has six native RISC-V build slots. Build heap settings are 32 GiB.
 [base/chipyard.patch](base/chipyard.patch) carries DMA hardware/configuration,
 observer, and DMA/HTIF runtime. The six C tests come from `base/memory-tests/`. `base/prepare.sh` runs in
-the pinned build image, copies tracked Chipyard/submodule inputs together with
+the build image, copies tracked Chipyard/submodule inputs together with
 their existing Git metadata, and applies the patch. Preparation records the
 tutorial additions as baseline commits in those copied repositories. Image
-digest, declared base revision, patch/script hashes, and C build-input hashes
+name, patch/script hashes, and C build-input hashes
 identify new seeds; they are not a resume compatibility gate. No host Chipyard source is read.
 Builds reuse a private `/home/ray/dma-build` Git checkout; generation reuses a
 private container-local `/home/ray/workspace` checkout and reads the preserved
@@ -115,9 +115,8 @@ provides the CHIA CLI adapter; its evaluator/context-builder hooks supply DMA
 semantics. The database subclass wraps only public sample/add to preserve a
 pending selection and its target island. No controller methods are copied.
 [EvolverNode wraps SkyDiscover](https://docs.chialoops.ai/en/main/case-studies/architectural-discovery-basic.html#evolvernode-pluggable-evolutionary-agents).
-It lives in evolve-flows; the same documentation's setup section installs both
-evolve-flows and its SkyDiscover submodule separately. Bootstrap uses that one
-submodule, without a second SkyDiscover checkout. At the pinned revision,
+It lives in evolve-flows, which the tutorial does not install; `load-env.sh`
+installs SkyDiscover directly. At the pinned revision,
 EvolverNode accepts a custom evaluator, but creates its own population/controller
 and does not expose our CLI initializer, preserved population, context-builder, and
 checkpoint callback. The tutorial therefore constructs the full upstream
@@ -126,7 +125,7 @@ keeps the CHIA build call, benchmark fan-out, verification, and SQL save in
 execution order. `nodes.py` contains the required build/simulation, parsing, and
 scoring tasks. Optional weighted scoring and DMA-event parsing live under
 `archive/` and are not imported by the tutorial. The class no longer wraps the build in a second local build method.
-`experiment.py` holds source preservation and recovery. The refactor retains native controller iteration handling
+`source.py` holds source preservation; `experiment.py` holds recovery. The refactor retains native controller iteration handling
 and native population save/load; it does not implement another search loop.
 
 The inspected upstream `ChiaEvaluator` uses `ray.get` on build/run handles,
@@ -271,10 +270,10 @@ saved hardware/C Git patch or reused from the evictable CHIA build cache. Preser
    tree, executable permissions, and symlinks. The seed is fixed and self-contained;
    restoring sources recreates a private checkout and applies all recorded changes.
 4. A loop implementation that can read the saved SQL/checkpoint format, plus
-   the pinned published images, credentials, Docker, and SSH access.
+   the published images, credentials, Docker, and SSH access.
 
 The archive includes the loop implementation/configuration as well as saved
-state; attendees bootstrap `.venv` and pinned dependencies after extraction.
+state; attendees run `source load-env.sh` after extraction.
 No host Chipyard checkout, toolchain, or Git metadata is required.
 
 `prepare` prefers the bundled seed under `experiments/seeds/HASH/` over the
@@ -298,8 +297,6 @@ Tutorial resume policy:
   comparison or automatic reconciliation of old measurements.
 - Source fingerprints identify new seeds only. A missing saved seed, unreadable
   checkpoint/SQL data, or a patch that Git cannot apply still needs to be fixed.
-- New dependency clones use pinned revisions. Bootstrap reuses existing checkouts
-  and their local edits instead of resetting them.
 - Checkout scheduling slots are normalized to one per build/generation worker;
   additional resources are accepted. A missing cache artifact is rebuilt.
 - Metric parsing accepts extra fields and version changes, and missing instruction

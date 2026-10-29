@@ -42,7 +42,7 @@ def commit_tree(tree):
 def patch_for(tmp_path, base_tree):
     """Make a real Git patch from convenient test source edits."""
     import uuid
-    from chia_dma.experiment import initialize_checkout, apply_candidate_diff, capture_patch
+    from chia_dma.source import initialize_checkout, apply_candidate_diff, capture_patch
 
     def create(changes, baseline=base_tree, parent=""):
         work = tmp_path / ("patch-" + uuid.uuid4().hex)

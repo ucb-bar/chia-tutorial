@@ -16,7 +16,7 @@ from chia.trace.profiler import get_profiler
 from skydiscover.evaluation.evaluation_result import EvaluationResult
 
 from chia_dma.config_loader import digest
-from chia_dma.experiment import read_json, write_json
+from chia_dma.source import read_json, write_json
 from chia_dma.nodes import build, simulate, parse, aggregate, software_inputs, require
 
 class CorrectnessFailure(ValueError):

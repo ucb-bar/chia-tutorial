@@ -132,7 +132,7 @@ def test_cycle_score_accepts_zero_dma_and_does_not_reward_ipc_alone(records, wor
 
 
 def test_candidates_accept_arbitrary_paths_and_reject_checkout_escapes(tmp_path, base_tree, patch_for):
-    from chia_dma.experiment import initialize_checkout, apply_candidate_diff
+    from chia_dma.source import initialize_checkout, apply_candidate_diff
     patch = patch_for({"build.sbt": "changed", "new/module.scala": "new"})
     work = tmp_path / "restored"
     initialize_checkout(work, base_tree)

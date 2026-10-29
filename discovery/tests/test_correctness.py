@@ -50,7 +50,7 @@ def test_all_six_workloads_match_the_independent_reference_for_runtime_seeds(nat
 
 def test_reference_preserves_public_seed_zero_checksums():
     from chia_dma.config_loader import ROOT
-    from chia_dma.experiment import read_json
+    from chia_dma.source import read_json
     manifest = read_json(ROOT / "base/memory-tests/workloads.json")
     for name, (words, witness) in correctness.reference_outputs(0).items():
         value = 0x6D2B79F5
@@ -65,7 +65,7 @@ def test_former_one_word_checksum_hack_fails_full_output_verification(base_tree,
     for _ in range(words):
         state = ((state << 5) | (state >> 27)) & 0xFFFFFFFF
     from chia_dma.config_loader import ROOT
-    from chia_dma.experiment import read_json
+    from chia_dma.source import read_json
     correction = state ^ read_json(ROOT / "base/memory-tests/workloads.json")["copy-small"]["checksum"]
     source = {
         "tests/memory-tests/src/copy-small/copy-small.c":

@@ -20,45 +20,37 @@ available_node_types:
     compatible_ips:
     - ${CHIA_HEAD}
     docker:
-      image: ghcr.io/ucb-bar/chia-chisel-build@sha256:9eca4dffdce51835005d5971864306d84fe46cc2dd2feb440521b98a14d84300
+      image: ghcr.io/ucb-bar/chia-chisel-build:latest
       container_name: dma-${NAME}-build
       pull_before_run: true
       run_options:
       - --mount 'type=bind,src=${REMOTE}/chia_dma,dst=/opt/loop/chia_dma,readonly'
-      - --mount 'type=bind,src=${REMOTE}/chia,dst=/opt/chia/chia,readonly'
-      - --mount 'type=bind,src=${REMOTE}/skydiscover,dst=/opt/skydiscover/skydiscover,readonly'
       - --mount 'type=bind,src=${SEED},dst=${SEED},readonly'
       pull_timeout: 7200
     worker_env_commands:
     - source /home/ray/chipyard/env.sh
     - export PATH=/home/ray/anaconda3/bin:/home/ray/chipyard/.conda-env/riscv-tools/bin:/home/ray/chipyard/.conda-env/bin:/usr/local/bin:/usr/bin:/bin
-    - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+    - export PYTHONPATH=/opt/loop
     - export CHIA_CPUS=${CPUS}
     - export RISCV=/home/ray/chipyard/.conda-env/riscv-tools
     - export JAVA_TOOL_OPTIONS='-Xmx32G -Xss8M -Djava.io.tmpdir=/tmp -Duser.home=/home/ray'
     - export COURSIER_CACHE=/home/ray/.cache/coursier/v1
     worker_setup_commands:
-    - python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1
-      pydantic==2.12.4
-    - python -c 'from chia_dma.experiment import initialize_checkout; initialize_checkout("/home/ray/dma-build", "${SEED}/tree")'
+    - python -c 'from chia_dma.source import initialize_checkout; initialize_checkout("/home/ray/dma-build", "${SEED}/tree")'
   software:
     resources: {riscv_build: 6}
     num_workers: 1
     compatible_ips: ["${CHIA_HEAD}"]
     docker:
-      image: ghcr.io/ucb-bar/chia-riscv-cross@sha256:4a1987d1cb7998ad4c430dd4434e19843344dd73b88d5ec2bdbe5f1dbcbf5429
+      image: ghcr.io/ucb-bar/chia-riscv-cross:latest
       container_name: dma-${NAME}-software
       pull_timeout: 7200
       run_options:
       - --mount 'type=bind,src=${REMOTE}/chia_dma,dst=/opt/loop/chia_dma,readonly'
-      - --mount 'type=bind,src=${REMOTE}/chia,dst=/opt/chia/chia,readonly'
-      - --mount 'type=bind,src=${REMOTE}/skydiscover,dst=/opt/skydiscover/skydiscover,readonly'
     worker_env_commands:
     - export PATH=/home/ray/conda/envs/riscv-tools/riscv-tools/bin:/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
-    - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+    - export PYTHONPATH=/opt/loop
     - export CHIA_CPUS=6
-    worker_setup_commands:
-    - python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1 pydantic==2.12.4
   simulation:
     resources:
       verilator_run: ${CPUS}
@@ -70,21 +62,16 @@ available_node_types:
     - chia-worker-4
     - chia-worker-5
     docker:
-      image: ghcr.io/ucb-bar/chia-verilator-run@sha256:188e6ce07df32b8acaefede77fd4691e44da889a318527bf9eff047bb4c655c1
+      image: ghcr.io/ucb-bar/chia-verilator-run:latest
       container_name: dma-${NAME}-simulation
       pull_before_run: true
       run_options:
       - --mount 'type=bind,src=${REMOTE}/chia_dma,dst=/opt/loop/chia_dma,readonly'
-      - --mount 'type=bind,src=${REMOTE}/chia,dst=/opt/chia/chia,readonly'
-      - --mount 'type=bind,src=${REMOTE}/skydiscover,dst=/opt/skydiscover/skydiscover,readonly'
       pull_timeout: 7200
     worker_env_commands:
     - export PATH=/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
-    - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+    - export PYTHONPATH=/opt/loop
     - export CHIA_CPUS=${CPUS}
-    worker_setup_commands: &python_setup
-    - python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1
-      pydantic==2.12.4
     balance_level: worker
   generation:
     resources:
@@ -93,26 +80,22 @@ available_node_types:
     compatible_ips:
     - ${CHIA_HEAD}
     docker:
-      image: ghcr.io/ucb-bar/chia-antigravity@sha256:e4a1dfdcc9fea188667178311d47a2da7ac8dd150877f74748fce24b39329a0f
+      image: ghcr.io/ucb-bar/chia-antigravity:latest
       container_name: dma-${NAME}-generation
       pull_before_run: true
       pull_timeout: 7200
       run_options:
       - --user ${UID}:${GID}
       - --mount 'type=bind,src=${REMOTE}/generation,dst=/opt/loop/chia_dma,readonly'
-      - --mount 'type=bind,src=${REMOTE}/chia,dst=/opt/chia/chia,readonly'
-      - --mount 'type=bind,src=${REMOTE}/skydiscover,dst=/opt/skydiscover/skydiscover,readonly'
       - --mount 'type=bind,src=${SEED}/tree,dst=/seed,readonly'
       - --mount 'type=bind,src=${CREDENTIALS},dst=/credentials,readonly'
     worker_env_commands:
     - export PATH=/home/ray/.local/bin:/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
-    - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+    - export PYTHONPATH=/opt/loop
     - export CHIA_CPUS=2
     - export HOME=/tmp/agent-home
     worker_setup_commands:
-    - python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1
-      pydantic==2.12.4
-    - python -c 'from chia_dma.experiment import initialize_checkout; initialize_checkout("/home/ray/workspace", "/seed")'
+    - python -c 'from chia_dma.source import initialize_checkout; initialize_checkout("/home/ray/workspace", "/seed")'
   verification:
     resources:
       verification: 1
@@ -120,34 +103,29 @@ available_node_types:
     compatible_ips:
     - ${CHIA_HEAD}
     docker:
-      image: ghcr.io/ucb-bar/chia-verilator-run@sha256:188e6ce07df32b8acaefede77fd4691e44da889a318527bf9eff047bb4c655c1
+      image: ghcr.io/ucb-bar/chia-verilator-run:latest
       container_name: dma-${NAME}-verification
       run_options:
       - --mount 'type=bind,src=${REMOTE}/chia_dma,dst=/opt/loop/chia_dma,readonly'
-      - --mount 'type=bind,src=${REMOTE}/chia,dst=/opt/chia/chia,readonly'
-      - --mount 'type=bind,src=${REMOTE}/skydiscover,dst=/opt/skydiscover/skydiscover,readonly'
       pull_timeout: 7200
     worker_env_commands:
     - export PATH=/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
-    - export PYTHONPATH=/tmp/dma-python:/opt/loop:/opt/chia:/opt/skydiscover
+    - export PYTHONPATH=/opt/loop
     - export CHIA_CPUS=2
-    worker_setup_commands: *python_setup
 
-# Native CHIA synchronizes Python code to the existing hosts.
+# Native CHIA synchronizes the loop's Python package; CHIA comes from each image.
 # Source seeds and credentials stay on chia-dev; simulation inputs travel through Ray.
 # CHIA/SSH resolve the worker names directly, as in the other tutorials.
 initialization_commands:
-- mkdir -p ${REMOTE}/chia_dma ${REMOTE}/chia ${REMOTE}/skydiscover
+- mkdir -p ${REMOTE}/chia_dma
 file_mounts:
   ${REMOTE}/chia_dma: ${LOOP}/chia_dma/
-  ${REMOTE}/chia: ${CHIA}/chia/
-  ${REMOTE}/skydiscover: ${SKY}/skydiscover/
 rsync_exclude:
 - __pycache__
 - '*.pyc'
 - .git
 head_env_commands:
-- source ${LOOP}/.venv/bin/activate
+- source ~/.bashrc && conda activate chia_env
 - export PYTHONPATH=${LOOP}
 head_start_ray_commands:
 - ray start --head --node-ip-address=${CHIA_HEAD} --port=6387 --num-cpus=4 --dashboard-host=0.0.0.0

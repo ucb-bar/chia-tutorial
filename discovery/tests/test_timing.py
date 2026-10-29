@@ -118,7 +118,8 @@ def test_cache_eviction_reexecutes_the_original_task(monkeypatch):
     assert calls == [(1, "elf")]
 
 
-def test_generation_can_restore_bypass_state_without_private_modules(tmp_path):
+@pytest.mark.parametrize("generation_only", [False, True])
+def test_workers_restore_bypass_state_without_skydiscover(tmp_path, generation_only):
     from ray import cloudpickle
     import os
     import subprocess
@@ -129,12 +130,29 @@ def test_generation_can_restore_bypass_state_without_private_modules(tmp_path):
     package = run / "deployment/generation-python/chia_dma"
     state = tmp_path / "provider.pkl"
     state.write_bytes(cloudpickle.dumps(runtime.cache_provider("build")))
-    code = (
-        "from ray import cloudpickle; import importlib.util,sys; "
-        "assert importlib.util.find_spec('chia_dma.nodes') is None; "
-        "provider=cloudpickle.loads(open(sys.argv[1],'rb').read()); "
-        "assert callable(provider) and provider.__name__; "
-        "assert importlib.util.find_spec('chia_dma.nodes') is None"
-    )
-    subprocess.run([sys.executable, "-c", code, str(state)], check=True, cwd=tmp_path,
-                   env={**os.environ, "PYTHONPATH": str(package.parent)}, capture_output=True, text=True)
+    code = """
+import importlib.abc
+import importlib.util
+import sys
+
+class NoSkyDiscover(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "skydiscover" or fullname.startswith("skydiscover."):
+            raise ModuleNotFoundError("SkyDiscover is not installed on workers")
+
+sys.meta_path.insert(0, NoSkyDiscover())
+from ray import cloudpickle
+import chia_dma.agent
+if sys.argv[2] == "generation":
+    assert importlib.util.find_spec("chia_dma.nodes") is None
+else:
+    import chia_dma.nodes
+    import chia_dma.correctness
+provider = cloudpickle.loads(open(sys.argv[1], "rb").read())
+assert callable(provider) and provider.__name__
+assert "skydiscover" not in sys.modules
+"""
+    source = str(package.parent if generation_only else runtime.ROOT)
+    role = "generation" if generation_only else "evaluation"
+    subprocess.run([sys.executable, "-c", code, str(state), role], check=True, cwd=tmp_path,
+                   env={**os.environ, "PYTHONPATH": source}, capture_output=True, text=True)

@@ -23,13 +23,14 @@ flowchart LR
 ```
 
 Read `run_experiment()` and `run_search()` in [loop.py](loop.py) first.
-The native controller calls `CLIClient.generate()` in [agent.py](chia_dma/agent.py),
+The native controller calls `CLIClient.generate()` in [search.py](chia_dma/search.py),
 then `DMAEvaluator.evaluate()` in [evaluation.py](chia_dma/evaluation.py). The
 evaluator shows the CHIA build, benchmark fan-out, parsing, scoring, and SQL save
 in order. `experiment.py` uses `save_selection`, `save_proposal`,
 `save_evaluation`, and `save_checkpoint` for the corresponding durable steps.
-Those three files show the flow; [experiment.py](chia_dma/experiment.py) holds
-source preservation, SQL history, and checkpoint recovery.
+These files show the flow; [experiment.py](chia_dma/experiment.py) holds SQL history
+and checkpoint recovery, while [source.py](chia_dma/source.py) preserves source
+and candidate patches without importing SkyDiscover on workers.
 
 Edit [cluster.yaml](cluster.yaml) for native CHIA placement, containers, and four
 participant-facing knobs: `tutorial.agent.model`, `tutorial.agent.effort`,
@@ -47,8 +48,8 @@ full historical search state, including the population and islands.
 The current machine runs the Ray head, search controller, SQLite, and cache.
 Generation, hardware compilation, RISC-V compilation, and verification run in separate Docker/Ray workers on
 `chia-dev`. Simulations run across `chia-worker-1` through `chia-worker-5`. Run commands on
-the host, from the directory containing **`loop.py` and `cluster.yaml`**, with
-`.venv` activated. From the repository root, first `cd discovery`.
+the host, from the directory containing **`loop.py` and `cluster.yaml`**, after
+`source load-env.sh`. From the repository root, first `cd discovery`.
 The discovery folder supports both new runs and checkpoint restores.
 Replace example run, candidate, checkpoint, and destination names with your own.
 
@@ -78,25 +79,13 @@ No shared filesystem is required: native CHIA `file_mounts` synchronize Python
 packages to each host, and Ray carries simulator/ELF bytes and DRAM settings.
 The seed, agent credentials, SQL, and history stay on `chia-dev`.
 
-From the directory containing `loop.py`, create the host head's Python
-environment once. Keep `base/` and `cluster.yaml`. Start without copied
-`.venv/` or `.deps/` directories: their installed paths belong to the old location.
-Git is needed to download dependencies, but your loop itself needs no Git metadata.
-
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/); it downloads
-the exact Python interpreter, so no preinstalled Python is required. Bootstrap
-installs pinned CHIA, SkyDiscover from evolve-flows, and the OpenEvolve dependencies.
-It omits SkyDiscover's optional AlphaEvolve backend. Workers use published CHIA
-images and install missing packages inside their own containers. No derived image
-or head container is created:
+Load the environment in each new terminal. It activates the `chia_env` that
+`setup_gcp.sh` created (CHIA is already installed there) and adds SkyDiscover
+and its dependencies on the head. Workers use CHIA from their published images
+and never need SkyDiscover:
 
 ```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-uv venv --python 3.10.19 --managed-python --seed .venv
-source .venv/bin/activate
-python -m pip install pyyaml==6.0.3
-python bootstrap.py
+source load-env.sh
 ```
 
 The commands below run **on the host**, with that environment activated. Native
@@ -112,9 +101,8 @@ the DMA hardware, passive observer, and DMA/HTIF runtime. Preparation also copie
 No Chipyard submodule initialization or `build-setup.sh` is needed.
 
 The host head uses Python 3.10.19 and Ray 2.54.0, matching the workers exactly;
-Ray rejects even a Python patch-version mismatch. Native YAML activates the
-`.venv` beside `loop.py` and
-supplies worker import paths. Build tools come from the build image's own
+Ray rejects even a Python patch-version mismatch. Native YAML activates
+`chia_env` on the head and supplies worker import paths. Build tools come from the build image's own
 Chipyard environment; the host environment is never mounted into workers.
 
 Set `tutorial.agent.model` and `tutorial.agent.effort` in `cluster.yaml`. A null
@@ -146,7 +134,7 @@ chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait -- \
 chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 ```
 
-`prepare` launches the pinned CHIA build image, applies the bundled patch, and
+`prepare` launches the CHIA build image, applies the bundled patch, and
 preserves a complete read-only source seed, including Git and submodule metadata. Its identity includes the image and
 patch, preparation-script, and C test hashes. Repeated preparation reuses that seed; checkpoint restores
 use the run's recorded seed. Startup prepares private build and generation
@@ -155,13 +143,13 @@ then reuses them with Git reset/clean before applying each patch. Generation
 checkouts are transient: patches and transcripts are saved to SQL before a
 generation task returns, and a replacement container reconstructs its checkout
 from the seed and selected parent patch. The original development
-checkout is never read or modified. `chia up` pulls the pinned worker images.
+checkout is never read or modified. `chia up` pulls the worker images.
 The absolute entrypoint uses the head's local checkout; omit `--working-dir` to
 avoid uploading experiment artifacts. Head/worker imports come from native YAML.
 `--chia-cluster` selects the correct job server from the rendered YAML, including
 for a live fork.
 
-Antigravity comes from its pinned CHIA image. The login from `setup.md` is
+Antigravity comes from its CHIA image. The login from `setup.md` is
 copied from a read-only mount into a private worker home. Redeploy the generation
 containers to refresh an expired login after authenticating again.
 
@@ -187,7 +175,7 @@ driver also leaves workers running until `chia down`. Teardown retains experimen
 files, SQL history, checkpoints, and the preserved seed. Other live runs should
 use their own deployment YAML and distinct names/ports.
 
-To continue the latest state later, activate `.venv` on the host and set
+To continue the latest state later, run `source load-env.sh` on the host and set
 `RUN`, `RUN_DIR`, and `CLUSTER` as above. Each submission needs a new
 job ID; the experiment run name stays the same:
 
@@ -289,24 +277,21 @@ tar -czf ../loop-tutorial.tar.gz \
   --exclude=base/memory-tests/build \
   --exclude="experiments/$RUN/cache" --exclude="experiments/$RUN/artifacts" \
   --exclude="experiments/$RUN/deployment" --exclude="experiments/$RUN/work" \
-  *.py *.yaml chia_dma base tests README.md INTEGRATION.md pytest.ini \
+  *.py *.yaml load-env.sh chia_dma base tests README.md INTEGRATION.md pytest.ini \
   "experiments/$RUN" experiments/seeds
 ```
 
 This includes saved population/SQL hardware and C sources, preserves seed links
 and permissions, and leaves installed environments and generated work out.
 
-Attendees complete the Docker, SSH, provider login, and `uv` host setup under
+Attendees complete the setup under
 [Set up and run](#set-up-and-run), then extract into a new folder and resume:
 
 ```sh
 mkdir loop
 tar -xzf loop-tutorial.tar.gz -C loop
 cd loop
-uv venv --python 3.10.19 --managed-python --seed .venv
-source .venv/bin/activate
-python -m pip install pyyaml==6.0.3
-python bootstrap.py
+source load-env.sh
 
 RUN=run-001  # Use the run name packaged by the instructor.
 RUN_DIR="$PWD/experiments/$RUN"
@@ -588,31 +573,32 @@ requirements, and validation evidence.
 | File | Role |
 | --- | --- |
 | `cluster.yaml` | Existing worker placement, containers, native cache settings, and four participant controls. |
-| `base/chipyard.patch` | DMA hardware, observer, and HTIF runtime applied to the pinned build image’s Chipyard source. |
+| `base/chipyard.patch` | DMA hardware, observer, and HTIF runtime applied to the build image’s Chipyard source. |
 | `base/prepare.sh` | Materialize the image, patch, and fixed memory-test sources inside Docker. |
 | `base/memory-tests/` | Six C tests, expected checksums, Makefile, and native correctness checks. |
 | `base/README.md` | Base source revisions and baseline update procedure. |
-| `bootstrap.py` | Install the host packages; pin new dependency clones and reuse existing checkouts. |
+| `load-env.sh` | Activate `chia_env` and install SkyDiscover and its dependencies on the head. |
 | `loop.py` | Experiment flow, seed evaluation, native controller setup, and CLI commands. |
 | `LOCAL_TIMING.md` | Historical test and round runtimes and estimated exercise duration. |
 | `chia_dma/config_loader.py` | Load YAML, resolve paths, set serial checkout slots, and identify new source seeds. |
-| `chia_dma/defaults.py` | Fixed settings, dependency pins, source paths, and configuration declarations. |
+| `chia_dma/defaults.py` | Fixed settings, source paths, and configuration declarations. |
 | `chia_dma/observations.py` | Bulk observation transfer, host hashing, and temporary-file cleanup. |
 | `chia_dma/correctness.py` | Private runtime input generation, independent output reference, and correctness gate. |
 | `chia_dma/runtime.py` | Preserve inputs, render deployment, attach CHIA cache/profiler. |
 | `chia_dma/profiling.py` | Native score metadata and best/candidate views of the collected profile. |
 | `chia_dma/agent.py` | Initialize the selected parent, invoke a native CLI agent with BashTool, and save its proposal. |
+| `chia_dma/search.py` | SkyDiscover adapters that hand selected parents to the agent (head only). |
 | `chia_dma/evaluation.py` | Build → simulate → verify → score pipeline and task lifecycle. |
 | `chia_dma/nodes.py` | Required build, simulation, measurement parsing, and equal-weight scoring tasks. |
 | `archive/evaluation_extras.py` | Optional weighted scoring and DMA-event parsing, excluded from the tutorial runtime. |
-| `chia_dma/experiment.py` | Git seed preservation, patch capture/restoration, SQL proposals/metrics, checkpoints, forks, and the writer lock. |
+| `chia_dma/experiment.py` | Head-only search state: SQL metrics, native population, checkpoints, forks, and the writer lock. |
+| `chia_dma/source.py` | Git seed preservation, worker checkouts, patch capture/restoration, and saved proposals; imported by workers. |
 | `chia_dma/__init__.py` | Python package marker. |
 | `tests/test_contract.py` | Source, Antigravity, parser, and fitness contracts. |
 | `tests/test_correctness.py` | Seeded reference validation and checksum-hack regressions. |
 | `tests/test_timing.py` | Native simulation timeout, interruption cleanup, and elapsed-time reporting. |
 | `tests/test_controller_integration.py` | Controller concurrency, cache/profiler, and recovery integration. |
 | `tests/test_profiling.py` | Paired native score events across resumed jobs. |
-| `tests/test_bootstrap.py` | Dependency reuse without resetting local edits or patching CHIA. |
 | `tests/test_native_cluster.py` | Real native worker placement, mount boundaries, staging, and optional provider checks. |
 | `tests/native_fixture.py` | Temporary localhost SSH fixture for native cluster tests. |
 | `tests/test_preservation.py` | Immutable seed reuse, candidate restoration, and archive relocation. |

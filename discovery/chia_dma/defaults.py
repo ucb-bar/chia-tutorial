@@ -56,23 +56,7 @@ DEFAULTS = {
         "ray_address": "${CHIA_HEAD}:6387",
     },
     "storage": "./experiments",
-    "base": {"chipyard_revision": "4ab72313087580a44d647b52923389a06ec0712f"},
-    "chia": "./.deps/chia",
-    "skydiscover": "./.deps/evolve-flows/skydiscover",
-    "evolve_flows": "./.deps/evolve-flows",
-    "dependencies": {
-        "evolve_flows_url": "https://github.com/ucb-bar/evolve-flows.git",
-        "evolve_flows_revision": "62d271304d4675c21b946e327bf542a1f62c1012",
-        "chia_url": "https://github.com/ucb-bar/chia.git",
-        "chia_revision": "a4cedf24b131c459d7f176453d8e0cea97dda796",
-        "python_packages": [
-            "openai==3.35.1",
-            "pydantic==2.12.4",
-            "numpy==1.26.4",
-            "python-dotenv==1.2.1",
-            "tqdm==4.67.1",
-        ],
-    },
+    "base": {},
 }
 
 # Copy the setup.md login into a private agent home.
@@ -98,8 +82,6 @@ SOFTWARE_FILES = (
     "tests/memory-tests/src/copy-chain/copy-chain.c",
     "tests/memory-tests/src/copy-mixed/copy-mixed.c",
 )
-
-RELATIVE_PATHS = ("storage", "chia", "skydiscover", "evolve_flows")
 
 BASE_FILE_PATTERNS = (
     "chipyard.patch",
