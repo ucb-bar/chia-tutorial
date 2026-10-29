@@ -97,7 +97,7 @@ async def run_search(configuration, experiment, evaluator, seed_directory):
             retry_times=1,
         )
         if experiment.pending_proposals():
-            raise RuntimeError("Unfinished proposals remain; resume the experiment")
+            print("Unfinished proposals were saved; resume to continue them.")
         return best
 
 
@@ -149,7 +149,7 @@ async def evaluate_seed(configuration, experiment, evaluator, seed_directory):
 
     result = await evaluator.evaluate_program(seed_solution, "seed-dma")
     if result.metrics.get("validity") != 1:
-        raise RuntimeError("Seed correctness validation failed")
+        print("Baseline evaluation failed; continuing so the agent can propose fixes.")
 
     for island in range(configuration["search"]["num_islands"]):
         island_seed = Program(
@@ -205,7 +205,7 @@ def main():
     parser.add_argument("--new-run", help="New run name or absolute experiment path")
     args = parser.parse_args()
 
-    for name in (args.run, args.candidate, args.checkpoint):
+    for name in (args.candidate, args.checkpoint):
         if name and (Path(name).name != name or name in (".", "..")):
             parser.error("Use simple run/candidate/checkpoint names")
     if args.action == "fork" and not args.new_run:

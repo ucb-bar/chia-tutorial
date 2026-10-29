@@ -40,7 +40,7 @@ available_node_types:
     worker_setup_commands:
     - python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1
       pydantic==2.12.4
-    - mkdir -p /home/ray/dma-build
+    - python -c 'from chia_dma.experiment import initialize_checkout; initialize_checkout("/home/ray/dma-build", "${SEED}/tree")'
   software:
     resources: {riscv_build: 6}
     num_workers: 1

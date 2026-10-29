@@ -30,7 +30,7 @@ seeds `1`, `0x8000000000000000`, and `0xffffffffffffffff`.
 
 The 31-bit standalone checksums were regenerated for these sizes. The external
 runtime-seeded full-buffer checks remain authoritative for loop correctness.
-These changes alter the frozen experiment contract: start a new run.
+These timings describe the expanded source suite. Resumed runs keep their saved source seed.
 
 ## Measured runtimes at default concurrency
 
@@ -101,22 +101,6 @@ and anonymous private runtimes, builds, generation, evaluation, and selection-to
 completion round wall time with queueing. Resumed rounds include the interval
 since their original selection. `artifacts/exercise-timing.json` records total
 command wall time, including preparation and cleanup, plus completion status.
-
-## Reproduce locally
-
-From `discovery/`, with Docker and bootstrap dependencies installed:
-
-```sh
-python measure_local.py --parallel-rounds 2 --output experiments/timing-check
-```
-
-Omit `--parallel-rounds 2` to measure a single eight-test suite. Use
-`--chia /path/to/pinned/chia` if that checkout is outside `.deps/chia`.
-A prepared hardware seed can be supplied with `--seed /path/to/seed`; its patch
-hash must match the current baseline. Current C tests are staged separately from
-`base/memory-tests/`. Without `--seed`, current sources are captured automatically.
-Output directories must be new. The command saves JSON and public logs there
-and returns failure if builds, correctness, or per-test timing fail.
 
 Normal CHIA placement still compiles on `chia-dev` and distributes public and
 private RTL tests across existing `chia-worker-1` through `chia-worker-5`.

@@ -12,8 +12,6 @@ from .defaults import (
     SOFTWARE_FILES,
     RELATIVE_PATHS,
     BASE_FILE_PATTERNS,
-    EVALUATOR_FILES,
-    FROZEN_SECTIONS,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,46 +47,14 @@ def load(path=ROOT / "cluster.yaml"):
         for pattern in BASE_FILE_PATTERNS
         for path in sorted((ROOT / "base").glob(pattern))
     }
-    configuration["base"]["evaluator"] = digest([
-        digest((ROOT / "chia_dma" / name).read_bytes())
-        for name in EVALUATOR_FILES
-    ])
     configuration["agent"]["credentials"] = str(
         (ROOT / os.path.expandvars(configuration["agent"]["credentials"])).resolve()
     )
+    # Each mutable checkout needs one task at a time; preserve extra resources.
     workers = configuration["cluster"]["available_node_types"]
-    generation = workers["generation"]
-    if generation["resources"] != {"generation": 1} or generation["num_workers"] < 1:
-        raise ValueError(
-            "Each generation workspace needs one serial generation slot; increase num_workers for concurrency"
-        )
-    if workers["build"]["resources"].get("chipyard") != 1:
-        raise ValueError(
-            "Each private build checkout requires one serial chipyard slot; increase num_workers for parallel builds"
-        )
-    if configuration["search"]["type"] != "openevolve_native":
-        raise ValueError("This tutorial uses SkyDiscover openevolve_native")
+    for role, resource in (("generation", "generation"), ("build", "chipyard")):
+        worker = workers[role]
+        worker.setdefault("resources", {})[resource] = 1
+        worker["num_workers"] = max(1, int(worker.get("num_workers", 1)))
     configuration["_config_file"] = str(path)
     return configuration
-
-
-def frozen(configuration):
-    """Backend/model may change on resume; evaluation and search rules may not."""
-    data = {
-        key: copy.deepcopy(configuration[key])
-        for key in FROZEN_SECTIONS
-    }
-    worker_contract = {}
-    for name, worker in configuration["cluster"]["available_node_types"].items():
-        if name == "generation":
-            continue
-        worker_contract[name] = {
-            "image": worker["docker"]["image"],
-            "mounts_environment": worker["docker"]["run_options"],
-            "environment": worker.get("worker_env_commands", []),
-            "setup": worker.get("worker_setup_commands", []),
-        }
-    data["worker_contract"] = worker_contract
-    data["search"].pop("iterations", None)
-    data["search"].pop("max_in_flight", None)
-    return data

@@ -21,13 +21,14 @@ retaining their original history. `prepare` freezes the complete source and Git
 metadata under `experiments/seeds/HASH/`. Each candidate is saved as one Git patch
 relative to those baseline commits, including changes inside initialized submodules.
 
-The seed identity and frozen experiment contract include the image, base
-revision, patch/script, evaluator code, and every memory-test build input.
-Build workers copy that seed into a private checkout; generation receives a complete writable copy and a read-only baseline. The
+New seed identities include the image, base revision, patch/script, and every
+memory-test build input. Resume uses the saved seed without comparing current
+code or settings against its fingerprint.
+Startup prepares private build and generation checkouts once, then uses Git
+reset/clean and patch application for each candidate. The seed stays read-only. The
 evaluation node stages the original checksum readers and measurement harness
 separately from the candidate checkout. No host Chipyard
 checkout or external Embench checkout is read.
 
 To change the baseline, edit the bundled patch or C suite, then start a new run.
-Existing runs retain their saved seed and require matching evaluation code and
-settings. Embench checkpoints cannot resume under this new workload contract.
+Existing runs retain their saved seed and accept current code and settings. Embench checkpoints cannot resume under this new workload contract.

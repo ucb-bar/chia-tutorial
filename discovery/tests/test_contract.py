@@ -47,7 +47,7 @@ def records(workloads):
 
 def test_memory_reference_and_geomean(records, workloads):
     score, vector = aggregate(
-        records, records, workloads, "candidate patch"
+        records, records, "candidate patch"
     )
     assert score["combined_score"] == 1
     assert len(vector) == len(records)
@@ -55,7 +55,7 @@ def test_memory_reference_and_geomean(records, workloads):
     for row in faster.values():
         row["benchmark_cycles"] /= 4
     score, _ = aggregate(
-        faster, records, workloads,
+        faster, records,
         "candidate patch"
     )
     assert score["combined_score"] == pytest.approx(4)
@@ -65,7 +65,7 @@ def test_memory_reference_and_geomean(records, workloads):
     key = next(k for k, r in records.items() if r["region_offloaded"])
     faster[key]["benchmark_cycles"] *= 4
     score, _ = aggregate(
-        faster, records, workloads,
+        faster, records,
         "candidate patch"
     )
     assert score["combined_score"] == pytest.approx(
@@ -73,25 +73,17 @@ def test_memory_reference_and_geomean(records, workloads):
     )
 
 
-def test_changed_dma_activity_is_allowed_but_wrong_checksum_or_missing_test_is_not(
-    configuration, records, workloads
-):
-    key = next(k for k, r in records.items() if r["offloaded"])
-    for field in ("bytes", "offloaded", "fallback", "intercepted", "region_bytes", "region_offloaded"):
-        bad = copy.deepcopy(records)
-        bad[key][field] = 0
-        score, _ = aggregate(bad, records, workloads, "candidate patch")
-        assert score["validity"] == 1
-    bad = copy.deepcopy(records)
-    del bad[key]
-    with pytest.raises(ValueError, match="Full memory-test"):
-        aggregate(bad, records, workloads, "candidate patch")
-
-    # Even an incorrect seed cannot redefine the fixed expected checksums.
-    bad = copy.deepcopy(records)
-    bad[key]["benchmark_result"] += 1
-    with pytest.raises(ValueError, match="checksum"):
-        aggregate(bad, bad, workloads, "candidate patch")
+def test_scoring_tolerates_diagnostics_and_missing_reference_rows(records):
+    changed = copy.deepcopy(records)
+    for row in changed.values():
+        row["region_offloaded"] = row["region_bytes"] = 0
+        row["benchmark_result"] += 1  # Output correctness belongs to the SHA-256 gate.
+        row["benchmark_instructions"] = 0
+    score, rows = aggregate(changed, {"error": "Old baseline failed"}, "candidate patch")
+    assert score["validity"] == 1 and score["combined_score"] == 1
+    assert score["cpi"] == 0 and len(rows) == len(changed)
+    with pytest.raises(ValueError, match="No benchmark results"):
+        aggregate({}, {}, "candidate patch")
 
 
 def test_failed_or_incomplete_simulation_never_yields_score():
@@ -100,30 +92,23 @@ def test_failed_or_incomplete_simulation_never_yields_score():
         {"success": True, "returncode": 0, "log": "MEMORY_METRICS result=0", "out": ""},
     ):
         with pytest.raises(ValueError):
-            parse(result, 1)
+            parse(result)
 
 
-def test_fixed_checksum_is_required_and_dma_activity_is_diagnostic():
-    fixture = Path(__file__).parent / "fixtures/memory-observation.txt"
-    text = fixture.read_text()
-    result = {"success": True, "returncode": 0, "log": text, "out": ""}
-    row = parse(result, 1)
-    assert row["benchmark_cycles"] == 80
-    assert "hardware" not in row and "copy_events" not in row
-    with pytest.raises(ValueError, match="verification"):
-        parse(result, 2)
-    for original, invalid in (
-        ("benchmark_result=", "missing_benchmark_result="),
-        ("verification_result=1", "verification_result=0"),
-        ("verification_result=1", "verification_result=-1"),
-        ("benchmark_cycles=80", "benchmark_cycles=0"),
-        ("benchmark_instructions=40", "benchmark_instructions=0"),
-    ):
+def test_parser_accepts_optional_diagnostics_versions_and_duplicate_log_copies():
+    text = (Path(__file__).parent / "fixtures/memory-observation.txt").read_text()
+    text = text.replace("metrics_version=1", "metrics_version=2")
+    text = text.replace(" benchmark_instructions=40", "")
+    text = text.replace("MEMORY_METRICS ", "MEMORY_METRICS optional=unknown ")
+    result = {"success": True, "returncode": 0, "log": text + text, "out": "FAIL count=0"}
+    row = parse(result)
+    assert row["benchmark_cycles"] == 80 and row["benchmark_instructions"] == 0
+    assert row["cpi"] == 0 and "hardware" not in row and "copy_events" not in row
+    for old, bad in (("benchmark_cycles=80", "benchmark_cycles=0"),
+                     ("benchmark_cycles=80", "missing_cycles=80"),
+                     ("result=0", "result=1")):
         with pytest.raises(ValueError):
-            parse(
-                {**result, "log": text.replace(original, invalid)},
-                1,
-            )
+            parse({**result, "log": text.replace(old, bad)})
 
 
 def test_cycle_score_accepts_zero_dma_and_does_not_reward_ipc_alone(records, workloads):
@@ -133,7 +118,7 @@ def test_cycle_score_accepts_zero_dma_and_does_not_reward_ipc_alone(records, wor
         row["benchmark_cycles"] *= 2
         row["benchmark_instructions"] *= 4  # Better CPI, worse total execution time.
         row["region_offloaded"] = row["region_bytes"] = 0
-    score, _ = aggregate(slower, records, workloads, source)
+    score, _ = aggregate(slower, records, source)
     assert score["combined_score"] == pytest.approx(0.5)
     assert score["cpi"] == pytest.approx(1)
     faster = copy.deepcopy(records)
@@ -141,22 +126,23 @@ def test_cycle_score_accepts_zero_dma_and_does_not_reward_ipc_alone(records, wor
         row["benchmark_cycles"] /= 2
         row["benchmark_instructions"] /= 4  # Worse CPI, better total execution time.
         row["region_offloaded"] = row["region_bytes"] = 0
-    score, _ = aggregate(faster, records, workloads, source)
+    score, _ = aggregate(faster, records, source)
     assert score["combined_score"] == pytest.approx(2)
     assert score["cpi"] == pytest.approx(4)
 
 
 def test_candidates_accept_arbitrary_paths_and_reject_checkout_escapes(tmp_path, base_tree, patch_for):
-    from chia_dma.experiment import materialize_candidate
+    from chia_dma.experiment import initialize_checkout, apply_candidate_diff
     patch = patch_for({"build.sbt": "changed", "new/module.scala": "new"})
     work = tmp_path / "restored"
-    materialize_candidate(work, base_tree, patch)
+    initialize_checkout(work, base_tree)
+    apply_candidate_diff(work, base_tree, patch)
     assert (work / "new/module.scala").read_text() == "new"
     for name in ("../outside", "/tmp/outside", "a/../../outside", ".git/config"):
         bad = (f"diff --git a/{name} b/{name}\nnew file mode 100644\n"
                f"--- /dev/null\n+++ b/{name}\n@@ -0,0 +1 @@\n+bad\n")
         with pytest.raises(ValueError):
-            materialize_candidate(work, base_tree, bad)
+            apply_candidate_diff(work, base_tree, bad)
 
 
 def test_proposal_commit_is_immutable_with_unrestricted_source_paths(tmp_path, configuration, patch_for):
@@ -191,8 +177,8 @@ def test_proposal_commit_is_immutable_with_unrestricted_source_paths(tmp_path, c
         assert saved["patch_hash"] == digest(modified.encode()) and saved["patch"] == modified
         assert saved["generation"]["response"] == "generated"
         assert not (tmp_path / "candidates").exists()
-        with pytest.raises(ValueError):
-            experiment.save_proposal("candidate", bundle, {})
+        repeated = experiment.save_proposal("candidate", bundle, {})
+        assert repeated["patch"] == modified  # Keep the first saved result if requests race.
     finally:
         experiment.close()
         ray.shutdown()

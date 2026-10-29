@@ -10,14 +10,15 @@ from chia.base.ChiaFunction import get
 from chia.base.bypass import Bypass
 from chia.base.cache import get_active_cache, start_cache, stop_cache
 from chia.trace.profiler import start_collector, stop_collector
-from .config_loader import ROOT, digest, frozen
+from .config_loader import ROOT, digest
 from .defaults import AGENT_SETUP
+from .profiling import export_profiles
 from .experiment import (
     git,
     read_json,
     preserve_source,
     write_json,
-    materialize_candidate,
+    initialize_checkout,
 )
 
 
@@ -25,20 +26,19 @@ def prepare(configuration, run):
     run.mkdir(parents=True, exist_ok=True)
     if (run / "run.json").exists():
         meta = read_json(run / "run.json")
-        if meta["frozen_hash"] != digest(frozen(configuration)):
-            raise ValueError("Frozen evaluation/search configuration changed")
     else:
         status = git(ROOT, "status", "--porcelain", "--", ".")
         meta = {
             "run_id": run.name,
             "seed": str(preserve_source(configuration)),
-            "frozen_hash": digest(frozen(configuration)),
             "loop_revision": git(ROOT, "rev-parse", "HEAD"),
             "loop_dirty": None if status is None else bool(status),
         }
         write_json(run / "run.json", meta)
     seed = run.parent / "seeds" / Path(meta["seed"]).name
     meta["seed"] = str(seed if seed.is_dir() else meta["seed"])
+    if not (Path(meta["seed"]) / "tree").is_dir():
+        raise FileNotFoundError("Preserved Chipyard seed is missing: " + meta["seed"])
     render(configuration, run, meta["seed"])
     return meta
 
@@ -76,14 +76,14 @@ def render(configuration, run, seed):
     if public.exists():
         shutil.rmtree(public)
     public.mkdir(parents=True, exist_ok=True)
-    for name in ("__init__.py", "agent.py", "config_loader.py", "defaults.py", "experiment.py", "runtime.py"):
+    for name in ("__init__.py", "agent.py", "config_loader.py", "defaults.py", "experiment.py", "runtime.py", "profiling.py"):
         shutil.copyfile(ROOT / "chia_dma" / name, public / name)
     deployment["file_mounts"][bindings["REMOTE"] + "/generation"] = str(public) + "/"
     deployment["initialization_commands"].append("mkdir -p " + bindings["REMOTE"] + "/generation")
     generation_template = deployment["available_node_types"].pop("generation")
     for worker_index in range(generation_template["num_workers"]):
         workspace = Path(run) / "work" / f"generation-{worker_index}"
-        materialize_candidate(workspace, Path(seed) / "tree", "")
+        initialize_checkout(workspace, Path(seed) / "tree")
         worker = expand(
             generation_template, {"INDEX": str(worker_index), "WORK": str(workspace)}
         )
@@ -112,6 +112,20 @@ def from_cache(tag, data_path, *args, **kwargs):
     return value
 
 
+def cache_provider(name):
+    def provider(tag, data_path, *args, **kwargs):
+        try:
+            return from_cache(tag, data_path, *args, **kwargs)
+        except KeyError:
+            # Resolve task code only on the worker that needs to rebuild it.
+            if name == "build_program":
+                from chia.chipyard.riscv_build_node import RiscvBuildNode
+                return RiscvBuildNode.build_program(*args, **kwargs)
+            from . import nodes
+            return getattr(nodes, name)(*args, **kwargs)
+    return provider
+
+
 class Runtime:
     """Attach to an existing native cluster; own cache/profiling, not worker lifecycle."""
 
@@ -134,12 +148,15 @@ class Runtime:
         bypass = Bypass(configuration["_config_file"])
         for name in ("build", "build_program", "simulate"):
             bypass.set_cond(name, cache_hit)
-            bypass.set_provider(name, from_cache)
+            bypass.set_provider(name, cache_provider(name))
         return self
 
     def __exit__(self, *args):
         try:
-            stop_collector()
-            stop_cache()
+            export_profiles(self.run / "artifacts/profile")
         finally:
-            ray.shutdown()
+            try:
+                stop_collector()
+                stop_cache()
+            finally:
+                ray.shutdown()

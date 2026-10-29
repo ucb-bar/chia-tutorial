@@ -121,6 +121,9 @@ def test_private_gate_runs_two_additional_seeds_and_returns_only_boolean(native_
     assert all(mode == 1 and seed != 0 for seed, mode in calls)
     assert {seed for seed, _ in calls}.isdisjoint(challenge["seeds"].values())
     assert correctness.verify_correctness._chia_original(scored, challenge["seeds"], hidden) is True
+    incomplete = dict(scored)
+    incomplete.pop("copy-small")
+    assert correctness.verify_correctness._chia_original(incomplete, challenge["seeds"], hidden) is False
     scored["copy-small"].log = "forged or incomplete output"
     assert correctness.verify_correctness._chia_original(scored, challenge["seeds"], hidden) is False
 
@@ -145,7 +148,7 @@ def test_valid_outputs_are_accepted_regardless_of_wall_time(native_binaries):
         "success": True, "returncode": 0, "wall_seconds": 3600, "out": "",
         "log": (Path(__file__).parent / "fixtures/memory-observation.txt").read_text(),
     }
-    assert parse._chia_original(metrics, 1)["rtl_wall_seconds"] == 3600
+    assert parse._chia_original(metrics)["rtl_wall_seconds"] == 3600
 
 
 @pytest.mark.parametrize("words", [0, 1, 5, 6, 7, 14, 15, 16, 17, 30, 127, 128])

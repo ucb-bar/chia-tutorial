@@ -16,20 +16,22 @@ for name in ("chia", "evolve_flows"):
             git + ["clone", configuration["dependencies"][name + "_url"], str(target)],
             check=True,
         )
+        subprocess.run(
+            git
+            + [
+                "-C",
+                str(target),
+                "checkout",
+                configuration["dependencies"][name + "_revision"],
+            ],
+            check=True,
+        )
+# Reuse installed checkouts and their local edits; initialize missing sources only.
+if not (Path(configuration["skydiscover"]) / ".git").exists():
     subprocess.run(
-        git
-        + [
-            "-C",
-            str(target),
-            "checkout",
-            configuration["dependencies"][name + "_revision"],
-        ],
+        git + ["-C", configuration["evolve_flows"], "submodule", "update", "--init", "--recursive"],
         check=True,
     )
-subprocess.run(
-    git + ["-C", str(target), "submodule", "update", "--init", "--recursive"],
-    check=True,
-)
 subprocess.run(
     pip
     + ["-e", configuration["chia"], *configuration["dependencies"]["python_packages"]],

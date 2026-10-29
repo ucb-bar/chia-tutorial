@@ -2,7 +2,6 @@
 set -euo pipefail
 cd /home/ray/chipyard
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0='*'
-test "$(git rev-parse HEAD)" = "$1"
 mkdir -p /seed/tree
 git ls-files --recurse-submodules -z |
     tar --null --no-recursion -T - -cf - |

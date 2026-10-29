@@ -80,8 +80,8 @@ def boundary_probe(mark, parent_patch, ready, sql, delay=0.2):
     EXAMPLE_FILES = HARDWARE_FILES + SOFTWARE_FILES
 
     # Match production's parent initialization before giving the agent its shell.
-    from chia_dma.experiment import materialize_candidate
-    materialize_candidate("/workspace", "/seed", parent_patch)
+    from chia_dma.experiment import apply_candidate_diff
+    apply_candidate_diff("/workspace", "/seed", parent_patch)
     assert all((Path("/workspace") / name).read_text() == mark for name in EXAMPLE_FILES)
     tool = BashTool(
         "boundary_bash",
@@ -184,9 +184,10 @@ def test_native_generation_parent_separation_forbidden_writes_and_serial_reuse(
         for mark, result in zip(("parent-A", "parent-B", "parent-C"), results):
             assert "PARENT=" + mark in result["output"]
             assert result["output"].count("DENIED=") == 2
-            from chia_dma.experiment import materialize_candidate
+            from chia_dma.experiment import initialize_checkout, apply_candidate_diff
             restored = run / ("verify-" + mark)
-            materialize_candidate(restored, seed / "tree", experiment.load_proposal(mark)["patch"])
+            initialize_checkout(restored, seed / "tree")
+            apply_candidate_diff(restored, seed / "tree", experiment.load_proposal(mark)["patch"])
             assert (restored / EXAMPLE_FILES[0]).read_text() == mark + " edited"
             assert (restored / SOFTWARE_FILES[0]).read_text() == mark + " C edited"
         for a, b in [(results[i], results[j]) for i in range(3) for j in range(i)]:
@@ -259,9 +260,6 @@ def test_native_build_simulation_worker_placement(native_ssh, base_tree):
     credentials = base / "placement-credentials"
     credentials.mkdir()
     configuration["agent"]["credentials"] = str(credentials)
-    configuration["cluster"]["available_node_types"]["build"]["worker_setup_commands"].append(
-        "cp -a ${SEED}/tree/. /home/ray/dma-build/"
-    )
     configuration, run, seed, path = cluster(configuration, base, "pools", pools=True)
     try:
         chia(configuration, "up", path)
@@ -444,9 +442,10 @@ def test_cli_backend_uses_native_bash_tool(native_ssh, backend):
         result = get(cli_checksum_probe.chia_remote(configuration, source))
         write_json(run / "result.json", result)
         assert digest(source[EXAMPLE_FILES[0]].encode()) in result["response"]
-        from chia_dma.experiment import materialize_candidate
+        from chia_dma.experiment import initialize_checkout, apply_candidate_diff
         restored = run / "verified-proposal"
-        materialize_candidate(restored, seed / "tree", result["patch"])
+        initialize_checkout(restored, seed / "tree")
+        apply_candidate_diff(restored, seed / "tree", result["patch"])
         assert all((restored / name).read_text() == value for name, value in source.items())
         assert "dma_bash" in result["transcript"]
     finally:

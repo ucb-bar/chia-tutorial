@@ -5,8 +5,7 @@ import shutil
 import subprocess
 import pytest
 import yaml
-from chia_dma.config_loader import HARDWARE_FILES, ROOT, SOFTWARE_FILES, digest, frozen, load
-from chia_dma.defaults import EVALUATOR_FILES
+from chia_dma.config_loader import HARDWARE_FILES, ROOT, SOFTWARE_FILES, digest, load
 from chia_dma.experiment import preserve_source, read_json, capture_patch
 
 EXAMPLE_FILES = HARDWARE_FILES + SOFTWARE_FILES
@@ -57,7 +56,7 @@ def test_native_riscv_builder_compiles_candidate_and_keeps_the_oracle_fixed(tmp_
 
 
 def test_unrestricted_source_changes_round_trip_and_clear_previous_parent(tmp_path):
-    from chia_dma.experiment import materialize_candidate
+    from chia_dma.experiment import initialize_checkout, apply_candidate_diff
 
     seed = tmp_path / "seed"
     seed.mkdir()
@@ -67,7 +66,8 @@ def test_unrestricted_source_changes_round_trip_and_clear_previous_parent(tmp_pa
     from conftest import commit_tree
     commit_tree(seed)
     work = tmp_path / "work"
-    materialize_candidate(work, seed, "")
+    initialize_checkout(work, seed)
+    apply_candidate_diff(work, seed, "")
     assert capture_patch(work, seed) == ""
     (work / "build.sbt").write_text("new build configuration")
     (work / "remove.c").unlink()
@@ -76,17 +76,26 @@ def test_unrestricted_source_changes_round_trip_and_clear_previous_parent(tmp_pa
     (work / "binary").write_bytes(b"\x00\xfe")
     (work / "binary").chmod(0o755)
     (work / "helper-link").symlink_to("new/helper.c")
+    commit_tree(work)  # An agent commit must not become the next candidate's baseline.
     candidate = capture_patch(work, seed)
     assert "deleted file mode" in candidate
     assert "GIT binary patch" in candidate
     assert "new file mode 120000" in candidate
     restored = tmp_path / "restored"
-    materialize_candidate(restored, seed, candidate)
+    initialize_checkout(restored, seed)
+    apply_candidate_diff(restored, seed, candidate)
     assert capture_patch(restored, seed) == candidate
     assert (restored / "binary").read_bytes() == b"\x00\xfe"
     assert (restored / "helper-link").read_text().startswith("int helper")
-    materialize_candidate(restored, seed, "")
+    metadata = restored / ".git/keep-this-metadata"
+    metadata.write_text("Preserve the existing repository")
+    initialize_checkout(restored, seed)
+    assert capture_patch(restored, seed) == candidate
+    apply_candidate_diff(restored, seed, "")
+    assert metadata.read_text() == "Preserve the existing repository"
     assert capture_patch(restored, seed) == ""
+    apply_candidate_diff(work, seed, "")
+    assert capture_patch(work, seed) == ""
     assert not (restored / "new/helper.c").exists()
     assert (seed / "build.sbt").read_text() == "baseline"
 
@@ -115,28 +124,39 @@ def test_generation_mounts_the_whole_checkout_and_isolates_verification(tmp_path
     assert not any("dst=/workspace" in option for option in verification["docker"]["run_options"])
 
 
-def test_c_sources_and_evaluator_change_the_frozen_contract(tmp_path, monkeypatch):
-    from chia_dma import config_loader as config
+def test_resume_ignores_old_fingerprints_and_reuses_the_saved_seed(tmp_path, monkeypatch):
+    from chia_dma import config_loader as config, runtime
+    from chia_dma.experiment import write_json
 
     shutil.copytree(ROOT / "base", tmp_path / "base",
                     ignore=shutil.ignore_patterns("build", "__pycache__"))
-    (tmp_path / "chia_dma").mkdir()
-    for name in EVALUATOR_FILES:
-        shutil.copyfile(ROOT / "chia_dma" / name, tmp_path / "chia_dma" / name)
-    for name in ("cluster.yaml",):
-        shutil.copyfile(ROOT / name, tmp_path / name)
+    shutil.copyfile(ROOT / "cluster.yaml", tmp_path / "cluster.yaml")
     monkeypatch.setattr(config, "ROOT", tmp_path)
-    before = frozen(config.load(tmp_path / "cluster.yaml"))
+    initial = config.load(tmp_path / "cluster.yaml")
     source = tmp_path / "base/memory-tests/src/copy-small/copy-small.c"
     source.write_text(source.read_text() + "\n/* changed workload */\n")
-    after = frozen(config.load(tmp_path / "cluster.yaml"))
-    assert digest(before) != digest(after)
-    for name in EVALUATOR_FILES:
-        evaluator = tmp_path / "chia_dma" / name
-        evaluator.write_text(evaluator.read_text() + "\n# changed verifier\n")
-        updated = frozen(config.load(tmp_path / "cluster.yaml"))
-        assert digest(after) != digest(updated)
-        after = updated
+    (tmp_path / "chia_dma").mkdir()
+    (tmp_path / "chia_dma/nodes.py").write_text('# A harmless evaluator comment\n')
+    monkeypatch.setattr(config.os, "sched_getaffinity", lambda pid: {0, 1})
+    changed = config.load(tmp_path / "cluster.yaml")
+    changed["search"]["random_seed"] += 1
+    assert changed["base"]["files"] != initial["base"]["files"]
+    assert changed["hardware"]["make_jobs"] == 2
+
+    run = tmp_path / "runs/resumed"
+    run.mkdir(parents=True)
+    seed = run.parent / "seeds/existing"
+    (seed / "tree").mkdir(parents=True)
+    write_json(run / "run.json", {"seed": "/old/machine/seeds/existing", "frozen_hash": "old-hash"})
+    rendered = []
+    monkeypatch.setattr(runtime, "render", lambda *args: rendered.append(args))
+    monkeypatch.setattr(runtime, "preserve_source", lambda *args: pytest.fail("Do not replace a saved seed"))
+    meta = runtime.prepare(changed, run)
+    assert meta["seed"] == str(seed)
+    assert rendered[0][2] == str(seed)
+    (seed / "tree").rmdir()
+    with pytest.raises(FileNotFoundError, match="Preserved Chipyard seed is missing"):
+        runtime.prepare(changed, run)
 
 
 def test_image_seed_is_immutable_reusable_and_restores_candidates(
@@ -172,9 +192,10 @@ def test_image_seed_is_immutable_reusable_and_restores_candidates(
     assert not (seed / "tree" / EXAMPLE_FILES[0]).stat().st_mode & 0o222
     assert len(list((seed / "tree/tests/memory-tests/src").iterdir())) == 6
     assert not (seed / "tree/tests/embench-iot").exists()
-    from chia_dma.experiment import materialize_candidate
+    from chia_dma.experiment import initialize_checkout, apply_candidate_diff
     restored = tmp_path / "restored"
-    materialize_candidate(restored, seed / "tree", "")
+    initialize_checkout(restored, seed / "tree")
+    apply_candidate_diff(restored, seed / "tree", "")
     assert (restored / ".git").is_dir()
     assert subprocess.check_output(["git", "-C", str(restored), "rev-parse", "HEAD"])
     for name in EXAMPLE_FILES:
@@ -182,7 +203,8 @@ def test_image_seed_is_immutable_reusable_and_restores_candidates(
         path.write_text(path.read_text() + "// candidate\n")
     candidate = capture_patch(restored, seed / "tree")
     replayed = tmp_path / "replayed"
-    materialize_candidate(replayed, seed / "tree", candidate)
+    initialize_checkout(replayed, seed / "tree")
+    apply_candidate_diff(replayed, seed / "tree", candidate)
     assert capture_patch(replayed, seed / "tree") == candidate
     test = "tests/memory-tests/src/copy-small/checksum.c"
     assert (replayed / test).read_bytes() == (base_tree / test).read_bytes()
@@ -258,7 +280,7 @@ def test_copied_loop_prepares_and_relocates_without_requiring_a_commit(
 
 def test_patch_round_trip_preserves_submodule_metadata_and_edits(tmp_path):
     from conftest import commit_tree
-    from chia_dma.experiment import materialize_candidate, capture_patch
+    from chia_dma.experiment import initialize_checkout, apply_candidate_diff, capture_patch
     component = tmp_path / "component"
     component.mkdir()
     (component / "helper.c").write_text("int value = 1;\n")
@@ -273,15 +295,23 @@ def test_patch_round_trip_preserves_submodule_metadata_and_edits(tmp_path):
     ], check=True)
     commit_tree(baseline)
     work = tmp_path / "work"
-    materialize_candidate(work, baseline, "")
+    initialize_checkout(work, baseline)
+    apply_candidate_diff(work, baseline, "")
     (work / "generators/component/helper.c").write_text("int value = 2;\n")
     (work / "generators/component/new.h").write_text("#define NEW 1\n")
     patch = capture_patch(work, baseline)
     assert "diff --git a/generators/component/helper.c" in patch
     assert "diff --git a/generators/component/new.h" in patch
     restored = tmp_path / "restored"
-    materialize_candidate(restored, baseline, patch)
-    assert (restored / "generators/component/.git").is_file()
+    initialize_checkout(restored, baseline)
+    apply_candidate_diff(restored, baseline, patch)
+    assert (restored / "generators/component/.git").exists()
     assert (restored / "generators/component/helper.c").read_text() == "int value = 2;\n"
     assert (restored / "generators/component/new.h").read_text() == "#define NEW 1\n"
     assert capture_patch(restored, baseline) == patch
+
+    commit_tree(restored / "generators/component")
+    apply_candidate_diff(restored, baseline, "")
+    assert (restored / "generators/component/helper.c").read_text() == "int value = 1;\n"
+    assert not (restored / "generators/component/new.h").exists()
+    assert capture_patch(restored, baseline) == ""

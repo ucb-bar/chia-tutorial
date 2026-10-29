@@ -71,3 +71,34 @@ def test_benchmark_fanout_visits_all_simulation_nodes(monkeypatch):
     monkeypatch.setattr(evaluation.ray, 'nodes', lambda: [])
     with pytest.raises(RuntimeError, match='No existing simulation workers'):
         evaluator.run_simulations(b'simulator', software, 'tag')
+
+
+def test_loader_accepts_extra_resources_and_keeps_checkout_slots_serial(tmp_path):
+    from chia_dma.config_loader import ROOT
+    document = yaml.safe_load((ROOT / "cluster.yaml").read_text())
+    workers = document["available_node_types"]
+    workers["generation"]["resources"] = {"generation": 4, "custom": 2}
+    workers["generation"]["num_workers"] = 0
+    workers["build"]["resources"] = {"chipyard": 2, "extra": 1}
+    path = tmp_path / "cluster.yaml"
+    path.write_text(yaml.safe_dump(document))
+    configuration = load(path)
+    workers = configuration["cluster"]["available_node_types"]
+    assert workers["generation"]["resources"] == {"generation": 1, "custom": 2}
+    assert workers["generation"]["num_workers"] == 1
+    assert workers["build"]["resources"] == {"chipyard": 1, "extra": 1}
+
+
+def test_cpu_and_timeout_changes_reuse_build_cache_keys(tmp_path, base_tree):
+    import copy
+    import shutil
+    seed = tmp_path / "seed"
+    shutil.copytree(base_tree, seed / "tree")
+    configuration = load()
+    original = DMAEvaluator(configuration, None, seed)
+    changed = copy.deepcopy(configuration)
+    changed["hardware"]["make_jobs"] += 8
+    changed["hardware"]["build_timeout_seconds"] += 600
+    assert DMAEvaluator(changed, None, seed).cache_prefix == original.cache_prefix
+    changed["hardware"]["config"] = "AnotherConfig"
+    assert DMAEvaluator(changed, None, seed).cache_prefix != original.cache_prefix

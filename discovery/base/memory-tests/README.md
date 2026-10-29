@@ -110,10 +110,10 @@ the native traffic audit checks that interception works.
 
 The loop actively selects this suite in `cluster.yaml`. Source preparation
 copies its build inputs into `tests/memory-tests/` in the preserved seed; their
-hashes enter the frozen evaluation contract. For every candidate, the hardware `build` node and six native
+hashes identify new source seeds. For every candidate, the hardware `build` node and six native
 `RiscvBuildNode.build_program` calls run concurrently and return the simulator
 and six ELF byte strings. Six `simulate` calls run fresh runtime inputs; `parse`
-checks the corresponding checksums, and the private gate checks full-buffer
+reads cycle measurements, and the private gate checks full-buffer
 digests plus two additional seeded runs before `aggregate` scores cycle speedup.
 Source hashes include both
 hardware and C code, so a software-only edit gets a new build/evaluation key.

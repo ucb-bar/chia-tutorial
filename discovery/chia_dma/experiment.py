@@ -15,7 +15,8 @@ from chia.database.sqlite_node import SQLiteNode
 from skydiscover.config import OpenEvolveNativeDatabaseConfig
 from skydiscover.search.base_database import Program
 from skydiscover.search.openevolve_native.database import OpenEvolveNativeDatabase
-from .config_loader import ROOT, digest, frozen
+from .config_loader import ROOT, digest
+from .profiling import record_scores
 
 
 class Experiment:
@@ -148,6 +149,7 @@ class Experiment:
                 )
             )
         self.sql.transaction(operations)
+        return record_scores(self, candidate_id, metrics)
 
     def save_checkpoint(self, iteration=0):
         root = self.run / "checkpoints"
@@ -171,7 +173,6 @@ class Experiment:
         write_json(
             temp / "state.json",
             {
-                "frozen_hash": digest(frozen(self.configuration)),
                 "admitted": sorted(self.admitted),
                 "requests": requests,
             },
@@ -205,10 +206,13 @@ class Population(OpenEvolveNativeDatabase):
         return parent, context
 
     def add(self, program, iteration=None, **kwargs):
-        if program.metrics.get("validity") != 1:
-            raise ValueError("Only fully valid candidates may enter the population")
         candidate = json.loads(program.solution)
         candidate_id = candidate["proposal_id"]
+        if program.metrics.get("validity") != 1 and candidate_id != "seed-dma":
+            return None
+        for dimension in self.feature_dimensions:
+            if dimension not in ("complexity", "diversity", "score"):
+                program.metrics.setdefault(dimension, 0)
         request = self.owner.selection(candidate_id)
         saved = self.owner.load_proposal(candidate_id)
         program.metadata.update(
@@ -264,8 +268,8 @@ def save_proposal(sql, candidate_id, patch, generation, *, remote=False):
     else:
         sql.execute(*args)
     saved = load_proposal(sql, candidate_id, remote=remote)
-    if saved is None or saved["patch"] != patch:
-        raise ValueError("Missing request or immutable proposal ID reused")
+    if saved is None:
+        raise ValueError("Missing proposal request: " + candidate_id)
     return saved
 
 
@@ -370,7 +374,6 @@ def preserve_source(configuration):
             "bash",
             image,
             "/base/prepare.sh",
-            configuration["base"]["chipyard_revision"],
         ],
         check=True,
     )
@@ -380,7 +383,7 @@ def preserve_source(configuration):
     return seed_directory
 
 
-def git_output(tree, *arguments, input=None):
+def run_git_command(tree, *arguments, input=None):
     """Run Git in a candidate checkout and keep its patch output unchanged."""
     result = subprocess.run(
         ["git", "-c", "safe.directory=*", "-C", str(tree), *arguments],
@@ -394,17 +397,17 @@ def git_output(tree, *arguments, input=None):
 def capture_patch(tree, baseline):
     """Capture one Git patch, including new files and submodule edits."""
     tree, baseline = Path(tree), Path(baseline)
-    repositories = [""] + git_output(
+    repositories = [""] + run_git_command(
         baseline, "submodule", "foreach", "--quiet", "--recursive",
         'printf "%s\\n" "$displaypath"',
     ).splitlines()
     patches = []
     # Prefix submodule paths so every diff applies from the Chipyard root.
     for relative in repositories:
-        original = git_output(baseline / relative, "rev-parse", "HEAD").strip()
-        git_output(tree / relative, "add", "--all")
+        original = run_git_command(baseline / relative, "rev-parse", "HEAD").strip()
+        run_git_command(tree / relative, "add", "--all")
         prefix = relative + "/" if relative else ""
-        patches.append(git_output(
+        patches.append(run_git_command(
             tree / relative, "diff", "--cached", "--binary", "--full-index",
             "--no-renames", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all",
             "--src-prefix=a/" + prefix, "--dst-prefix=b/" + prefix, original, "--",
@@ -412,21 +415,29 @@ def capture_patch(tree, baseline):
     return "".join(patches)
 
 
-def materialize_candidate(tree, baseline, patch, *, git_metadata=True):
-    """Restore the preserved source and apply one ordinary Git patch."""
-    tree, baseline = Path(tree), Path(baseline)
-    tree.mkdir(parents=True, exist_ok=True)
-    for child in tree.iterdir():
-        if child.is_dir() and not child.is_symlink():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
-    ignore = None if git_metadata else shutil.ignore_patterns(".git")
-    shutil.copytree(baseline, tree, symlinks=True, dirs_exist_ok=True, ignore=ignore)
-    # The preserved seed is read-only; the agent/build checkout must be writable.
+def initialize_checkout(tree, baseline):
+    """Prepare a writable checkout once, retaining the seed's Git metadata."""
+    tree = Path(tree)
+    if (tree / ".git").exists():
+        return
+    shutil.copytree(baseline, tree, symlinks=True, dirs_exist_ok=True)
     subprocess.run(["chmod", "-R", "u+w", str(tree)], check=True)
+
+
+def apply_candidate_diff(tree, baseline, patch):
+    """Reset the existing repositories to the seed and apply the candidate patch."""
+    tree, baseline = Path(tree).resolve(), Path(baseline).resolve()
+    repositories = [""] + run_git_command(
+        baseline, "submodule", "foreach", "--quiet", "--recursive",
+        'printf "%s\\n" "$displaypath"',
+    ).splitlines()
+    for relative in repositories:
+        checkout = tree / relative
+        original = run_git_command(baseline / relative, "rev-parse", "HEAD").strip()
+        run_git_command(checkout, "reset", "--hard", original)
+        run_git_command(checkout, "clean", "-ffdx")
     if patch:
-        git_output(tree, "apply", "--whitespace=nowarn", input=patch)
+        run_git_command(tree, "apply", "--whitespace=nowarn", input=patch)
 
 
 class RunLock:

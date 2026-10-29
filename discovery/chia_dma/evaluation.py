@@ -12,9 +12,10 @@ import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from chia.base.ChiaFunction import ChiaFunction, get, chia_cancel
 from chia.chipyard.riscv_build_node import RiscvBuildNode
+from chia.trace.profiler import get_profiler
 from skydiscover.evaluation.evaluation_result import EvaluationResult
 
-from chia_dma.config_loader import digest, frozen
+from chia_dma.config_loader import digest
 from chia_dma.experiment import read_json, write_json
 from chia_dma.nodes import build, simulate, parse, aggregate, software_inputs, require
 
@@ -34,7 +35,14 @@ class DMAEvaluator:
         self.dram_settings = {
             path.name: path.read_bytes() for path in dram_directory.glob("*.ini")
         }
-        self.cache_prefix = digest([Path(seed).name, frozen(configuration)])
+        hardware = dict(configuration["hardware"])
+        hardware.pop("make_jobs", None)
+        hardware.pop("build_timeout_seconds", None)
+        software = dict(configuration["software"])
+        software.pop("build_timeout_seconds", None)
+        images = [configuration["cluster"]["available_node_types"][role]["docker"]["image"]
+                  for role in ("build", "software")]
+        self.cache_prefix = digest([Path(seed).name, hardware, software, images])
 
     async def evaluate_program(self, solution, program_id=""):
         try:
@@ -43,12 +51,15 @@ class DMAEvaluator:
             self.stopped.set()
             raise
 
+    @ChiaFunction()
     def evaluate(self, solution, program_id=""):
         """Read the saved proposal, then follow build → simulate → parse → score."""
         candidate = json.loads(solution)
         candidate_id = candidate["proposal_id"]
         recorded_metrics = self.experiment.evaluation_result(candidate_id)
         if recorded_metrics is not None:
+            get_profiler().add_info({"candidate_id": candidate_id, "cached_evaluation": True,
+                                     **recorded_metrics})
             return EvaluationResult(metrics=recorded_metrics)
 
         proposal = self.experiment.load_proposal(candidate_id)
@@ -103,7 +114,7 @@ class DMAEvaluator:
                     log_file.write_text(result.log + "\n" + result.out)
                     try:
                         measurements[workload] = self.resolve(parse.chia_remote(
-                            asdict(result), challenge["checksums"][workload]
+                            asdict(result)
                         ))
                     except ValueError:
                         raise CorrectnessFailure("Correctness tests failed") from None
@@ -118,22 +129,21 @@ class DMAEvaluator:
             )):
                 raise CorrectnessFailure("Hidden correctness tests failed")
 
-            if candidate_id == "seed-dma":
-                reference = measurements
-            else:
-                reference = self.experiment.benchmarks("seed-dma")
+            reference_id = self.experiment.sql.query_value(
+                "SELECT id FROM proposals WHERE json_extract(metrics, '$.validity')=1 "
+                "ORDER BY sequence LIMIT 1"
+            )
+            reference = self.experiment.benchmarks(reference_id) if reference_id else measurements
             metrics, benchmarks = self.resolve(aggregate.chia_remote(
-                measurements,
-                reference,
-                {name: {**spec, "checksum": challenge["checksums"][name]}
-                 for name, spec in self.expected.items()},
-                patch,
+                measurements, reference, patch,
             ))
             metrics["correctness"] = 1
         except CorrectnessFailure:
             metrics = {"validity": 0, "combined_score": 0.0, "correctness": 0}
             benchmarks = {"error": "Hidden correctness tests failed"}
-        except ValueError as error:
+        except InterruptedError:
+            raise
+        except Exception as error:
             metrics = {"validity": 0, "combined_score": 0.0}
             benchmarks = {"error": str(error)}
         finally:
@@ -146,9 +156,10 @@ class DMAEvaluator:
                                        else timing["generation_seconds"] + timing["evaluation_seconds"])
             write_json(log_directory / "timing.json", timing)
 
-        self.experiment.save_evaluation(
+        profile = self.experiment.save_evaluation(
             candidate_id, metrics, {**measurements, **benchmarks}, program_id
         )
+        get_profiler().add_info(profile or {})
         return EvaluationResult(
             metrics=metrics, artifacts={"proposal_id": candidate_id}
         )

@@ -9,7 +9,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from chia.base.ChiaFunction import ChiaFunction, get, chia_cancel
 from chia.base.tools.BashTool import BashTool
 from skydiscover.llm.base import LLMInterface, LLMResponse
-from .experiment import save_proposal, load_proposal, capture_patch, materialize_candidate
+from .experiment import save_proposal, load_proposal, capture_patch, apply_candidate_diff
 
 CONSTRAINTS = """Co-design the RV64 RoCC DMA hardware and the six baremetal C workloads.
 
@@ -74,7 +74,7 @@ def generate(configuration, sql, task):
     selected_parent = task["parent"]
     parent_solution = json.loads(selected_parent["solution"])
     parent_patch = parent_solution["patch"]
-    materialize_candidate("/workspace", "/seed", parent_patch)
+    apply_candidate_diff("/workspace", "/seed", parent_patch)
     os.chdir("/workspace")
     prompt = CONSTRAINTS + "\nSelected parent and inspirations:\n" + json.dumps(task)
     guidance = configuration["search"]["island_guidance"]
@@ -130,6 +130,10 @@ class CLIClient(LLMInterface):
             saved = await asyncio.to_thread(get, handle)
         except asyncio.CancelledError:
             chia_cancel(getattr(handle, "ref", handle), force=True)
+            raise
+        except Exception:
+            from .profiling import record_scores
+            record_scores(self.experiment, candidate_id, {"validity": 0}, stage="generation")
             raise
         candidate = {"proposal_id": candidate_id, "patch": saved["patch"]}
         return LLMResponse(text="```json\n" + json.dumps(candidate) + "\n```")

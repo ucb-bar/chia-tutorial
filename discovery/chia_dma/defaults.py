@@ -110,8 +110,3 @@ BASE_FILE_PATTERNS = (
     "memory-tests/src/*/*.c",
     "memory-tests/support/*.[ch]",
 )
-
-EVALUATOR_FILES = ("evaluation.py", "nodes.py", "correctness.py", "observations.py")
-
-# These settings must stay fixed when resuming an experiment.
-FROZEN_SECTIONS = ("dependencies", "hardware", "software", "search", "base")

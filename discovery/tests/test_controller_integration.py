@@ -18,7 +18,8 @@ from chia_dma.experiment import (
     read_json,
     write_json,
     capture_patch,
-    materialize_candidate,
+    initialize_checkout,
+    apply_candidate_diff,
 )
 from chia_dma.experiment import Experiment, save_proposal, load_proposal
 from loop import create_search_controller, replay_candidate, run_search
@@ -112,7 +113,8 @@ def flow(tmp_path, monkeypatch, request, base_tree):
         parent = json.loads(task["parent"]["solution"])["patch"]
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
-            materialize_candidate(work, tree, parent)
+            initialize_checkout(work, tree)
+            apply_candidate_diff(work, tree, parent)
             controller = work / EXAMPLE_FILES[0]
             controller.write_text(controller.read_text() + "// " + task["id"] + " " + configuration["agent"]["backend"] + "\n")
             if configuration["agent"]["model"] is None and task["island"] == 1:
@@ -181,8 +183,7 @@ def flow(tmp_path, monkeypatch, request, base_tree):
         import secrets
         challenge = secrets.randbits(64)
         return {"software": software,
-                "seeds": {name: challenge for name in specifications},
-                "checksums": {name: spec["checksum"] for name, spec in specifications.items()}}
+                "seeds": {name: challenge for name in specifications}}
     monkeypatch.setattr(correctness, "prepare_scored_inputs",
                         ChiaFunction(resources={"verification": 1})(prepare_scored_inputs))
 
@@ -198,7 +199,7 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     monkeypatch.setattr(correctness, "verify_correctness", verify_correctness)
 
     @ChiaFunction(num_cpus=1)
-    def aggregate(records, reference, workloads, source):
+    def aggregate(records, reference, source):
         assert set(reference) == set(records)
         return (
             {
@@ -650,3 +651,138 @@ def test_private_correctness_failure_rejects_the_round_and_returns_generic_feedb
     assert "failed hidden correctness tests" in following["feedback"]
     assert "zero fitness" in following["feedback"]
     assert "MEMORY_OBSERVATION" not in json.dumps(following)
+
+
+def test_failed_initial_baseline_can_seed_search_and_recover(flow, monkeypatch, patch_for):
+    from chia_dma import evaluation
+    from loop import evaluate_seed
+    configuration, _, seed, _, counts, cache, tmp_path = flow
+    fresh = Experiment(configuration, tmp_path / "failed-baseline")
+    evaluator = DMAEvaluator(configuration, fresh, seed)
+    original = evaluation.build
+
+    @ChiaFunction(resources={"chipyard": 1})
+    def broken_build(*args):
+        raise RuntimeError("Temporary baseline build failure")
+
+    monkeypatch.setattr(evaluation, "build", broken_build)
+    try:
+        asyncio.run(evaluate_seed(configuration, fresh, evaluator, seed))
+        assert fresh.evaluation_result("seed-dma")["validity"] == 0
+        assert fresh.population.programs and all(fresh.population.islands)
+        monkeypatch.setattr(evaluation, "build", original)
+        parent = next(iter(fresh.population.programs.values()))
+        request = fresh.save_selection(parent, [], kind="search")
+        patch = patch_for({EXAMPLE_FILES[0]: "class Controller {}\n// fixed candidate\n"},
+                          baseline=Path(seed) / "tree")
+        fresh.save_proposal(request["id"], patch, {})
+        result = evaluator.evaluate(json.dumps({"proposal_id": request["id"]}))
+        assert result.metrics["validity"] == 1
+        first_valid = fresh.sql.query_value(
+            "SELECT id FROM proposals WHERE json_extract(metrics, '$.validity')=1 ORDER BY sequence LIMIT 1"
+        )
+        assert first_valid == request["id"]
+        state = fresh.save_checkpoint()
+        assert "frozen_hash" not in read_json(fresh.run / "checkpoints" / state / "state.json")
+    finally:
+        fresh.close()
+
+
+def test_simulation_infrastructure_failure_marks_the_proposal_failed(flow, monkeypatch, patch_for):
+    configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
+    parent = next(iter(experiment.population.programs.values()))
+    request = experiment.save_selection(parent, [], kind="search")
+    patch = patch_for({EXAMPLE_FILES[0]: "class Controller {}\n// worker failure case\n"},
+                      baseline=Path(seed) / "tree")
+    experiment.save_proposal(request["id"], patch, {})
+    def missing_workers(*args, **kwargs):
+        raise RuntimeError("Simulation workers temporarily unavailable")
+    monkeypatch.setattr(evaluator, "run_simulations", missing_workers)
+    result = evaluator.evaluate(json.dumps({"proposal_id": request["id"]}))
+    assert result.metrics["validity"] == 0 and result.metrics["combined_score"] == 0
+    assert not experiment.pending_proposals()
+    assert request["id"] not in experiment.admitted
+
+
+def test_native_profile_commands_show_best_and_failed_candidate_scores(flow, monkeypatch):
+    import csv
+    import re
+    import subprocess
+    import sys
+    from chia.trace.profiler import get_collector
+    from chia_dma import agent, evaluation
+    from chia_dma.profiling import export_profiles
+
+    configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
+    parent = next(iter(experiment.population.programs.values()))
+
+    @ChiaFunction()
+    def improved_score(*args):
+        return {"validity": 1, "combined_score": 2.0}, {}
+    monkeypatch.setattr(evaluation, "aggregate", improved_score)
+
+    def propose(fail=False):
+        request = experiment.save_selection(parent, [], kind="search")
+        work = tmp_path / request["id"]
+        initialize_checkout(work, seed / "tree")
+        source = work / EXAMPLE_FILES[0]
+        source.write_text(source.read_text() + ("// fixture compilation failure\n" if fail else "// improved score\n"))
+        patch = capture_patch(work, seed / "tree")
+        experiment.save_proposal(request["id"], patch, {})
+        result = evaluator.evaluate(json.dumps({"proposal_id": request["id"]}))
+        return request, result
+
+    improved, result = propose()
+    assert result.metrics["combined_score"] == 2
+    failed, result = propose(fail=True)
+    assert result.metrics["combined_score"] == 0
+    # A cached result does not count as another proposed candidate.
+    evaluator.evaluate(json.dumps({"proposal_id": improved["id"]}))
+
+    request = experiment.save_selection(parent, [], kind="search")
+    @ChiaFunction(resources={"generation": 1})
+    def generation_failure(*args):
+        raise RuntimeError("fixture generation failure")
+    monkeypatch.setattr(agent, "generate", generation_failure)
+    with pytest.raises(Exception, match="fixture generation failure"):
+        asyncio.run(CLIClient(configuration, experiment).generate("", [{
+            "role": "user", "content": json.dumps({"request_id": request["id"]}),
+        }]))
+    assert experiment.evaluation_result(request["id"]) is None  # Recovery stays pending.
+
+    directory = tmp_path / "profile"
+    export_profiles(directory)
+    assert get(get_collector().get_events.remote())
+    expected = {"prof_full": [1, 2, 2, 2], "prof_candidates": [1, 2, 0, 0]}
+    for stem, scores in expected.items():
+        log = directory / (stem + ".log")
+        csv_path = directory / (stem + ".csv")
+        subprocess.run([sys.executable, "-m", "chia.cli.main", "viz-profile", str(log),
+                        "--format", "table", "--output", str(csv_path)], check=True, capture_output=True)
+        with csv_path.open() as stream:
+            rows = list(csv.DictReader(stream))
+        assert set(rows[0]) == {"func", "count", "mean_exec_time_s", "std_exec_time_s",
+                                "min_exec_time_s", "max_exec_time_s", "total_exec_time_s"}
+        point = next(row for row in rows if row["func"] == "score_point")
+        assert int(point["count"]) == len(scores)
+        assert float(point["total_exec_time_s"]) >= 0
+        if stem == "prof_full":
+            assert {"evaluate", "build", "simulate"} <= {row["func"] for row in rows}
+        subprocess.run([sys.executable, "-m", "chia.cli.main", "viz-profile", str(log),
+                        "--format", "html"], check=True, capture_output=True)
+        html = (directory / (stem + "_profile.html")).read_text()
+        payload = json.loads(re.search(
+            r'<script id="profile-data" type="application/json">(.*?)</script>', html, re.S,
+        ).group(1))
+        samples = [call["extra"] for call in payload["calls"] if call["extra"].get("metric_series")]
+        assert [sample["combined_score"] for sample in samples] == scores
+        assert samples[-1]["stage"] == "generation"
+        if stem == "prof_full":
+            assert [sample["candidate_id"] for sample in samples] == ["seed-dma"] + [improved["id"]] * 3
+        else:
+            assert [sample["candidate_id"] for sample in samples] == ["seed-dma", improved["id"], failed["id"], request["id"]]
+    subprocess.run([sys.executable, "-m", "chia.cli.main", "viz-profile", str(directory / "prof_full.log"),
+                    "--format", "svg"], check=True, capture_output=True)
+    svg = (directory / "prof_full_profile.svg").read_text()
+    assert '<svg' in svg and 'evaluate' in svg and 'simulate' in svg and 'build' in svg
+    assert 'class="edge"' in svg

@@ -85,4 +85,58 @@ def test_native_simulation_timeout_is_reported_as_a_failed_test(monkeypatch):
     result = observations.run_observed(None, b"ELF", "case", {}, {})
     assert not result.success and result.returncode == -9
     with pytest.raises(ValueError, match="Simulator failed"):
-        parse._chia_original(asdict(result), 0)
+        parse._chia_original(asdict(result))
+
+
+def test_saved_unfinished_requests_do_not_abort_search_completion(monkeypatch):
+    import asyncio
+    import loop
+    best = SimpleNamespace(id="best")
+    async def discover(*args, **kwargs):
+        return best
+    controller = SimpleNamespace(run_discovery=discover, close=lambda: None)
+    monkeypatch.setattr(loop, "create_search_controller", lambda *args: controller)
+    experiment = SimpleNamespace(
+        population=SimpleNamespace(programs={"seed": object()}, last_iteration=0),
+        selections=lambda: [], recovery=[], pending_proposals=lambda: ["pending"],
+        save_checkpoint=lambda: None,
+    )
+    assert asyncio.run(loop.run_search(load(), experiment, None, "seed")) is best
+
+
+def test_cache_eviction_reexecutes_the_original_task(monkeypatch):
+    from chia_dma import runtime, nodes
+    cache = SimpleNamespace(read=SimpleNamespace(chia_remote=lambda tag: (False, None)))
+    monkeypatch.setattr(runtime, "get_active_cache", lambda: cache)
+    monkeypatch.setattr(runtime, "get", lambda value: value)
+    calls = []
+    def rebuild(value, *, output):
+        calls.append((value, output))
+        return "rebuilt artifact"
+    monkeypatch.setattr(nodes, "build", rebuild)
+    assert runtime.cache_provider("build")("tag", "unused", 1, output="elf") == "rebuilt artifact"
+    assert calls == [(1, "elf")]
+
+
+def test_generation_can_restore_bypass_state_without_private_modules(tmp_path):
+    from ray import cloudpickle
+    import os
+    import shutil
+    import subprocess
+    import sys
+    from chia_dma import runtime
+    package = tmp_path / "public/chia_dma"
+    package.mkdir(parents=True)
+    for name in ("__init__.py", "agent.py", "defaults.py", "config_loader.py", "experiment.py", "runtime.py"):
+        shutil.copyfile(runtime.ROOT / "chia_dma" / name, package / name)
+    state = tmp_path / "provider.pkl"
+    state.write_bytes(cloudpickle.dumps(runtime.cache_provider("build")))
+    code = (
+        "from ray import cloudpickle; import importlib.util,sys; "
+        "assert importlib.util.find_spec('chia_dma.nodes') is None; "
+        "provider=cloudpickle.loads(open(sys.argv[1],'rb').read()); "
+        "assert callable(provider) and provider.__name__; "
+        "assert importlib.util.find_spec('chia_dma.nodes') is None"
+    )
+    subprocess.run([sys.executable, "-c", code, str(state)], check=True, cwd=tmp_path,
+                   env={**os.environ, "PYTHONPATH": str(package.parent)}, capture_output=True, text=True)

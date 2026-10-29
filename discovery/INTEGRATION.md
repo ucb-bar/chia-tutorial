@@ -1,7 +1,9 @@
 # Reused infrastructure and validation
 
 The tutorial pins CHIA `a4cedf24`, evolve-flows `62d27130`, and SkyDiscover
-`78833ea6`. All code changes stay under `discovery/`. Upstream CHIA is unpatched.
+`78833ea6`. Tutorial integrations stay under `discovery/`. CHIA is unpatched.
+Native HTML profiles display score metadata; native CSV tables summarize
+execution durations by function.
 
 | Responsibility | Owner |
 | --- | --- |
@@ -85,11 +87,13 @@ software has six native RISC-V build slots. Build heap settings are 32 GiB.
 observer, and DMA/HTIF runtime. The six C tests come from `base/memory-tests/`. `base/prepare.sh` runs in
 the pinned build image, copies tracked Chipyard/submodule inputs together with
 their existing Git metadata, and applies the patch. Preparation records the
-tutorial additions as baseline commits in those copied repositories. The image's Chipyard revision is checked before applying it. Image digest,
-base revision, patch/script hashes, evaluator hash, and C build-input hashes
-identify the immutable seed and enter the frozen experiment contract. No host Chipyard source is read.
-Builds use a fresh `/home/ray/dma-build` initialized from that preserved seed. Generation gets a complete writable seed copy at `/workspace` and a read-only
-seed at `/seed`. Candidate source changes are unrestricted. Git captures a
+tutorial additions as baseline commits in those copied repositories. Image
+digest, declared base revision, patch/script hashes, and C build-input hashes
+identify new seeds; they are not a resume compatibility gate. No host Chipyard source is read.
+Builds reuse a private `/home/ray/dma-build` Git checkout; generation reuses a
+private `/workspace` checkout and reads the preserved baseline at `/seed`.
+Startup copies the preserved repositories and Git metadata once. Each
+candidate starts with Git reset/clean to the seed commits before its patch is applied. Candidate source changes are unrestricted. Git captures a
 single binary-capable patch across the root and initialized submodule repositories;
 additions, deletions, symlinks, and executable bits round-trip through SQL and replay. The evaluator supplies
 the original checksum, measurement runtime, and build harness as source bytes to
@@ -171,7 +175,8 @@ generation workers. SQL is authoritative; evaluation also writes a readable
 `artifacts/ID/candidate.patch` copy.
 
 Final numerical metrics repair the evaluation-complete/admission-pending window.
-The original seed's benchmark rows are also the sole fitness reference. Generation
+The first successful evaluation supplies the fitness reference; a failed initial
+baseline remains a zero-score starting point so search can continue. Generation
 recovers through its initial SQL lookup; the duplicate CHIA generation bypass
 callbacks have been removed. Build/simulation cache and bypass remain native.
 Native checkpoints own programs, best/iteration, islands, elite archives, feature
@@ -209,16 +214,18 @@ Paths below are relative to `experiments/NAME/` beside `loop.py`, except for the
 
 | Path | Contents and use |
 | --- | --- |
-| `run.json` | Preserved-seed path (bundled `experiments/seeds/HASH/` preferred), frozen settings hash, optional loop Git revision/dirty flag, and fork provenance. |
+| `run.json` | Preserved-seed path (bundled `experiments/seeds/HASH/` preferred), optional loop Git revision/dirty flag, and fork provenance. |
 | `metrics.db` | CHIA SQLite proposal/source archive and consolidated numerical history. Keep WAL/SHM companions while a writer is live. |
 | `latest.json` | Name of the latest committed checkpoint, used by resume. |
-| `checkpoints/SEQUENCE-SUFFIX/state.json` | Frozen settings hash, admitted candidate IDs, and generated/evaluated flags for SQL requests at that boundary. |
+| `checkpoints/SEQUENCE-SUFFIX/state.json` | Admitted candidate IDs and generated/evaluated flags for SQL requests at that boundary. |
 | `checkpoints/SEQUENCE-SUFFIX/population/` | SkyDiscover's native program and population checkpoint files. |
 | `deployment/cluster.yaml` | Rendered native CHIA configuration with absolute paths. Regenerate after relocation; retain the old copy until its cluster is down. |
 | `work/generation-N/` | Transient full writable source checkout for one serial generation worker. Reinitialized from the chosen parent before each invocation. |
 | `cache/` | CHIA's evictable expensive-task outputs. Not the authoritative proposal or population archive. |
 | `artifacts/ID/BENCHMARK.log` | Collected DMA-mode simulator output. |
-| `artifacts/profile/ChiaProfileCollector.log` | Native CHIA JSONL task profiling; `chia viz-profile ... --format table` aggregates task durations. |
+| `artifacts/profile/ChiaProfileCollector.log` | Complete native CHIA JSONL task events and score metadata, appended across resumes. |
+| `artifacts/profile/prof_full.log` | Task graph plus best-so-far geomean score metadata in native HTML; SVG dependencies and CSV execution timings. Exported at job exit. |
+| `artifacts/profile/prof_candidates.log` | Native HTML of every completed evaluation and failed generation attempt, with failures scoring zero. Exported at job exit. |
 | `artifacts/ID/candidate.patch` | Readable Git patch copied from the authoritative SQL proposal. |
 | `artifacts/ID/NAME-build.log` | Individual hardware or software build output. |
 | `driver.log`, `cluster-up.log` | Optional terminal captures created by the README's `tee` commands. |
@@ -238,8 +245,8 @@ checkpoint's `admitted` set.
 The `benchmarks` table is keyed by `(candidate, name)`. Its JSON metrics retain
 per-workload software cycles/results and summary activity counters. Detailed
 hardware observer and copy-event records remain in raw simulator logs. Valid scored DMA rows additionally include speedup and correctness
-fields. A row named `error` contains the rejection reason. Seed benchmark rows
-are the sole fitness reference; no `reference.json` is used. The README provides
+fields. A row named `error` contains the rejection reason. The first successful evaluation
+supplies the fitness reference; no `reference.json` is used. The README provides
 queries using Python's standard-library SQLite client, so no separate database
 CLI or metrics service is required. These queries can run alongside a live
 writer. Raw logs are written when task results are collected; Ray logs/dashboard
@@ -249,7 +256,7 @@ provide worker diagnostics while tasks are still running.
 
 A standalone native population directory is insufficient for this tutorial:
 its program payloads refer to proposal IDs, and evaluation also needs SQL, the
-fixed source seed and matching settings. Candidate ELFs are rebuilt from the
+preserved Git source seed. Candidate ELFs are rebuilt from the
 saved hardware/C Git patch or reused from the evictable CHIA build cache. Preserve the following:
 
 1. The selected committed checkpoint, including its `population/` and `state.json`.
@@ -258,7 +265,7 @@ saved hardware/C Git patch or reused from the evictable CHIA build cache. Preser
 3. The entire referenced seed directory, including `manifest.json`, the full
    tree, executable permissions, and symlinks. The seed is fixed and self-contained;
    restoring sources recreates a private checkout and applies all recorded changes.
-4. The matching loop implementation/configuration and pinned dependencies, plus
+4. A loop implementation that can read the saved SQL/checkpoint format, plus
    the pinned published images, credentials, Docker, and SSH access.
 
 The archive includes the loop implementation/configuration as well as saved
@@ -269,32 +276,34 @@ No host Chipyard checkout, toolchain, or Git metadata is required.
 original absolute path in `run.json`, even if the original seed still exists.
 If no local seed is present, same-host forks can use the original shared seed.
 No metadata edits are needed after extracting the archive. Keep seed contents
-and frozen evaluation/search settings unchanged; `prepare` checks those settings
-and regenerates the deployment with local paths. It does not audit the seed's
-contents against its manifest.
+available; `prepare` reuses that seed and regenerates deployment with local
+paths and current settings. It does not enforce a code/configuration fingerprint
+or audit the seed contents against its manifest.
 
 Historical forks remain optional: `fork` copies the selected native checkpoint,
 filtered SQL, retaining a reference to the source seed. Raw
 logs, task caches, deployments, and workspaces remain in the source run.
 
-Compatibility is deliberately limited:
+Tutorial resume policy:
 
-- No old checkpoint-format migrations or compatibility branches are supported.
-  Use matching loop code, native dependency pins, and evaluation/search rules.
-  `run.json` records a Git revision and dirty flag when available, not an archive
-  of loop code. A copied loop needs no repository or commits: revision is null
-  without a commit, and the dirty flag is null outside a repository.
-- `prepare` rejects a changed frozen configuration. Fixed baseline patch/script, memory-test build inputs, evaluator code, hardware/software,
-  fitness, native search policy, dependency pins, and build/simulation worker
-  image/mount/environment/setup contracts are part of that hash. It is not a
-  complete toolchain binary fingerprint.
-- Model/effort, total proposal count, in-flight limit, placement, resource
-  counts, and Ray connection ports can change between resumes. Redeploy changed
-  workers with native `chia down/up`. Generation workspace serialization remains
-  enforced.
-- Automatic host CPU count is included as `hardware.make_jobs` in frozen settings.
-  Tutorial machines must use matching CPU-affinity counts; a different count
-  fails the restore check. Builds use all available cores and a fixed 32 GiB heap.
+- Resume trusts the saved seed and uses current settings. Code comments, changed
+  evaluator files, dependency settings, CPU counts, worker setup, and search
+  parameters do not block it. Existing `frozen_hash` fields are ignored.
+- Existing scores and populations are retained when settings change; there is no
+  comparison or automatic reconciliation of old measurements.
+- Source fingerprints identify new seeds only. A missing saved seed, unreadable
+  checkpoint/SQL data, or a patch that Git cannot apply still needs to be fixed.
+- New dependency clones use pinned revisions. Bootstrap reuses existing checkouts
+  and their local edits instead of resetting them.
+- Checkout scheduling slots are normalized to one per build/generation worker;
+  additional resources are accepted. A missing cache artifact is rebuilt.
+- Metric parsing accepts extra fields and version changes, and missing instruction
+  counters default to zero. SHA-256 output correctness and the native 30-minute
+  simulation timeout still reject failed proposals. Simulation/build errors do
+  not abort search. A failed initial baseline may seed search with zero fitness;
+  the first successful evaluation becomes its performance reference.
+- Builds use the available cores and a fixed 32 GiB heap. CPU counts need not
+  match between runs and do not invalidate build-cache keys.
 - Native checkpoints restore full populations, islands, valid archives, feature
   maps/statistics, best/iteration metadata, and migration counters. They do not
   save RNG state. Pending selections preserve their original parent/island and
@@ -309,7 +318,7 @@ Compatibility is deliberately limited:
 The current checks cover the six-test workload contract, runtime-seeded outputs,
 equal-weight scoring, incomplete/changed results, passive DMA observations, source
 preservation, candidate C recompilation, captured ELF/checksum isolation,
-relocation, and the frozen-input hashes.
+relocation, permissive resume, and source-seed hashes.
 Baseline native C checks audit original copy counts/bytes and reject skipped
 and truncated copies. Evolved candidates must match the independent full-buffer
 reference for fresh runtime inputs; copy counts remain diagnostic.

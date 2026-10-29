@@ -147,9 +147,9 @@ chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 
 `prepare` launches the pinned CHIA build image, applies the bundled patch, and
 preserves a complete read-only source seed, including Git and submodule metadata. Its identity includes the image and
-patch, preparation-script, evaluator, and C test hashes. Repeated preparation reuses that seed; checkpoint restores
-use the run's recorded seed. Native build workers copy it into a private checkout
-for `ChiselBuildNode`; each generation worker gets a complete writable copy. The original development
+patch, preparation-script, and C test hashes. Repeated preparation reuses that seed; checkpoint restores
+use the run's recorded seed. Startup prepares private build and generation
+checkouts from the preserved repositories, then reuses them with Git reset/clean before applying each patch. The original development
 checkout is never read or modified. `chia up` pulls the pinned worker images.
 The absolute entrypoint uses the head's local checkout; omit `--working-dir` to
 avoid uploading experiment artifacts. Head/worker imports come from native YAML.
@@ -206,10 +206,11 @@ work. Completed SQL proposals do not invoke the generation LLM again; unfinished
 generations can. Build/simulation reuse depends on CHIA cache contents; evicted
 or unfinished tasks may run again.
 
-The distributed workers, separate verifier, and Git-patch proposal format
-change the frozen contract. Earlier experiments require their original matching
-loop code/settings; start a new run for this setup. Existing experiment files
-are retained; no checkpoint migration is provided.
+Resume reuses the saved Git seed, proposals, scores, and population with the
+current settings. Code edits, comments, CPU counts, worker setup, and search
+settings do not need to match a stored fingerprint. Old `frozen_hash` fields are
+ignored. Saved data must still use the Git-patch proposal format; there is no
+migration from the earlier source-map format.
 
 Model and effort can change between resumes. Stop the current driver before
 editing those knobs; submit a new resume job afterwards. Saved proposals retain
@@ -271,7 +272,7 @@ archive can skip checkpoint selection and forking entirely.
 ## Restore the tutorial archive
 
 The archive contains the matching loop code, a stopped experiment, and its
-complete seed. Tutorial machines use matching specs and CPU-affinity counts.
+complete seed. CPU-affinity counts may differ when restoring it.
 
 After [stopping the loop](#stop-and-resume), the instructor creates the archive
 from the directory containing `loop.py`. Set `RUN` to the experiment to share:
@@ -345,9 +346,40 @@ tail -n 80 "$RUN_DIR/artifacts/$CANDIDATE/hardware-build.log"
 tail -n 80 "$RUN_DIR/artifacts/$CANDIDATE/wikisort.log"
 tail -n 80 "$RUN_DIR/artifacts/$CANDIDATE/"*-build.log
 chia status --chia-cluster "$CLUSTER"
-# Task durations/cache callback profiling; emits a consolidated CSV table.
-chia viz-profile "$RUN_DIR/artifacts/profile/ChiaProfileCollector.log" --format table
 ```
+
+At job exit, two native CHIA profile logs are saved in
+`$RUN_DIR/artifacts/profile/`. `prof_full.log` keeps the task dependency graph
+and the best validated geomean speedup so far. `prof_candidates.log` contains
+every completed candidate evaluation, including the baseline, plus failed
+generation attempts. Failed attempts score `0`; cached evaluation reads do not
+add another sample.
+
+```sh
+PROFILE="$RUN_DIR/artifacts/profile"
+chia viz-profile "$PROFILE/prof_full.log" --format html
+chia viz-profile "$PROFILE/prof_full.log" --format svg
+chia viz-profile "$PROFILE/prof_candidates.log" --format html
+# CSV timing summary, with one row per function.
+chia viz-profile "$PROFILE/prof_full.log" --format table --output "$PROFILE/timings.csv"
+# Optionally restrict the summary to expensive task functions.
+chia viz-profile "$PROFILE/prof_full.log" --format table --funcs build,build_program,simulate
+```
+
+In HTML, hover over or select a `score_point` to see `combined_score` and
+`candidate_id`. In the full log these identify the best candidate; `evaluation_id`
+identifies the attempt that triggered the update. An `evaluate` span also shows
+its own score and `best_combined_score`. The candidate timeline shows each
+attempt's score. The SVG output shows task dependencies.
+The untouched `ChiaProfileCollector.log` retains all native task events and both
+score series. Profile logs append across resumes of the same run.
+
+Logging uses native `ChiaFunction` spans and `get_profiler().add_info`; CHIA is
+unpatched. `--format table` writes CSV containing function name, call count,
+mean, sample standard deviation, minimum, maximum, and total execution time in
+seconds. It summarizes completed calls by function rather than listing candidate
+scores. Summed execution times can exceed elapsed round time because tasks run
+in parallel, and enclosing local spans include their child tasks.
 
 The configured Ray dashboard is at `http://127.0.0.1:8287` (branch example:
 `8288`). Worker Ray logs are under `/tmp/ray/session_latest/logs` **inside each
@@ -412,7 +444,7 @@ PY_CANDIDATE
 ```
 
 Use `$.transcript` instead of `$.response` for the saved agent transcript. The
-seed's benchmark rows provide the fitness reference; there is no `reference.json`.
+first successful evaluation provides the fitness reference; there is no `reference.json`.
 Live read-only queries are safe. To copy a live database, use `fork` or SQLite's
 backup API rather than copying `metrics.db` alone while its WAL is active.
 
@@ -438,7 +470,7 @@ build directory. Each candidate follows these explicit CHIA nodes:
 | `build` | Configuration, immutable Git seed, candidate patch | Simulator artifact |
 | `RiscvBuildNode.build_program` (one per test) | C sources/helpers, preserved evaluation harness, build command | ELF bytes and compiler output |
 | `simulate` (one per test) | Configuration, simulator artifact, ELF bytes, test name, DRAM settings | Captured run result |
-| `parse` (one per result) | Run result and checksum expected for its runtime seed | Software measurements |
+| `parse` (one per result) | Successful run result with cycle measurements | Software measurements |
 | `run_hidden_tests` | Candidate binaries, simulator, fresh private seeds | Private verdict and anonymous wall times; launches two worker simulations |
 | `verify_correctness` | Scored observations, public seeds, private verdict | Boolean correctness gate |
 | `aggregate` | Measurements, seed results, workload specifications, candidate patch | Fitness and per-test metrics |
@@ -449,10 +481,19 @@ and scoring use their supplied data and do not read an experiment or load code
 from a seed. The existing controller adapter collects results and persists them
 through CHIA SQLite; it does not implement another task scheduler.
 
+The parser accepts extra diagnostic fields and metric-version changes; missing
+instruction counts are recorded as zero. The private SHA-256 gate verifies the
+complete output of all six tests. If the initial baseline fails, search continues
+from its zero-score seed so the agent can propose a repair. The first successful
+evaluation becomes the performance reference; missing reference rows contribute
+a neutral 1x speedup. Build or simulation errors reject that proposal, and
+unfinished requests remain available for resume.
+
 Each proposal is one ordinary Git patch against the prepared seed commits.
 Git stages edits and new files, then emits a binary-capable diff for the root
 repository and each initialized submodule. Submodule paths are included in the
-same patch, so replay copies the seed and applies one `git apply`. Git preserves
+same patch. Replay resets and cleans the existing checkouts to the seed commits,
+then applies one `git apply`. Git preserves
 file contents, additions, deletions, symlinks, and executable bits. SQL stores the
 patch text directly; `artifacts/CANDIDATE/candidate.patch` is a readable copy.
 The original image's Git history remains in the preserved seed. Preparation
@@ -518,8 +559,9 @@ command duration and completion status. There is no search-wide wall-clock
 cutoff; search runs for the requested number of iterations. Defaults run two
 optimization proposals concurrently after the baseline, with a 600-second agent
 budget per proposal (no retries) and a 600-second hardware compilation budget.
-See [LOCAL_TIMING.md](LOCAL_TIMING.md) for measured local times and reproduction. The new suite changes the frozen evaluation contract:
-**start a new run** rather than resuming a hardware-only or Embench checkpoint.
+See [LOCAL_TIMING.md](LOCAL_TIMING.md) for historical local timing measurements.
+Hardware-only, Embench, and source-map checkpoints use different saved-data
+formats and require their original implementations.
 
 Replay is an optional fresh evaluation of saved source, independent of restoring
 search state. It makes no generation call and does not change the population:
@@ -557,15 +599,15 @@ requirements, and validation evidence.
 | `base/prepare.sh` | Materialize the image, patch, and fixed memory-test sources inside Docker. |
 | `base/memory-tests/` | Six C tests, expected checksums, Makefile, and native correctness checks. |
 | `base/README.md` | Base source revisions and baseline update procedure. |
-| `bootstrap.py` | Prepare pinned CHIA/evolve-flows sources and install the host head's Python packages. |
+| `bootstrap.py` | Install the host packages; pin new dependency clones and reuse existing checkouts. |
 | `loop.py` | Experiment flow, seed evaluation, native controller setup, replay, and CLI commands. |
-| `measure_local.py` | Reproduce fresh baseline build and parallel RTL timing with local Docker. |
-| `LOCAL_TIMING.md` | Measured test and round runtimes, raw JSON records, and estimated exercise duration. |
-| `chia_dma/config_loader.py` | Load YAML, resolve paths, validate placement, and fingerprint frozen settings. |
+| `LOCAL_TIMING.md` | Historical test and round runtimes and estimated exercise duration. |
+| `chia_dma/config_loader.py` | Load YAML, resolve paths, set serial checkout slots, and identify new source seeds. |
 | `chia_dma/defaults.py` | Fixed settings, dependency pins, source paths, and configuration declarations. |
 | `chia_dma/observations.py` | Bulk observation transfer, host hashing, and temporary-file cleanup. |
 | `chia_dma/correctness.py` | Private runtime input generation, independent output reference, and correctness gate. |
 | `chia_dma/runtime.py` | Preserve inputs, render deployment, attach CHIA cache/profiler. |
+| `chia_dma/profiling.py` | Native score metadata and best/candidate views of the collected profile. |
 | `chia_dma/agent.py` | Initialize the selected parent, invoke a native CLI agent with BashTool, and save its proposal. |
 | `chia_dma/evaluation.py` | Build → simulate → verify → score pipeline and task lifecycle. |
 | `chia_dma/nodes.py` | Required build, simulation, measurement parsing, and equal-weight scoring tasks. |
@@ -576,6 +618,8 @@ requirements, and validation evidence.
 | `tests/test_correctness.py` | Seeded reference validation and checksum-hack regressions. |
 | `tests/test_timing.py` | Native simulation timeout, interruption cleanup, and elapsed-time reporting. |
 | `tests/test_controller_integration.py` | Controller concurrency, cache/profiler, and recovery integration. |
+| `tests/test_profiling.py` | Paired native score events across resumed jobs. |
+| `tests/test_bootstrap.py` | Dependency reuse without resetting local edits or patching CHIA. |
 | `tests/test_native_cluster.py` | Real native worker placement, mount boundaries, staging, and optional provider checks. |
 | `tests/native_fixture.py` | Temporary localhost SSH fixture for native cluster tests. |
 | `tests/test_preservation.py` | Immutable seed reuse, candidate restoration, and archive relocation. |

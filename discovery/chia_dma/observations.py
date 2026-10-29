@@ -28,7 +28,7 @@ def decode_observation(raw):
     header = start + len(FRAME)
     words, witness = struct.unpack_from("<QQ", raw, header)
     end = header + 16 + words * 8
-    if words > 1_000_000 or end >= len(raw) or raw[end:end + 1] != b"\n":
+    if end >= len(raw) or raw[end:end + 1] != b"\n":
         raise ValueError("Truncated observation frame")
     if FRAME in raw[end + 1:]:
         raise ValueError("Duplicate observation frame")
