@@ -4,26 +4,22 @@ import asyncio
 from contextlib import closing
 from dataclasses import asdict
 import json
-import math
-import re
 from pathlib import Path
-import subprocess
 import threading
 import time
 
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from chia.base.ChiaFunction import ChiaFunction, get, chia_cancel
-from chia.chipyard.chisel_build_node import ChiselBuildNode
-from chia.chipyard.verilator_run_node import VerilatorRunNode
+from chia.chipyard.riscv_build_node import RiscvBuildNode
 from skydiscover.evaluation.evaluation_result import EvaluationResult
 
-from chia_dma.config import digest, frozen
-from chia_dma.experiment import (
-    read_candidate_files,
-    read_json,
-    validate_candidate_files,
-    validate_integration,
-)
+from chia_dma.config_loader import digest, frozen
+from chia_dma.experiment import read_json, write_json
+from chia_dma.nodes import build, simulate, parse, aggregate, software_inputs, require
+
+class CorrectnessFailure(ValueError):
+    """A deliberately generic failure; private cases never enter feedback."""
 
 
 class DMAEvaluator:
@@ -56,52 +52,99 @@ class DMAEvaluator:
             return EvaluationResult(metrics=recorded_metrics)
 
         proposal = self.experiment.load_proposal(candidate_id)
-        source = proposal["source"]
-        cache_key = candidate_id if candidate.get("replay") else proposal["source_hash"]
+        patch = proposal["patch"]
+        cache_key = candidate_id if candidate.get("replay") else proposal["patch_hash"]
         cache_tag = f"{self.cache_prefix}/{cache_key}"
         log_directory = self.experiment.run / "artifacts" / candidate_id
         log_directory.mkdir(parents=True, exist_ok=True)
+        (log_directory / "candidate.patch").write_text(patch)
         measurements = {}
+        started = time.monotonic()
+        timing = {"public": {}, "hidden": {}}
+        hidden_task = None
 
         try:
-            build_task = build.chia_remote(
-                self.configuration, self.seed, source, _chia_tag=cache_tag + "/build"
-            )
-            completed_builds = dict(self.collect({"build": build_task}))
-            built = completed_builds["build"]
-            (log_directory / "software-build.log").write_text(built["software_log"])
-            simulator = built["simulator"]
-            if simulator is None:
-                raise ValueError("Candidate C compilation failed")
-            (log_directory / "build.log").write_text(
-                simulator.stdout + "\n" + simulator.stderr
-            )
-            if not simulator.success:
-                raise ValueError("Simulator build failed")
+            software = {}
+            with closing(self.collect(self.build_binaries(patch, cache_tag))) as completed:
+                for name, artifact in completed:
+                    output = artifact.stdout + "\n" + artifact.stderr
+                    (log_directory / (name + "-build.log")).write_text(output)
+                    if name == "hardware":
+                        simulator = artifact
+                        require(simulator.success, "Simulator build failed")
+                    else:
+                        elf = self.configuration["software"]["elf"].format(benchmark=name)
+                        require(artifact.success and artifact.files.get(elf),
+                                name + ": candidate C compilation failed")
+                        software[name] = artifact.files[elf]
 
-            simulations = self.submit_benchmarks(ray.put(simulator), built["software"], cache_tag)
+            timing["build_seconds"] = time.monotonic() - started
+            from chia_dma.correctness import prepare_scored_inputs, run_hidden_tests, verify_correctness
+            challenge = self.resolve(prepare_scored_inputs.chia_remote(software))
+            raw_results = {}
+            rtl_started = time.monotonic()
+            hidden_task = run_hidden_tests.chia_remote(
+                self.configuration, ray.put(simulator), software,
+                self.dram_settings, challenge["seeds"],
+            )
+            # Seeds are chosen after generation and compilation. No seed or
+            # private observation enters the generation request or its mounts.
+            simulations = self.run_simulations(
+                ray.put(simulator), challenge["software"], cache_tag,
+                challenge_tag=digest(challenge["seeds"]),
+            )
             with closing(self.collect(simulations)) as completed:
                 for workload, result in completed:
+                    timing["public"][workload] = {
+                        "wall_seconds": getattr(result, "wall_seconds", 0.0),
+                        "worker_host": getattr(result, "worker_host", ""),
+                    }
                     log_file = log_directory / (workload + ".log")
                     log_file.write_text(result.log + "\n" + result.out)
-                    measurements[workload] = parse.chia_remote_blocking(
-                        asdict(result), self.expected[workload]["checksum"]
-                    )
+                    try:
+                        measurements[workload] = self.resolve(parse.chia_remote(
+                            asdict(result), challenge["checksums"][workload]
+                        ))
+                    except ValueError:
+                        raise CorrectnessFailure("Correctness tests failed") from None
+                    raw_results[workload] = result
+
+            hidden_result = self.resolve(hidden_task)
+            hidden_task = None
+            timing["hidden"] = hidden_result
+            timing["parallel_rtl_seconds"] = time.monotonic() - rtl_started
+            if not self.resolve(verify_correctness.chia_remote(
+                raw_results, challenge["seeds"], hidden_result,
+            )):
+                raise CorrectnessFailure("Hidden correctness tests failed")
 
             if candidate_id == "seed-dma":
                 reference = measurements
             else:
                 reference = self.experiment.benchmarks("seed-dma")
-            metrics, benchmarks = aggregate.chia_remote_blocking(
+            metrics, benchmarks = self.resolve(aggregate.chia_remote(
                 measurements,
                 reference,
-                self.expected,
-                self.configuration["fitness"]["workload_weights"],
-                source,
-            )
+                {name: {**spec, "checksum": challenge["checksums"][name]}
+                 for name, spec in self.expected.items()},
+                patch,
+            ))
+            metrics["correctness"] = 1
+        except CorrectnessFailure:
+            metrics = {"validity": 0, "combined_score": 0.0, "correctness": 0}
+            benchmarks = {"error": "Hidden correctness tests failed"}
         except ValueError as error:
             metrics = {"validity": 0, "combined_score": 0.0}
             benchmarks = {"error": str(error)}
+        finally:
+            if hidden_task is not None:
+                chia_cancel(getattr(hidden_task, "ref", hidden_task), force=True)
+            timing["evaluation_seconds"] = time.monotonic() - started
+            timing["generation_seconds"] = proposal["generation"].get("wall_seconds", 0.0)
+            selected_at = self.experiment.selection(candidate_id).get("selected_at")
+            timing["round_seconds"] = (time.time() - selected_at if selected_at is not None
+                                       else timing["generation_seconds"] + timing["evaluation_seconds"])
+            write_json(log_directory / "timing.json", timing)
 
         self.experiment.save_evaluation(
             candidate_id, metrics, {**measurements, **benchmarks}, program_id
@@ -110,17 +153,53 @@ class DMAEvaluator:
             metrics=metrics, artifacts={"proposal_id": candidate_id}
         )
 
-    def submit_benchmarks(self, simulator, software, cache_tag):
-        simulations = {}
+    def build_binaries(self, patch, cache_tag):
+        """Submit hardware and six independent native RISC-V builds together."""
+        inputs = ray.put(software_inputs(self.tree, patch))
+        compiler = RiscvBuildNode(
+            timeout_seconds=self.configuration["software"]["build_timeout_seconds"]
+        )
+        tasks = {}
         try:
-            for workload in self.expected:
-                simulations[workload] = simulate.chia_remote(
+            tasks["hardware"] = build.chia_remote(
+                self.configuration, self.seed, patch, _chia_tag=cache_tag + "/build"
+            )
+            for name in self.expected:
+                elf = self.configuration["software"]["elf"].format(benchmark=name)
+                tasks[name] = compiler.build_program.chia_remote(
+                    compiler, inputs,
+                    [*self.configuration["software"]["build_command"], "NAMES=" + name],
+                    "/tmp/dma-software", outputs=[elf],
+                    _chia_tag=cache_tag + "/software/" + name,
+                )
+        except BaseException:
+            for task in tasks.values():
+                chia_cancel(getattr(task, "ref", task), force=True)
+            raise
+        return tasks
+
+    def run_simulations(self, simulator, software, cache_tag, challenge_tag=""):
+        simulations = {}
+        workers = sorted(
+            node["NodeID"] for node in ray.nodes()
+            if node["Alive"] and node["Resources"].get("verilator_run", 0) >= 1
+        )
+        if not workers:
+            raise RuntimeError("No existing simulation workers have joined Ray")
+        try:
+            for index, workload in enumerate(self.expected):
+                # Run each test once, distributed across the existing VM workers.
+                simulations[workload] = simulate.options(
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
+                        workers[index % len(workers)], soft=False
+                    )
+                ).chia_remote(
                     self.configuration,
                     simulator,
                     software[workload],
                     workload,
                     self.dram_settings,
-                    _chia_tag=cache_tag + "/" + workload,
+                    _chia_tag=cache_tag + "/" + challenge_tag + "/" + workload,
                 )
         except BaseException:
             for task in simulations.values():
@@ -133,18 +212,12 @@ class DMAEvaluator:
         for workload, task in tasks.items():
             reference = getattr(task, "ref", task)
             pending[reference] = (workload, task)
-        deadline = (
-            time.monotonic() + self.configuration["runtime"]["task_timeout_seconds"]
-        )
         try:
             while pending:
                 if self.stopped.is_set():
                     raise InterruptedError("Evaluation interrupted")
-                seconds_left = deadline - time.monotonic()
-                if seconds_left <= 0:
-                    raise TimeoutError("CHIA task deadline")
                 ready, _ = ray.wait(
-                    list(pending), num_returns=1, timeout=min(1, seconds_left)
+                    list(pending), num_returns=1, timeout=1
                 )
                 for reference in ready:
                     workload, task = pending.pop(reference)
@@ -153,181 +226,13 @@ class DMAEvaluator:
             for reference in pending:
                 chia_cancel(reference, force=True)
 
+    def resolve(self, task):
+        """Keep single-node waits interruptible when search is canceled."""
+        with closing(self.collect({"result": task})) as completed:
+            return next(completed)[1]
+
     def close(self):
         self.stopped.set()
-
-
-def apply_source(tree, source, baseline):
-    validate_candidate_files(source)
-    validate_integration(source, baseline)
-    for name, text in source.items():
-        path = tree / name
-        if path.read_text() != text:
-            path.write_text(text)
-
-
-@ChiaFunction(resources={"chipyard": 1}, max_retries=0)
-def build(configuration, seed, source):
-    tree = Path("/home/ray/dma-build")
-    apply_source(tree, source, read_candidate_files(Path(seed) / "tree"))
-    # Keep hardware and C compilation in the same serial build node: another
-    # candidate must not overwrite this checkout before its ELFs are captured.
-    compiled = subprocess.run(
-        configuration["software"]["build_command"], cwd=tree,
-        capture_output=True, text=True,
-    )
-    software_log = compiled.stdout + "\n" + compiled.stderr
-    if compiled.returncode:
-        return {"simulator": None, "software": {}, "software_log": software_log}
-    workloads = read_json(Path(seed) / "tree" / configuration["software"]["workloads"])
-    software = {
-        name: (tree / configuration["software"]["elf"].format(benchmark=name)).read_bytes()
-        for name in workloads
-    }
-    hw = configuration["hardware"]
-    simulator = ChiselBuildNode(
-        str(tree),
-        hw["config"],
-        config_package=hw["config_package"],
-        make_jobs=hw["make_jobs"],
-        timeout_seconds=hw["build_timeout_seconds"],
-        extra_make_args=hw["extra_make_args"],
-        clean=hw["clean"],
-        bundle_runtime_libs=True,
-    ).build()
-    return {"simulator": simulator, "software": software, "software_log": software_log}
-
-
-@ChiaFunction(resources={"verilator_run": 1}, max_retries=0)
-def simulate(configuration, artifact, content, name, ini):
-    return VerilatorRunNode().run(
-        artifact,
-        content,
-        name + ".riscv",
-        "/tmp/dma-sim",
-        plusargs={
-            **configuration["software"]["plusargs"],
-            f"+verilator+seed+{configuration['software']['random_seed']}": "",
-            "+loadmem": name + ".riscv",
-        },
-        timeout_cycles=configuration["software"]["timeout_cycles"],
-        timeout_seconds=configuration["software"]["timeout_seconds"],
-        dramsim_ini_files=ini,
-        verbose=False,
-    )
-
-
-@ChiaFunction(num_cpus=1, max_retries=0)
-def parse(result, expected_checksum):
-    """Verify one simulation using only its output and the fixed expected checksum."""
-    text = result.get("log", "") + "\n" + result.get("out", "")
-    require(
-        result.get("success") and result.get("returncode") == 0,
-        "Simulator failed or timed out",
-    )
-    require(
-        not re.search(
-            r"Assertion failed|%Error|\*\*\* FAILED|DMA_PROTOCOL_FAIL|\bFAIL\b", text
-        ),
-        "Correctness/protocol failure",
-    )
-    software = single_record(text, "MEMORY_METRICS")
-    try:
-        require(
-            software["result"] == 0
-            and software["verification_result"] == 1
-            and software["benchmark_result"] == expected_checksum,
-            "Benchmark checksum verification failed",
-        )
-        require(software["benchmark_cycles"] > 0, "Invalid benchmark cycle count")
-        require(software["benchmark_instructions"] > 0, "Invalid retired instruction count")
-    except KeyError as error:
-        raise ValueError("Missing metric: " + str(error)) from error
-    # DMA activity is diagnostic: a valid co-design may use fewer copies or none.
-    return {
-        **software,
-        "cpi": software["benchmark_cycles"] / software["benchmark_instructions"],
-        "hardware": metric_records(text, "DMA_HW"),
-        "copy_events": metric_records(text, "DMA_COPY"),
-    }
-
-
-@ChiaFunction(num_cpus=1, max_retries=0)
-def aggregate(records, reference, workloads, weights, source):
-    """Maximize geometric-mean cycle speedup for all correctly checksummed tests."""
-    vector = {}
-    values = []
-    total_cycles = total_instructions = 0
-    if not workloads or set(reference) != set(records) or set(records) != set(workloads):
-        raise ValueError("Full memory-test suite results are required")
-    for name in sorted(reference):
-        row, seed = records[name], reference[name]
-        if (
-            row["benchmark_result"] != workloads[name]["checksum"]
-            or row["verification_result"] != 1
-        ):
-            raise ValueError(f"{name}: memory-test checksum verification failed")
-        if (row["benchmark_result"], row["verification_result"]) != (
-            seed["benchmark_result"],
-            seed["verification_result"],
-        ):
-            raise ValueError(f"{name}: deterministic benchmark output changed")
-        cycles = row["benchmark_cycles"]
-        instructions = row["benchmark_instructions"]
-        require(cycles > 0 and instructions > 0, "Invalid iron-law counters")
-        speedup = seed["benchmark_cycles"] / cycles
-        vector[name] = {**row, "speedup": speedup, "cpi": cycles / instructions}
-        values.append((speedup, weights.get(name, 1.0)))
-        total_cycles += cycles
-        total_instructions += instructions
-    weighted_log_speedup = 0
-    total_weight = 0
-    for speedup, weight in values:
-        if weight < 0 or not math.isfinite(weight):
-            raise ValueError("Invalid workload weights")
-        total_weight += weight
-        weighted_log_speedup += weight * math.log(speedup)
-    if total_weight <= 0:
-        raise ValueError("Invalid workload weights")
-    score = math.exp(weighted_log_speedup / total_weight)
-    if not math.isfinite(score) or score <= 0:
-        raise ValueError("Invalid aggregate score")
-    return {
-        "combined_score": score,
-        "validity": 1,
-        "source_bytes": sum(len(s.encode()) for s in source.values()),
-        "cycles": total_cycles,
-        "instructions": total_instructions,
-        "cpi": total_cycles / total_instructions,
-        "source_hash": digest(source),
-    }, vector
-
-
-def metric_records(text, tag):
-    result = []
-    for line in text.splitlines():
-        if not line.startswith(tag + " "):
-            continue
-        record = {}
-        for token in line.split()[1:]:
-            require(re.fullmatch(r"\w+=-?\d+", token), "Malformed metric record")
-            name, value = token.split("=")
-            require(name not in record, "Duplicate metric: " + name)
-            record[name] = int(value)
-        require(record.get("metrics_version") == 1, "Unsupported metrics version")
-        result.append(record)
-    return result
-
-
-def single_record(text, tag):
-    found = metric_records(text, tag)
-    require(len(found) == 1, "Expected one " + tag + " completion record")
-    return found[0]
-
-
-def require(condition, message):
-    if not condition:
-        raise ValueError(message)
 
 
 def evaluate(program_path):

@@ -1,0 +1,73 @@
+"""Existing-host deployment and simulation fan-out, without launching infrastructure."""
+
+from types import SimpleNamespace
+import pytest
+import yaml
+from chia.cluster.config import load_config, assign_nodes
+from chia_dma.config_loader import load
+from chia_dma.runtime import render
+from chia_dma.evaluation import DMAEvaluator
+
+
+def test_native_cluster_uses_every_existing_worker(tmp_path, base_tree, monkeypatch):
+    monkeypatch.setenv('CHIA_HEAD', '10.0.0.1')
+    configuration = load()
+    seed = tmp_path / 'seed'
+    import shutil
+    shutil.copytree(base_tree, seed / 'tree')
+    path = render(configuration, tmp_path / 'run', seed)
+    deployment = yaml.safe_load(path.read_text())
+    native = load_config(str(path))
+    assignments = assign_nodes(native)
+    simulations = [a for a in assignments if a.node_type.name == 'simulation']
+    assert {a.ip for a in simulations} == {f'chia-worker-{i}' for i in range(1, 6)}
+    assert len(simulations) == 5
+    assert 'gcp_nodes' not in deployment
+    assert deployment['auth']['ssh_private_key'].endswith('/.ssh/chia-key')
+    assert configuration['agent']['effort'] == 'high'
+    mounts = deployment['available_node_types']['simulation']['docker']['run_options']
+    assert not any(str(seed) in option or 'dst=/workspace' in option for option in mounts)
+    assert all(source.endswith('/') for source in deployment['file_mounts'].values())
+    assert all('${' not in destination for destination in deployment['file_mounts'])
+
+
+def test_tutorial_namespace_preserves_native_chia_settings(tmp_path):
+    from chia_dma.config_loader import ROOT
+    document = yaml.safe_load((ROOT / 'cluster.yaml').read_text())
+    document['worker_env_commands'] = ['export TEST_NATIVE_SETTING=1']
+    path = tmp_path / 'cluster.yaml'
+    path.write_text(yaml.safe_dump(document))
+    configuration = load(path)
+    assert configuration['cluster']['worker_env_commands'] == ['export TEST_NATIVE_SETTING=1']
+    assert 'tutorial' not in configuration['cluster']
+    assert configuration['search']['iterations'] == document['tutorial']['search']['iterations']
+    assert set(document['tutorial']['agent']) == {'model', 'effort'}
+    assert set(document['tutorial']['search']) == {'iterations', 'max_in_flight'}
+
+
+def test_benchmark_fanout_visits_all_simulation_nodes(monkeypatch):
+    from chia_dma import evaluation
+    ids = [f'{i + 1:056x}' for i in range(5)]
+    nodes = [dict(NodeID=node_id, Alive=True, Resources={'verilator_run': 32}) for node_id in ids]
+    nodes += [dict(NodeID='head', Alive=True, Resources={}),
+              dict(NodeID='dead', Alive=False, Resources={'verilator_run': 32})]
+    monkeypatch.setattr(evaluation.ray, 'nodes', lambda: nodes)
+    submitted = []
+    def options(**kwargs):
+        def submit(*args, **tags):
+            submitted.append((kwargs['scheduling_strategy'].node_id, args, tags))
+            return object()
+        return SimpleNamespace(chia_remote=submit)
+    monkeypatch.setattr(evaluation, 'simulate', SimpleNamespace(options=options))
+    evaluator = DMAEvaluator.__new__(DMAEvaluator)
+    evaluator.configuration = {}
+    evaluator.expected = {f'test-{i}': {} for i in range(6)}
+    evaluator.dram_settings = {'dram.ini': b'settings'}
+    software = {name: b'ELF' for name in evaluator.expected}
+    tasks = evaluator.run_simulations(b'simulator', software, 'tag')
+    assert len(tasks) == 6
+    assert {node for node, _, _ in submitted} == set(ids)
+    assert all(args[1] == b'simulator' and args[2] == b'ELF' for _, args, _ in submitted)
+    monkeypatch.setattr(evaluation.ray, 'nodes', lambda: [])
+    with pytest.raises(RuntimeError, match='No existing simulation workers'):
+        evaluator.run_simulations(b'simulator', software, 'tag')

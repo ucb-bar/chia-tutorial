@@ -4,7 +4,7 @@
 from pathlib import Path
 import subprocess
 import sys
-from chia_dma.config import load
+from chia_dma.config_loader import load
 
 configuration = load()
 git = ["git", "-c", "url.https://github.com/.insteadOf=git@github.com:"]

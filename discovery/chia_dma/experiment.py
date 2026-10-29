@@ -1,4 +1,4 @@
-"""Preserved source, durable proposals, and native search checkpoints."""
+"""Preserved source, Git patch proposals, and native search checkpoints."""
 
 from pathlib import Path
 import fcntl
@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import uuid
+import time
 import sqlite3
 import ray
 from chia.base.ChiaFunction import get
@@ -14,7 +15,7 @@ from chia.database.sqlite_node import SQLiteNode
 from skydiscover.config import OpenEvolveNativeDatabaseConfig
 from skydiscover.search.base_database import Program
 from skydiscover.search.openevolve_native.database import OpenEvolveNativeDatabase
-from .config import ROOT, ALLOWLIST, digest, frozen
+from .config_loader import ROOT, digest, frozen
 
 
 class Experiment:
@@ -45,7 +46,7 @@ class Experiment:
         )
         self.sql.init_schema("""CREATE TABLE IF NOT EXISTS proposals
           (id TEXT PRIMARY KEY,parent TEXT,island INTEGER,sequence INTEGER,kind TEXT,
-           request TEXT,source TEXT,source_hash TEXT,generation TEXT,backend TEXT,model TEXT,metrics TEXT,program_id TEXT);
+           request TEXT,patch TEXT,patch_hash TEXT,generation TEXT,backend TEXT,model TEXT,metrics TEXT,program_id TEXT);
           CREATE TABLE IF NOT EXISTS benchmarks
           (candidate TEXT,name TEXT,metrics TEXT,PRIMARY KEY(candidate,name));""")
         self.recovery = self.pending_proposals()
@@ -64,6 +65,7 @@ class Experiment:
         request = {
             "id": candidate_id or "candidate-" + uuid.uuid4().hex,
             "kind": kind,
+            "selected_at": time.time(),
             "sequence": self.sql.query_value(
                 "SELECT COALESCE(MAX(sequence),0)+1 FROM proposals"
             ),
@@ -72,6 +74,16 @@ class Experiment:
             "island": parent.metadata["island"],
             "backend": self.configuration["agent"]["backend"],
         }
+        previous = self.sql.query_value(
+            "SELECT metrics FROM proposals WHERE island=? AND kind='search' "
+            "AND metrics IS NOT NULL ORDER BY sequence DESC LIMIT 1",
+            (request["island"],),
+        )
+        if previous and json.loads(previous).get("correctness") == 0:
+            request["feedback"] = (
+                "The previous proposal failed hidden correctness tests and received zero fitness. "
+                "Preserve the computation for runtime-varying inputs. Test contents are private."
+            )
         self.sql.execute(
             "INSERT INTO proposals(id,parent,island,sequence,kind,request,backend) VALUES (?,?,?,?,?,?,?)",
             (
@@ -93,8 +105,8 @@ class Experiment:
     def load_proposal(self, candidate_id):
         return load_proposal(self.sql, candidate_id)
 
-    def save_proposal(self, candidate_id, source, generation):
-        return save_proposal(self.sql, candidate_id, source, generation)
+    def save_proposal(self, candidate_id, patch, generation):
+        return save_proposal(self.sql, candidate_id, patch, generation)
 
     def evaluation_result(self, candidate_id):
         value = self.sql.query_value(
@@ -153,7 +165,7 @@ class Experiment:
         requests = {
             r["id"]: {"generated": r["generated"], "evaluated": r["evaluated"]}
             for r in self.sql.query(
-                "SELECT id,source IS NOT NULL AS generated,metrics IS NOT NULL AS evaluated FROM proposals"
+                "SELECT id,patch IS NOT NULL AS generated,metrics IS NOT NULL AS evaluated FROM proposals"
             )
         }
         write_json(
@@ -200,7 +212,7 @@ class Population(OpenEvolveNativeDatabase):
         request = self.owner.selection(candidate_id)
         saved = self.owner.load_proposal(candidate_id)
         program.metadata.update(
-            candidate_id=candidate_id, source_hash=saved["source_hash"]
+            candidate_id=candidate_id, patch_hash=saved["patch_hash"]
         )
         kwargs.setdefault("target_island", request["island"])
         result = super().add(program, iteration=iteration, **kwargs)
@@ -219,28 +231,28 @@ class Population(OpenEvolveNativeDatabase):
 def load_proposal(sql, candidate_id, *, remote=False):
     query = sql.query_one
     args = (
-        "SELECT source,source_hash,generation,backend,model FROM proposals WHERE id=?",
+        "SELECT patch,patch_hash,generation,backend,model FROM proposals WHERE id=?",
         (candidate_id,),
     )
     row = get(query.chia_remote(*args)) if remote else query(*args)
-    if not row or row["source"] is None:
+    if not row or row["patch"] is None:
         return None
     return {
         "id": candidate_id,
         **row,
-        "source": json.loads(row["source"]),
         "generation": json.loads(row["generation"]),
     }
 
 
-def save_proposal(sql, candidate_id, source, generation, *, remote=False):
+def save_proposal(sql, candidate_id, patch, generation, *, remote=False):
     """Save the proposal before generation returns; never replace it."""
-    validate_candidate_files(source)
+    if not isinstance(patch, str):
+        raise ValueError("Candidate must be a Git patch string")
     args = (
-        "UPDATE proposals SET source=?,source_hash=?,generation=?,backend=?,model=? WHERE id=? AND source IS NULL",
+        "UPDATE proposals SET patch=?,patch_hash=?,generation=?,backend=?,model=? WHERE id=? AND patch IS NULL",
         (
-            json.dumps(source),
-            digest(source),
+            patch,
+            digest(patch.encode()),
             json.dumps(generation),
             generation.get("backend"),
             generation.get("model"),
@@ -252,7 +264,7 @@ def save_proposal(sql, candidate_id, source, generation, *, remote=False):
     else:
         sql.execute(*args)
     saved = load_proposal(sql, candidate_id, remote=remote)
-    if saved is None or saved["source"] != source:
+    if saved is None or saved["patch"] != patch:
         raise ValueError("Missing request or immutable proposal ID reused")
     return saved
 
@@ -316,7 +328,7 @@ def restore_history(fork_database, envelope):
             continue
         if not flags["generated"]:
             fork_database.execute(
-                "UPDATE proposals SET source=NULL,source_hash=NULL,generation=NULL,model=NULL,backend=json_extract(request,'$.backend') WHERE id=?",
+                "UPDATE proposals SET patch=NULL,patch_hash=NULL,generation=NULL,model=NULL,backend=json_extract(request,'$.backend') WHERE id=?",
                 (candidate_id,),
             )
         if not flags["evaluated"]:
@@ -368,33 +380,53 @@ def preserve_source(configuration):
     return seed_directory
 
 
-def read_candidate_files(tree):
-    return {name: (Path(tree) / name).read_text() for name in ALLOWLIST}
+def git_output(tree, *arguments, input=None):
+    """Run Git in a candidate checkout and keep its patch output unchanged."""
+    result = subprocess.run(
+        ["git", "-c", "safe.directory=*", "-C", str(tree), *arguments],
+        input=input, capture_output=True, text=True,
+    )
+    if result.returncode:
+        raise ValueError(result.stderr.strip())
+    return result.stdout
 
 
-def validate_candidate_files(bundle):
-    if not isinstance(bundle, dict) or set(bundle) != set(ALLOWLIST):
-        raise ValueError(
-            "Candidate must contain exactly the two DMA files and six C workload files"
-        )
-    return bundle
+def capture_patch(tree, baseline):
+    """Capture one Git patch, including new files and submodule edits."""
+    tree, baseline = Path(tree), Path(baseline)
+    repositories = [""] + git_output(
+        baseline, "submodule", "foreach", "--quiet", "--recursive",
+        'printf "%s\\n" "$displaypath"',
+    ).splitlines()
+    patches = []
+    # Prefix submodule paths so every diff applies from the Chipyard root.
+    for relative in repositories:
+        original = git_output(baseline / relative, "rev-parse", "HEAD").strip()
+        git_output(tree / relative, "add", "--all")
+        prefix = relative + "/" if relative else ""
+        patches.append(git_output(
+            tree / relative, "diff", "--cached", "--binary", "--full-index",
+            "--no-renames", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all",
+            "--src-prefix=a/" + prefix, "--dst-prefix=b/" + prefix, original, "--",
+        ))
+    return "".join(patches)
 
 
-def validate_integration(bundle, seed_bundle):
-    """The allowlisted adapter also contains a fixed SoC integration mixin."""
-    name = ALLOWLIST[1]
-    marker = "\nclass WithRoCCDMA("
-    if (
-        marker not in bundle[name]
-        or bundle[name].split(marker, 1)[1] != seed_bundle[name].split(marker, 1)[1]
-    ):
-        raise ValueError("The fixed WithRoCCDMA integration configuration changed")
-
-    def l1_assignments(source):
-        return [line.strip() for line in source.splitlines() if "io.mem." in line]
-
-    if l1_assignments(bundle[name]) != l1_assignments(seed_bundle[name]):
-        raise ValueError("The unused L1 interface must remain disabled")
+def materialize_candidate(tree, baseline, patch, *, git_metadata=True):
+    """Restore the preserved source and apply one ordinary Git patch."""
+    tree, baseline = Path(tree), Path(baseline)
+    tree.mkdir(parents=True, exist_ok=True)
+    for child in tree.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    ignore = None if git_metadata else shutil.ignore_patterns(".git")
+    shutil.copytree(baseline, tree, symlinks=True, dirs_exist_ok=True, ignore=ignore)
+    # The preserved seed is read-only; the agent/build checkout must be writable.
+    subprocess.run(["chmod", "-R", "u+w", str(tree)], check=True)
+    if patch:
+        git_output(tree, "apply", "--whitespace=nowarn", input=patch)
 
 
 class RunLock:

@@ -1,7 +1,7 @@
 /* Many short record copies, resembling container/crypto staging without compute. */
 #include "memory_test.h"
 
-enum { BLOCKS = 2048, WORDS = 8, STRIDE = WORDS + 2 };
+enum { BLOCKS = 256, WORDS = 8, STRIDE = WORDS + 2 };
 static uint64_t source[BLOCKS * WORDS] ALIGNED;
 extern uint64_t destination[BLOCKS * STRIDE];
 

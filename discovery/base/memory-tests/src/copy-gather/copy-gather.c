@@ -1,7 +1,7 @@
 /* Packet assembly: gather permuted records into one contiguous output. */
 #include "memory_test.h"
 
-enum { BLOCKS = 256, WORDS = 64, STRIDE = WORDS + 2 };
+enum { BLOCKS = 64, WORDS = 64, STRIDE = WORDS + 2 };
 static uint64_t source[BLOCKS * STRIDE] ALIGNED;
 extern uint64_t destination[BLOCKS * WORDS + 2];
 

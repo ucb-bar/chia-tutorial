@@ -11,19 +11,22 @@ from chia.base.ChiaFunction import ChiaFunction, get
 from chia.base.cache import start_cache, stop_cache
 from chia.base.bypass import Bypass
 from chia.trace.profiler import start_collector, stop_collector, reset_profiler
-from chia.chipyard.state_def import BuildArtifact, RunResult
+from chia.chipyard.state_def import BuildArtifact, ProgramBuildArtifact, RunResult
 from skydiscover.search.base_database import Program
-from chia_dma.config import load, ALLOWLIST, SOFTWARE_FILES, digest
+from chia_dma.config_loader import load, HARDWARE_FILES, SOFTWARE_FILES, digest
 from chia_dma.experiment import (
     read_json,
     write_json,
-    validate_integration,
+    capture_patch,
+    materialize_candidate,
 )
 from chia_dma.experiment import Experiment, save_proposal, load_proposal
 from loop import create_search_controller, replay_candidate, run_search
 from chia_dma.agent import CLIClient, ParentContext
 from chia_dma.evaluation import DMAEvaluator
 from chia_dma.runtime import cache_hit, from_cache
+
+EXAMPLE_FILES = HARDWARE_FILES + SOFTWARE_FILES
 
 
 @ray.remote(num_cpus=0)
@@ -62,7 +65,7 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     ray.init(
         address="local",
         num_cpus=6,
-        resources={"generation": 2, "chipyard": 1, "verilator_run": 2},
+        resources={"generation": 2, "chipyard": 1, "verilator_run": 2, "verification": 1, "riscv_build": 6},
         include_dashboard=False,
         namespace="controller-proof",
         _node_ip_address="127.0.0.1",
@@ -74,8 +77,8 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     seed = tmp_path / "seed"
     tree = seed / "tree"
     source = {
-        ALLOWLIST[0]: "class Controller {}\n",
-        ALLOWLIST[
+        EXAMPLE_FILES[0]: "class Controller {}\n",
+        EXAMPLE_FILES[
             1
         ]: "class Adapter {\n io.mem.req.valid := false.B\n}\nclass WithRoCCDMA() extends Config(fixed)\n",
     }
@@ -88,6 +91,8 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     specifications = read_json(base_tree / configuration["software"]["workloads"])
     write_json(tree / configuration["software"]["workloads"], specifications)
     output = fixture.read_text()
+    from conftest import commit_tree
+    commit_tree(tree)
     elf = b"fixture ELF"
     counts = Counts.remote()
 
@@ -103,20 +108,24 @@ def flow(tmp_path, monkeypatch, request, base_tree):
                     break
                 time.sleep(0.02)
         time.sleep(0.1)
-        parent = json.loads(task["parent"]["solution"])["source"]
-        child = dict(parent)
-        child[ALLOWLIST[0]] += (
-            "// " + task["id"] + " " + configuration["agent"]["backend"] + "\n"
-        )
-        if configuration["agent"]["backend"] == "antigravity" and task["island"] == 1:
-            child[ALLOWLIST[1]] += "// forbidden integration change\n"
+        import tempfile
+        parent = json.loads(task["parent"]["solution"])["patch"]
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            materialize_candidate(work, tree, parent)
+            controller = work / EXAMPLE_FILES[0]
+            controller.write_text(controller.read_text() + "// " + task["id"] + " " + configuration["agent"]["backend"] + "\n")
+            if configuration["agent"]["model"] is None and task["island"] == 1:
+                adapter = work / EXAMPLE_FILES[1]
+                adapter.write_text(adapter.read_text() + "// fixture compilation failure\n")
+            child = capture_patch(work, tree)
         saved = save_proposal(
             sql,
             task["id"],
             child,
             {
                 "backend": configuration["agent"]["backend"],
-                "model": "fixture",
+                "model": configuration["agent"]["model"] or "fixture",
                 "response": "fixture",
             },
             remote=True,
@@ -127,7 +136,8 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     @ChiaFunction(resources={"chipyard": 1})
     def build(configuration, seed, child):
         ray.get(counts.add.remote("build"))
-        validate_integration(child, source)
+        if "// fixture compilation failure" in child:
+            raise ValueError("Fixture compilation failed")
         simulator = BuildArtifact(
             "fixture",
             b"ELF",
@@ -140,11 +150,19 @@ def flow(tmp_path, monkeypatch, request, base_tree):
             "",
             0,
         )
-        return {
-            "simulator": simulator,
-            "software": {name: elf for name in specifications},
-            "software_log": "fixture C compiler output",
-        }
+        return simulator
+
+    @ChiaFunction(resources={"riscv_build": 1})
+    def build_program(compiler, input_files, command, work_dir, outputs):
+        ray.get(counts.add.remote("build_program"))
+        return ProgramBuildArtifact(
+            files={outputs[0]: elf}, modes={outputs[0]: 0o755}, success=True,
+            stdout="fixture C compiler output", stderr="", returncode=0,
+        )
+
+    from types import SimpleNamespace
+    monkeypatch.setattr(evaluation, "RiscvBuildNode",
+                        lambda **kwargs: SimpleNamespace(build_program=build_program))
 
     @ChiaFunction(resources={"verilator_run": 1})
     def simulate(configuration, artifact, content, name, ini):
@@ -158,15 +176,35 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     monkeypatch.setattr(agent, "generate", generate)
     monkeypatch.setattr(evaluation, "build", build)
     monkeypatch.setattr(evaluation, "simulate", simulate)
+    from chia_dma import correctness
+    def prepare_scored_inputs(software):
+        import secrets
+        challenge = secrets.randbits(64)
+        return {"software": software,
+                "seeds": {name: challenge for name in specifications},
+                "checksums": {name: spec["checksum"] for name, spec in specifications.items()}}
+    monkeypatch.setattr(correctness, "prepare_scored_inputs",
+                        ChiaFunction(resources={"verification": 1})(prepare_scored_inputs))
+
+    @ChiaFunction(resources={"verification": 1})
+    def run_hidden_tests(*args):
+        return {"passed": True, "tests": [{"wall_seconds": 0.1}, {"wall_seconds": 0.2}], "wall_seconds": 0.2}
+    monkeypatch.setattr(correctness, "run_hidden_tests", run_hidden_tests)
+
+    @ChiaFunction(resources={"verification": 1})
+    def verify_correctness(*args):
+        ray.get(counts.add.remote("verify_correctness"))
+        return True
+    monkeypatch.setattr(correctness, "verify_correctness", verify_correctness)
 
     @ChiaFunction(num_cpus=1)
-    def aggregate(records, reference, workloads, weights, source):
+    def aggregate(records, reference, workloads, source):
         assert set(reference) == set(records)
         return (
             {
                 "validity": 1,
                 "combined_score": 1.0,
-                "source_bytes": sum(map(len, source.values())),
+                "source_bytes": len(source.encode()),
                 "cycles": 480,
                 "instructions": 240,
                 "cpi": 2.0,
@@ -181,23 +219,28 @@ def flow(tmp_path, monkeypatch, request, base_tree):
         2, str(tmp_path / "cache"), units="MB", yaml_path=configuration["_config_file"]
     )
     bypass = Bypass(configuration["_config_file"])
-    for name in ("build", "simulate"):
+    for name in ("build", "build_program", "simulate"):
         bypass.set_cond(name, cache_hit)
         bypass.set_provider(name, from_cache)
     experiment = Experiment(configuration, run)
     parent = Program(
         id="seed-dma",
-        solution=json.dumps({"proposal_id": "seed-dma", "source": source}),
+        solution=json.dumps({"proposal_id": "seed-dma", "patch": ""}),
         language="json",
         metadata={"island": 0},
     )
     experiment.save_selection(parent, [], candidate_id="seed-dma", kind="seed")
-    experiment.save_proposal("seed-dma", source, {"backend": None})
+    experiment.save_proposal("seed-dma", "", {"backend": None})
     evaluator = DMAEvaluator(configuration, experiment, seed)
     result = evaluator.evaluate(parent.solution)
     assert result.metrics["validity"] == 1, experiment.sql.query(
         "SELECT * FROM benchmarks"
     )
+    timing = read_json(run / "artifacts/seed-dma/timing.json")
+    assert set(timing["public"]) == set(specifications)
+    assert len(timing["hidden"]["tests"]) == 2
+    assert set(timing["hidden"]) == {"passed", "tests", "wall_seconds"}
+    assert timing["round_seconds"] >= timing["evaluation_seconds"]
     assert not (run / "reference.json").exists()
     parent.metrics = result.metrics
     for island in (0, 1):
@@ -241,7 +284,8 @@ def test_full_controller_concurrent_context_invalid_cache_profile_and_resume(flo
     )
     values, peak = get(counts.read.remote())
     assert peak == 2
-    assert values == {"build": 3, "simulate": 12, "generate": 2}
+    assert {name: values[name] for name in ("build", "simulate", "generate")} == {"build": 3, "simulate": 12, "generate": 2}
+    assert 12 <= values["build_program"] <= 18
     requests = [r for r in experiment.selections() if r["kind"] == "search"]
     assert {r["island"] for r in requests} == {0, 1}
     valid = next(r for r in requests if r["island"] == 0)
@@ -267,14 +311,15 @@ def test_full_controller_concurrent_context_invalid_cache_profile_and_resume(flo
         if flush:
             get(cache.flush.chia_remote())
         r = experiment.save_selection(Program(**valid["parent"]), [], kind="check")
-        experiment.save_proposal(r["id"], p["source"], {})
+        experiment.save_proposal(r["id"], p["patch"], {})
         result = evaluator.evaluate(
-            json.dumps({"proposal_id": r["id"], "source": p["source"]})
+            json.dumps({"proposal_id": r["id"], "patch": p["patch"]})
         )
         assert result.metrics["validity"] == 1
         current, _ = get(counts.read.remote())
         assert current["build"] == values["build"] + int(flush)
-        assert current["simulate"] == values["simulate"] + 6 * int(flush)
+        assert current["simulate"] == values["simulate"] + 6 * (1 + int(flush))
+        assert current["verify_correctness"] == values["verify_correctness"] + 1 + int(flush)
         assert current["generate"] == 2
     experiment.close()
     restored = Experiment(configuration, experiment.run)
@@ -308,7 +353,7 @@ def test_generation_survives_interruption_without_another_llm_call(flow):
     assert before["generate"] == 1
     request = experiment.selection(parent.metadata["request_id"])
     experiment.close()
-    configuration["agent"]["backend"] = "codex"
+    configuration["agent"]["model"] = "fixture-revised-model"
     restored = Experiment(configuration, experiment.run)
     resumed = DMAEvaluator(configuration, restored, seed)
     controller = create_search_controller(configuration, restored, resumed)
@@ -332,14 +377,14 @@ def test_generation_survives_interruption_without_another_llm_call(flow):
         )
         original = restored.load_proposal(request["id"])
         assert original["backend"] == "antigravity"
-        # A newly sampled proposal uses the changed backend.
+        # A newly sampled proposal uses the changed model.
         asyncio.run(
             controller.run_discovery(
                 2, 1, checkpoint_callback=restored.save_checkpoint, retry_times=1
             )
         )
         latest = max(restored.selections(), key=lambda r: r["sequence"])
-        assert restored.load_proposal(latest["id"])["backend"] == "codex"
+        assert restored.load_proposal(latest["id"])["model"] == "fixture-revised-model"
     finally:
         restored.close()
 
@@ -358,7 +403,7 @@ def test_historical_fork_retains_pending_context_excludes_future_and_replay_is_i
     selected = experiment.selection(parent.metadata["request_id"])
     # Checkpoint a selection whose generation has not yet completed.
     cp = experiment.save_checkpoint()
-    configuration["agent"]["backend"] = "codex"
+    configuration["agent"]["model"] = "fixture-revised-model"
     client = CLIClient(configuration, experiment)
     prompt = ParentContext().build_prompt(parent, {})
     response = asyncio.run(
@@ -460,7 +505,7 @@ def test_online_candidate_fork_restores_full_state_and_continues_independently(f
     from chia_dma.experiment import fork
 
     configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
-    configuration["agent"]["backend"] = "codex"
+    configuration["agent"]["model"] = "fixture-revised-model"
     controller = create_search_controller(configuration, experiment, evaluator)
     target = tmp_path / "other-copy/loop/experiments/branch"
     write_json(
@@ -529,7 +574,7 @@ def test_online_candidate_fork_restores_full_state_and_continues_independently(f
 
 def test_native_migration_preserves_original_candidate_ids(flow):
     configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
-    configuration["agent"]["backend"] = "codex"
+    configuration["agent"]["model"] = "fixture-revised-model"
     # Prefer unique children over the seed already present on both islands.
     for program in experiment.population.programs.values():
         program.metrics["combined_score"] = 0.5
@@ -550,16 +595,16 @@ def test_native_migration_preserves_original_candidate_ids(flow):
     )
 
 
-def test_cached_evaluation_timeout_cancels_raw_ref_and_preserves_completed_proposal(
-    flow, monkeypatch
+def test_interrupted_evaluation_cancels_raw_ref_and_preserves_completed_proposal(
+    flow, monkeypatch, patch_for
 ):
     from chia_dma import evaluation
 
     configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
     parent = next(iter(experiment.population.programs.values()))
     request = experiment.save_selection(parent, [], kind="search")
-    source = json.loads(parent.solution)["source"]
-    source[ALLOWLIST[0]] += "// timeout case\n"
+    source = patch_for({EXAMPLE_FILES[0]: "class Controller {}\n// interruption case\n"},
+                       baseline=Path(seed) / "tree", parent=json.loads(parent.solution)["patch"])
     experiment.save_proposal(request["id"], source, {})
 
     @ChiaFunction(resources={"chipyard": 1}, max_retries=0)
@@ -567,7 +612,7 @@ def test_cached_evaluation_timeout_cancels_raw_ref_and_preserves_completed_propo
         time.sleep(60)
 
     monkeypatch.setattr(evaluation, "build", build)
-    configuration["runtime"]["task_timeout_seconds"] = 0
+    evaluator.stopped.set()
     original_cancel = evaluation.chia_cancel
     cancelled = []
 
@@ -577,7 +622,31 @@ def test_cached_evaluation_timeout_cancels_raw_ref_and_preserves_completed_propo
         return original_cancel(ref, **kwargs)
 
     monkeypatch.setattr(evaluation, "chia_cancel", cancel)
-    with pytest.raises(TimeoutError, match="CHIA task deadline"):
-        evaluator.evaluate(json.dumps({"proposal_id": request["id"], "source": source}))
-    assert len(cancelled) == 1 and experiment.evaluation_result(request["id"]) is None
-    assert experiment.load_proposal(request["id"])["source_hash"] == digest(source)
+    with pytest.raises(InterruptedError, match="Evaluation interrupted"):
+        evaluator.evaluate(json.dumps({"proposal_id": request["id"], "patch": source}))
+    assert len(cancelled) == 7 and experiment.evaluation_result(request["id"]) is None
+    assert experiment.load_proposal(request["id"])["patch_hash"] == digest(source.encode())
+
+
+def test_private_correctness_failure_rejects_the_round_and_returns_generic_feedback(flow, monkeypatch, patch_for):
+    from chia_dma import correctness
+    configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
+    parent = next(iter(experiment.population.programs.values()))
+    request = experiment.save_selection(parent, [], kind="search")
+    source = patch_for({EXAMPLE_FILES[0]: "class Controller {}\n// correctness failure regression\n"},
+                       baseline=Path(seed) / "tree", parent=json.loads(parent.solution)["patch"])
+    experiment.save_proposal(request["id"], source, {})
+
+    @ChiaFunction(resources={"verification": 1})
+    def reject(*args):
+        return False
+    monkeypatch.setattr(correctness, "verify_correctness", reject)
+    result = evaluator.evaluate(json.dumps({"proposal_id": request["id"]}))
+    assert result.metrics == {"validity": 0, "combined_score": 0.0, "correctness": 0}
+    assert request["id"] not in experiment.admitted
+    assert not experiment.pending_proposals()
+    assert experiment.benchmarks(request["id"])["error"] == "Hidden correctness tests failed"
+    following = experiment.save_selection(parent, [], kind="search")
+    assert "failed hidden correctness tests" in following["feedback"]
+    assert "zero fitness" in following["feedback"]
+    assert "MEMORY_OBSERVATION" not in json.dumps(following)

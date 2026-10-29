@@ -1,49 +1,43 @@
-"""SkyDiscover LLM interface -> native CHIA CLI agent -> restricted BashTool."""
+"""SkyDiscover LLM interface -> native CHIA CLI agent -> candidate BashTool."""
 
 import asyncio
 import json
 import os
-from pathlib import Path
+import time
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from chia.base.ChiaFunction import ChiaFunction, get, chia_cancel
 from chia.base.tools.BashTool import BashTool
 from skydiscover.llm.base import LLMInterface, LLMResponse
-from .experiment import save_proposal, load_proposal, read_candidate_files
+from .experiment import save_proposal, load_proposal, capture_patch, materialize_candidate
 
 CONSTRAINTS = """Co-design the RV64 RoCC DMA hardware and the six baremetal C workloads.
 
 OBJECTIVE
 Minimize total cycles for each correctly checksummed test. At the modeled fixed
 clock, time = instructions * CPI / frequency, so minimize instructions * CPI.
-The score is the weighted geometric mean of seed cycles / candidate cycles
+The score is the equally weighted geometric mean of seed cycles / candidate cycles
 across ALL six tests. Retired instructions and CPI explain the result; neither
 IPC nor DMA throughput is the objective by itself.
 
 CORRECTNESS
-The only workload correctness condition is each test's original checksum.
-A fixed checksum.c computes the checksum from the actual output storage, and
-workloads.json holds the expected values. Both are read-only. The harness times
+The six workloads are scored with fresh runtime inputs. A separate verification
+node also checks additional runtime-varying inputs against an independent
+reference. Every output buffer and guard region must remain correct for those
+inputs. Hidden cases and expected outputs are not disclosed. The harness times
 initialization, benchmark execution, and checksum calculation together.
 You may change algorithms, data movement, layout, batching, and DMA usage.
 You need not preserve memcpy call counts, bytes transferred, intermediate
-states, or DMA use. Fixed-input precomputation is allowed by this checksum-only
-objective. Do not change or bypass the checksum reader or measurement harness.
+states, or DMA use. Preserve the computation for changing inputs; hardcoded
+outputs and checksum collisions fail correctness checks. Do not bypass the
+measurement harness or runtime input initialization.
 
-EDITABLE FILES
-- generators/chipyard/src/main/scala/dma/DMAController.scala
-- generators/chipyard/src/main/scala/dma/RoCCDMA.scala
-- tests/memory-tests/src/copy-small/copy-small.c
-- tests/memory-tests/src/copy-stream/copy-stream.c
-- tests/memory-tests/src/copy-gather/copy-gather.c
-- tests/memory-tests/src/copy-scatter/copy-scatter.c
-- tests/memory-tests/src/copy-chain/copy-chain.c
-- tests/memory-tests/src/copy-mixed/copy-mixed.c
-
-Use dma_bash_run_command to edit these mounted files in place; do not delete,
-rename, or replace their inodes. The fixed SoC integration (WithRoCCDMA and the
-disabled io.mem assignments), checksum readers, output storage definitions,
-manifest, Makefile, runtime, counters, and evaluator are not editable.
+EDITING
+Use dma_bash_run_command to edit any source in /workspace. You may create,
+delete, rename, or replace files, including SoC configuration and build files.
+The framework saves a Git patch relative to the seed and rebuilds the candidate.
+The external evaluator, expected checksums, and measurement harness are fixed;
+changing their workspace copies does not change the evaluation contract.
 
 WORKFLOW
 1. Read the selected parent's hardware, C code, and recorded cycle/instruction data.
@@ -59,38 +53,28 @@ inside this generation worker. Do not claim an improvement without measurement.
 
 def make_agent(configuration):
     from chia.models.antigravity import AntigravityLLM
-    from chia.models.claude import ClaudeCodeLLM
-    from chia.models.codex import CodexLLM
-
-    backend = configuration["agent"]["backend"]
-    classes = {
-        "antigravity": AntigravityLLM,
-        "claude": ClaudeCodeLLM,
-        "codex": CodexLLM,
-    }
     args = dict(
         timeout_seconds=configuration["agent"]["timeout_seconds"],
         retries=configuration["agent"]["retries"],
         resume_session=False,
-        **configuration["agent"]["backends"][backend]["options"]
+        work_dir="/workspace",
+        extra_cli_args=["--effort", configuration["agent"]["effort"]],
     )
     if configuration["agent"]["model"]:
         args["model"] = configuration["agent"]["model"]
-    if backend in ("antigravity", "codex"):
-        args["work_dir"] = "/workspace"
-    return classes[backend](**args)
+    return AntigravityLLM(**args)
 
 
 @ChiaFunction(resources={"generation": 1}, max_retries=0)
 def generate(configuration, sql, task):
+    started = time.monotonic()
     saved = load_proposal(sql, task["id"], remote=True)
     if saved:
         return saved
     selected_parent = task["parent"]
     parent_solution = json.loads(selected_parent["solution"])
-    parent_source = parent_solution["source"]
-    for name, text in parent_source.items():
-        (Path("/workspace") / name).write_text(text)
+    parent_patch = parent_solution["patch"]
+    materialize_candidate("/workspace", "/seed", parent_patch)
     os.chdir("/workspace")
     prompt = CONSTRAINTS + "\nSelected parent and inspirations:\n" + json.dumps(task)
     guidance = configuration["search"]["island_guidance"]
@@ -119,9 +103,10 @@ def generate(configuration, sql, task):
             "model": configuration["agent"]["model"] or getattr(agent, "model", None),
             "response": result.result,
             "transcript": result.stream_result,
+            "wall_seconds": time.monotonic() - started,
         }
-        source = read_candidate_files("/workspace")
-        return save_proposal(sql, task["id"], source, generation, remote=True)
+        patch = capture_patch("/workspace", "/seed")
+        return save_proposal(sql, task["id"], patch, generation, remote=True)
     finally:
         tool.stop()
 
@@ -146,7 +131,7 @@ class CLIClient(LLMInterface):
         except asyncio.CancelledError:
             chia_cancel(getattr(handle, "ref", handle), force=True)
             raise
-        candidate = {"proposal_id": candidate_id, "source": saved["source"]}
+        candidate = {"proposal_id": candidate_id, "patch": saved["patch"]}
         return LLMResponse(text="```json\n" + json.dumps(candidate) + "\n```")
 
 

@@ -1,13 +1,15 @@
 """Ephemeral localhost SSH for testing the real CHIA CLI; all files stay in discovery/."""
 
 import os
+from pathlib import Path
 import pwd
 import socket
 import subprocess
 import time
+import sys
 import uuid
 import pytest
-from chia_dma.config import ROOT, load
+from chia_dma.config_loader import ROOT, load
 
 
 @pytest.fixture(scope="module")
@@ -51,6 +53,19 @@ LogLevel ERROR
             except OSError:
                 time.sleep(0.05)
         configuration = load()
+        configuration["cluster"]["provider"]["head_ip"] = "127.0.0.1"
+        configuration["cluster"]["head_env_commands"] = [
+            f"source {sys.prefix}/bin/activate", f"export PYTHONPATH={ROOT}",
+        ]
+        for worker in configuration["cluster"]["available_node_types"].values():
+            worker["compatible_ips"] = ["127.0.0.1"]
+        # Local integration tests emulate the VM pool with separate containers.
+        configuration["cluster"]["available_node_types"]["simulation"]["num_workers"] = 1
+        import importlib
+        chia_module = importlib.import_module("chia.base.ChiaFunction")
+        sky_module = importlib.import_module("skydiscover.config")
+        configuration["chia"] = str(Path(chia_module.__file__).resolve().parents[2])
+        configuration["skydiscover"] = str(Path(sky_module.__file__).resolve().parents[1])
         for worker in configuration["cluster"]["available_node_types"].values():
             worker.setdefault("worker_setup_commands", []).append(
                 "python -m pip install --target /tmp/dma-python pytest==9.1.1"

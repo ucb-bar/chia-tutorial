@@ -1,7 +1,7 @@
 /* Bulk tensor/frame staging: a working set larger than Rocket's L1 D-cache. */
 #include "memory_test.h"
 
-enum { BLOCKS = 16, WORDS = 2048, TOTAL = BLOCKS * WORDS, GUARDS = 8 };
+enum { BLOCKS = 2, WORDS = 2048, TOTAL = BLOCKS * WORDS, GUARDS = 8 };
 static uint64_t source[TOTAL] ALIGNED;
 extern uint64_t destination[TOTAL + 2 * GUARDS];
 

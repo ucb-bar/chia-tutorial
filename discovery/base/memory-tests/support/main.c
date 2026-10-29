@@ -12,6 +12,7 @@ int main(int argc, char **argv)
     benchmark();
     int result = benchmark_checksum();
     stop_trigger();
+    memory_test_report();
     int valid = verify_benchmark(result);
     printf("MEMORY_TEST name=%s checksum=%d verification_result=%d\n",
            MEMORY_TEST_NAME, result, valid);

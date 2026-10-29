@@ -1,7 +1,7 @@
 /* Dependent double-buffer pipeline; each copy consumes the previous output. */
 #include "memory_test.h"
 
-enum { STEPS = 128, WORDS = 128, STRIDE = WORDS + 2 };
+enum { STEPS = 512, WORDS = 64, STRIDE = WORDS + 2 };
 extern uint64_t buffers[2 * STRIDE];
 extern uint32_t witness;
 

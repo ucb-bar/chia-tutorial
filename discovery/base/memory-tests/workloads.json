@@ -1,32 +1,32 @@
 {
   "copy-small": {
-    "checksum": 1142204022,
-    "calls": 2048,
-    "payload_bytes": 131072
+    "checksum": 1683660947,
+    "calls": 256,
+    "payload_bytes": 16384
   },
   "copy-stream": {
-    "checksum": 1810215813,
-    "calls": 16,
-    "payload_bytes": 262144
+    "checksum": 1176047413,
+    "calls": 2,
+    "payload_bytes": 32768
   },
   "copy-gather": {
-    "checksum": 867411657,
-    "calls": 256,
-    "payload_bytes": 131072
+    "checksum": 1743832587,
+    "calls": 64,
+    "payload_bytes": 32768
   },
   "copy-scatter": {
-    "checksum": 30013262,
-    "calls": 128,
-    "payload_bytes": 131072
+    "checksum": 1884936520,
+    "calls": 32,
+    "payload_bytes": 32768
   },
   "copy-chain": {
-    "checksum": 1613899491,
-    "calls": 128,
-    "payload_bytes": 131072
+    "checksum": 2062308453,
+    "calls": 512,
+    "payload_bytes": 262144
   },
   "copy-mixed": {
-    "checksum": 1062611848,
-    "calls": 256,
-    "payload_bytes": 147120
+    "checksum": 1772281019,
+    "calls": 48,
+    "payload_bytes": 40666
   }
 }

@@ -3,19 +3,21 @@
 from pathlib import Path
 from string import Template
 import os
+import shutil
 import ray
 import yaml
 from chia.base.ChiaFunction import get
 from chia.base.bypass import Bypass
 from chia.base.cache import get_active_cache, start_cache, stop_cache
 from chia.trace.profiler import start_collector, stop_collector
-from .config import ROOT, digest, frozen
+from .config_loader import ROOT, digest, frozen
+from .defaults import AGENT_SETUP
 from .experiment import (
     git,
     read_json,
     preserve_source,
-    read_candidate_files,
     write_json,
+    materialize_candidate,
 )
 
 
@@ -47,14 +49,13 @@ def expand(value, bindings):
     if isinstance(value, list):
         return [expand(v, bindings) for v in value]
     if isinstance(value, dict):
-        return {k: expand(v, bindings) for k, v in value.items()}
+        return {expand(k, bindings): expand(v, bindings) for k, v in value.items()}
     return value
 
 
 def render(configuration, run, seed):
     """Expand run paths and generation mounts."""
     agent = configuration["agent"]
-    backend = agent["backends"][agent["backend"]]
     bindings = dict(
         LOOP=str(ROOT),
         RUN=str(run),
@@ -64,29 +65,35 @@ def render(configuration, run, seed):
         NAME=Path(run).name,
         UID=str(os.getuid()),
         GID=str(os.getgid()),
-        AGENT_IMAGE=backend["image"],
-        CREDENTIALS=backend["credentials"],
-        CREDENTIAL_TARGET=backend["credential_target"],
+        CREDENTIALS=agent["credentials"],
+        CREDENTIAL_TARGET=agent["credential_target"],
+        REMOTE=f"/tmp/dma-{os.environ.get('USER', os.getuid())}-{Path(run).name}",
     )
     deployment = expand(configuration["cluster"], bindings)
+    # Generation imports only public orchestration modules. Hidden correctness
+    # code and its reference model are absent from the agent's filesystem.
+    public = Path(run) / "deployment/generation-python/chia_dma"
+    if public.exists():
+        shutil.rmtree(public)
+    public.mkdir(parents=True, exist_ok=True)
+    for name in ("__init__.py", "agent.py", "config_loader.py", "defaults.py", "experiment.py", "runtime.py"):
+        shutil.copyfile(ROOT / "chia_dma" / name, public / name)
+    deployment["file_mounts"][bindings["REMOTE"] + "/generation"] = str(public) + "/"
+    deployment["initialization_commands"].append("mkdir -p " + bindings["REMOTE"] + "/generation")
     generation_template = deployment["available_node_types"].pop("generation")
-    source = read_candidate_files(Path(seed) / "tree")
     for worker_index in range(generation_template["num_workers"]):
         workspace = Path(run) / "work" / f"generation-{worker_index}"
-        workspace.mkdir(parents=True, exist_ok=True)
-        for name, text in source.items():
-            path = workspace / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            if not path.exists():
-                path.write_text(text)
+        materialize_candidate(workspace, Path(seed) / "tree", "")
         worker = expand(
             generation_template, {"INDEX": str(worker_index), "WORK": str(workspace)}
         )
         worker["num_workers"] = 1
-        worker["docker"]["run_options"] += expand(backend.get("mounts", []), bindings)
-        worker["worker_setup_commands"] += expand(
-            backend.get("setup_commands", []), bindings
-        )
+        worker["docker"]["run_options"] = [
+            option.replace("src=" + bindings["REMOTE"] + "/chia_dma,",
+                           "src=" + bindings["REMOTE"] + "/generation,")
+            for option in worker["docker"]["run_options"]
+        ]
+        worker["worker_setup_commands"] += expand(AGENT_SETUP, bindings)
         deployment["available_node_types"][f"generation-{worker_index}"] = worker
     path = Path(run) / "deployment/cluster.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,7 +132,7 @@ class Runtime:
             yaml_path=configuration["_config_file"],
         )
         bypass = Bypass(configuration["_config_file"])
-        for name in ("build", "simulate"):
+        for name in ("build", "build_program", "simulate"):
             bypass.set_cond(name, cache_hit)
             bypass.set_provider(name, from_cache)
         return self

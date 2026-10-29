@@ -1,17 +1,23 @@
 # DMA discovery with CHIA and SkyDiscover
 
-This tutorial co-designs two DMA accelerator Scala files and six baremetal C
-workloads, preserving each workload’s original checksum. CHIA deploys the workers and runs/caches
+This tutorial co-designs a DMA accelerator and six baremetal C workloads,
+with edits permitted throughout the candidate codebase and each workload’s
+output verified independently for runtime-varying inputs. CHIA deploys the workers and runs/caches
 builds and simulations;
 SkyDiscover's `DiscoveryController` owns the search through `openevolve_native`.
 
 ```mermaid
 flowchart LR
     parent[SkyDiscover selects parent] --> agent[Generate candidate]
-    agent --> build[Build candidate hardware and C tests]
+    agent --> build[Build candidate hardware]
+    agent --> software[Compile six C tests in parallel]
     build --> benchmarks[Simulate six memory tests in parallel]
+    software --> benchmarks
+    build --> hidden[Two private seeded RTL tests]
+    software --> hidden
     benchmarks --> verify[Parse and verify each result]
-    verify --> score[Score against seed]
+    hidden --> verify
+    verify --> score[Score against baseline]
     score --> checkpoint[Admit valid candidate and checkpoint]
     checkpoint --> parent
 ```
@@ -25,11 +31,13 @@ in order. `experiment.py` uses `save_selection`, `save_proposal`,
 Those three files show the flow; [experiment.py](chia_dma/experiment.py) holds
 source preservation, SQL history, and checkpoint recovery.
 
-Edit [config.yaml](config.yaml) for native CHIA placement, resource/container
-counts, container names/images, Ray connection, LLM provider, and proposal counts.
-[backend.yaml](backend.yaml) specifies the fixed mounts, credentials, dependency
-pins, isolation, and evaluation settings. `prepare` combines them into a native
-`deployment/cluster.yaml`; pass that generated file to `chia up/down`.
+Edit [cluster.yaml](cluster.yaml) for native CHIA placement, containers, and four
+participant-facing knobs: `tutorial.agent.model`, `tutorial.agent.effort`,
+`tutorial.search.iterations`, and `tutorial.search.max_in_flight`. Credentials,
+retries, dependency pins, build policy, and fixed search settings live in
+[defaults.py](chia_dma/defaults.py). The tutorial uses Antigravity and the login
+created by `setup.md`. `prepare` renders `deployment/cluster.yaml`; pass that
+native deployment to `chia up/down`.
 
 **Checkpoint selection is a CLI option, not a YAML setting.** `resume --run NAME`
 loads the run's latest checkpoint. To continue from an older checkpoint, use
@@ -37,8 +45,9 @@ loads the run's latest checkpoint. To continue from an older checkpoint, use
 full historical search state, including the population and islands.
 
 The current machine runs the Ray head, search controller, SQLite, and cache.
-Generation, compilation, and simulation run in Docker workers. Run commands on
-the host, from the directory containing **`loop.py` and `config.yaml`**, with
+Generation, hardware compilation, RISC-V compilation, and verification run in separate Docker/Ray workers on
+`chia-dev`. Simulations run across `chia-worker-1` through `chia-worker-5`. Run commands on
+the host, from the directory containing **`loop.py` and `cluster.yaml`**, with
 `.venv` activated. From the repository root, first `cd discovery`.
 The discovery folder supports both new runs and checkpoint restores.
 Replace example run, candidate, checkpoint, and destination names with your own.
@@ -52,49 +61,25 @@ and [INTEGRATION.md](INTEGRATION.md) for the current implementation.
 This section creates a new experiment without a host Chipyard checkout. For an
 existing checkpoint, see [restore the tutorial archive](#restore-the-tutorial-archive).
 
-Use a Linux x86-64 host. The Ubuntu commands below install host utilities and
-start SSH; install [Docker Engine](https://docs.docker.com/engine/install/ubuntu/)
-if it is not already available. No host Chipyard, Java, sbt, Verilator, RISC-V
-compiler, Conda environment, or agent CLI is needed.
+Complete [setup.md](../setup.md) first, then work on `chia-dev`. That setup
+creates the head and five worker VMs, installs Docker/SSH, authenticates
+Antigravity, exports `CHIA_HEAD`, and installs `~/.ssh/chia-key` for access to the
+existing workers. This loop only starts containers and Ray on those machines;
+it never provisions GCP instances. `chia down` stops the tutorial containers and
+Ray processes; VM lifecycle remains with the setup script.
 
-```sh
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl git openssh-server rsync
-sudo systemctl enable --now ssh
-```
-
-Docker must work without sudo for your user and its SSH sessions. After installing
-Docker, use its [group setup](https://docs.docker.com/engine/install/linux-postinstall/)
-if needed:
-
-```sh
-sudo usermod -aG docker "$USER"
-```
-
-Log out and back in after changing groups, or run `newgrp docker` to open a shell
-with Docker access, then reactivate `.venv` in that shell. The example is
-single-host; all source/state bind paths must be available to that Docker daemon.
-
-Native CHIA connects to this machine through SSH. If you have not configured
-local key authentication, run this once; it retains an existing default key:
-
-```sh
-mkdir -p "$HOME/.ssh"
-chmod 700 "$HOME/.ssh"
-if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
-  ssh-keygen -q -t ed25519 -N '' -f "$HOME/.ssh/id_ed25519"
-fi
-cat "$HOME/.ssh/id_ed25519.pub" >> "$HOME/.ssh/authorized_keys"
-chmod 600 "$HOME/.ssh/authorized_keys"
-```
-
-`config.yaml` defaults to this key and `$USER`. If an existing key needs a
-passphrase, load it into your SSH agent before `chia up`. Authenticate your
-selected LLM provider using its container CLI and retain its login files at the
-credential paths in `backend.yaml`.
+`cluster.yaml` uses `$USER`, `$CHIA_HEAD`, and `~/.ssh/chia-key` from that setup.
+Workers 1–2 are in us-west4 and workers 3–5 are in europe-west4. The plain worker
+names are passed directly to native CHIA/SSH, as in the gem5 tutorial. SSH/DNS
+and internal VPC connectivity must work between them. If you changed `WORKER_REGIONS`
+during setup, update simulation `compatible_ips` and `num_workers` to match the
+existing hosts.
+No shared filesystem is required: native CHIA `file_mounts` synchronize Python
+packages to each host, and Ray carries simulator/ELF bytes and DRAM settings.
+The seed, agent credentials, SQL, and history stay on `chia-dev`.
 
 From the directory containing `loop.py`, create the host head's Python
-environment once. Keep `base/` and both YAML files. Start without copied
+environment once. Keep `base/` and `cluster.yaml`. Start without copied
 `.venv/` or `.deps/` directories: their installed paths belong to the old location.
 Git is needed to download dependencies, but your loop itself needs no Git metadata.
 
@@ -132,15 +117,19 @@ Ray rejects even a Python patch-version mismatch. Native YAML activates the
 supplies worker import paths. Build tools come from the build image's own
 Chipyard environment; the host environment is never mounted into workers.
 
-Choose `agent.backend: antigravity`, `codex`, or `claude` in `config.yaml`.
-`search.iterations` is the **total** number of search proposals across all
+Set `tutorial.agent.model` and `tutorial.agent.effort` in `cluster.yaml`. A null
+model uses the authenticated Antigravity default; effort defaults to `high`.
+`tutorial.search.iterations` is the **total** number of search proposals across all
 resumes (20 means 20 proposals total), excluding the seed and replay evaluations.
-To extend a run, increase that total. `search.max_in_flight` bounds concurrent
+To extend a run, increase that total. `tutorial.search.max_in_flight` bounds concurrent
 candidate iterations (2 means up to 2 candidates progressing at once);
 generation `num_workers` sets the number of isolated generation workspaces.
-Build and simulation pools have independent limits. Compilation uses all CPUs
-available to the host process, simulations fan out one task per available CPU,
-and the JVM heap is fixed at 32 GiB.
+Hardware builds, software builds, and simulations have independent limits.
+Hardware compilation uses the head CPU count; software has six parallel build
+slots. Each existing worker advertises the head CPU count in simulation slots
+(the setup VMs have matching CPU counts). Ray assigns the
+six simulations across the five workers; candidates can overlap up to the search
+limit. The JVM heap is fixed at 32 GiB.
 
 ```sh
 RUN=run-001
@@ -157,22 +146,19 @@ chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 ```
 
 `prepare` launches the pinned CHIA build image, applies the bundled patch, and
-preserves a complete read-only source seed. Its identity includes the image and
+preserves a complete read-only source seed, including Git and submodule metadata. Its identity includes the image and
 patch, preparation-script, evaluator, and C test hashes. Repeated preparation reuses that seed; checkpoint restores
 use the run's recorded seed. Native build workers copy it into a private checkout
-for `ChiselBuildNode`; generation sees it read-only. The original development
+for `ChiselBuildNode`; each generation worker gets a complete writable copy. The original development
 checkout is never read or modified. `chia up` pulls the pinned worker images.
 The absolute entrypoint uses the head's local checkout; omit `--working-dir` to
 avoid uploading experiment artifacts. Head/worker imports come from native YAML.
 `--chia-cluster` selects the correct job server from the rendered YAML, including
 for a live fork.
 
-Antigravity/Claude binaries come from their upstream images. Codex is installed
-with pinned npm inside its generation container, using the upstream Claude
-image's Node runtime. Provider logins are copied
-from read-only mounts into a private worker home. Existing login files can be
-reused. Refresh expired credential files through the provider's container CLI
-and redeploy workers to refresh their private copies.
+Antigravity comes from its pinned CHIA image. The login from `setup.md` is
+copied from a read-only mount into a private worker home. Redeploy the generation
+containers to refresh an expired login after authenticating again.
 
 ## Stop and resume
 
@@ -220,14 +206,14 @@ work. Completed SQL proposals do not invoke the generation LLM again; unfinished
 generations can. Build/simulation reuse depends on CHIA cache contents; evicted
 or unfinished tasks may run again.
 
-The native-head worker setup and DMA-only baseline change the frozen contract. Earlier
-experiments require their original matching loop code/settings; start a new run
-for this setup. Existing experiment files are retained; no checkpoint migration
-is provided.
+The distributed workers, separate verifier, and Git-patch proposal format
+change the frozen contract. Earlier experiments require their original matching
+loop code/settings; start a new run for this setup. Existing experiment files
+are retained; no checkpoint migration is provided.
 
-To switch providers: stop the driver, use `chia down` on its existing deployment,
-edit `agent.backend`, then `prepare`, `chia up`, and `resume`. Saved proposals
-retain their original provider and sources.
+Model and effort can change between resumes. Stop the current driver before
+editing those knobs; submit a new resume job afterwards. Saved proposals retain
+their recorded model and Git patch.
 
 ## Find a candidate or checkpoint
 
@@ -354,9 +340,10 @@ chia job status --chia-cluster "$CLUSTER" "$JOB"
 chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 ls "$RUN_DIR/artifacts"
 CANDIDATE=candidate-xxxxxxxx
-tail -n 80 "$RUN_DIR/artifacts/$CANDIDATE/build.log"
+cat "$RUN_DIR/artifacts/$CANDIDATE/candidate.patch"
+tail -n 80 "$RUN_DIR/artifacts/$CANDIDATE/hardware-build.log"
 tail -n 80 "$RUN_DIR/artifacts/$CANDIDATE/wikisort.log"
-tail -n 80 "$RUN_DIR/software-build.log"
+tail -n 80 "$RUN_DIR/artifacts/$CANDIDATE/"*-build.log
 chia status --chia-cluster "$CLUSTER"
 # Task durations/cache callback profiling; emits a consolidated CSV table.
 chia viz-profile "$RUN_DIR/artifacts/profile/ChiaProfileCollector.log" --format table
@@ -371,7 +358,7 @@ inspect those files. Head Ray logs are on the host under
 above. Generation response/transcript data lives in SQL, not a separate log file.
 
 `metrics.db` is the consolidated numerical and lineage store. This read-only
-query lists all proposals, their stage, score, source hash, and parent/island:
+query lists all proposals, their stage, score, patch hash, and parent/island:
 
 ```sh
 python - "$RUN_DIR" <<'PY_METRICS'
@@ -380,12 +367,12 @@ path = (pathlib.Path(sys.argv[1]) / "metrics.db").resolve()
 with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as db:
     rows = db.execute("""
         SELECT id, parent, island, kind, backend,
-          CASE WHEN source IS NULL THEN 'generation pending'
+          CASE WHEN patch IS NULL THEN 'generation pending'
                WHEN metrics IS NULL THEN 'evaluation pending'
                WHEN json_extract(metrics, '$.validity') = 0 THEN 'rejected'
                ELSE 'valid; see checkpoint for admission' END AS stage,
           round(json_extract(metrics, '$.combined_score'), 5) AS score,
-          source_hash
+          patch_hash
         FROM proposals ORDER BY sequence
     """)
     print("\t".join(column[0] for column in rows.description))
@@ -431,53 +418,107 @@ backup API rather than copying `metrics.db` alone while its WAL is active.
 
 ## Evaluation, replay, and validation
 
-Each generation initializes a separate workspace from its selected parent. The
-frozen tree is read-only except for the two accelerator files and six C workload
-files; other
-candidates, evaluator inputs, and historical SQL proposals are not writable or
-mounted as candidate archives. BashTool runs on that same restricted worker.
-The native CHIA trusted-agent/host-network model applies.
+Each generation resets its entire writable checkout to the selected parent.
+There is no edit allowlist: additions, deletions, renames, executable files,
+binaries, and SoC/build-file changes are recorded as changes relative to the
+immutable seed. Parent replay clears files left by the previous generation.
+BashTool runs in that generation container. The evaluator implementation and
+seed are mounted read-only; SQL/history and other candidate workspaces are not
+mounted there. Native CHIA uses trusted agents on a shared host network; this
+filesystem separation is not a sandbox for hostile native code or Ray clients.
 
-One serial CHIA build node compiles the candidate C code and hardware, then
-returns the simulator and all six ELF byte strings together. This prevents one
-candidate from using another candidate’s executables in the shared checkout. Each candidate then follows these explicit CHIA nodes:
+The hardware build and six `RiscvBuildNode.build_program` calls are submitted
+together. Software builds use the dedicated `riscv_build: 6` worker and independent
+task directories, so they can run concurrently with each other and the hardware
+build. Native CHIA returns the ELF files as bytes; no candidate shares a software
+build directory. Each candidate follows these explicit CHIA nodes:
 
 | Node | Inputs | Output |
 | --- | --- | --- |
-| `build` | Configuration, immutable seed, candidate Scala and C sources | Simulator artifact, six ELF byte strings, compiler output |
+| `build` | Configuration, immutable Git seed, candidate patch | Simulator artifact |
+| `RiscvBuildNode.build_program` (one per test) | C sources/helpers, preserved evaluation harness, build command | ELF bytes and compiler output |
 | `simulate` (one per test) | Configuration, simulator artifact, ELF bytes, test name, DRAM settings | Captured run result |
-| `parse` (one per result) | Run result and fixed expected checksum | Verified software/hardware measurements |
-| `aggregate` | Measurements, seed results, workload specifications, weights, candidate sources | Fitness and per-test metrics |
+| `parse` (one per result) | Run result and checksum expected for its runtime seed | Software measurements |
+| `run_hidden_tests` | Candidate binaries, simulator, fresh private seeds | Private verdict and anonymous wall times; launches two worker simulations |
+| `verify_correctness` | Scored observations, public seeds, private verdict | Boolean correctness gate |
+| `aggregate` | Measurements, seed results, workload specifications, candidate patch | Fitness and per-test metrics |
 
-The functions appear in execution order in `chia_dma/evaluation.py`. Parsing
+The flow lives in `chia_dma/evaluation.py`; worker task bodies live in
+`chia_dma/nodes.py`. Parsing
 and scoring use their supplied data and do not read an experiment or load code
 from a seed. The existing controller adapter collects results and persists them
 through CHIA SQLite; it does not implement another task scheduler.
 
-The workload acceptance condition is the original checksum for all six tests.
-Each read-only `checksum.c` owns the output storage and computes its checksum;
-the editable workload cannot pass by returning the expected number. The fixed
-harness times initialization, execution, and checksum calculation together.
-There is no requirement to preserve copy counts, transferred bytes, intermediate
-states, or DMA use. DMA counters and copy events remain diagnostic output.
+Each proposal is one ordinary Git patch against the prepared seed commits.
+Git stages edits and new files, then emits a binary-capable diff for the root
+repository and each initialized submodule. Submodule paths are included in the
+same patch, so replay copies the seed and applies one `git apply`. Git preserves
+file contents, additions, deletions, symlinks, and executable bits. SQL stores the
+patch text directly; `artifacts/CANDIDATE/candidate.patch` is a readable copy.
+The original image's Git history remains in the preserved seed. Preparation
+records the tutorial additions as baseline commits without changing the image.
+
+The six workloads and their callable interfaces remain the optimization target.
+The compiler receives candidate C code/helpers and the preserved checksum readers,
+output storage, support code, Makefile, and DMA/HTIF measurement runtime. Changes
+to workspace copies of evaluator inputs do not change the harness.
+
+The verification node chooses fresh runtime seeds **after compilation** and
+patches the ELF input record. The six timed runs fan out across the five worker
+VMs. SHA-256 digests covering the complete output buffers, guard regions, and
+chain witness are compared with hashes of independently generated reference
+outputs. After timing stops, HTIF transfers the raw buffer to the simulation worker;
+the worker hashes those original bytes with Python `hashlib`, then deletes
+the temporary transfer files. No cryptographic hashing runs on the simulated CPU.
+The same binaries and harness also run two unscored correctness cases with
+different private seeds. The verification node dispatches these onto the existing
+simulation workers alongside the public runs, then checks their outputs privately.
+There is no additional Spike build or candidate-code reference oracle.
+
+Scored and private runs use the same observation mode and fresh nonzero seeds,
+so a candidate cannot distinguish them using a public seed-zero or validation-mode
+branch. Buffer reporting occurs after the timed interval. The original seed-zero
+checksums remain available for the standalone native baseline audit.
+
+The reference implementation and evaluator modules are absent from the generation
+container's Python mount. Private seeds and observations stay on the verification
+node, except for the binaries sent to the execution workers. Only pass/fail and
+anonymous test runtimes return from private evaluation. Any correctness failure gives the
+proposal zero fitness, prevents population admission, counts against the proposal
+budget, and supplies generic failure feedback to the next attempt on that island.
+No private test contents appear in that feedback. Native CHIA still uses a
+trusted Ray cluster; these filesystem boundaries do not isolate a hostile Ray client.
+Copy counts, transferred bytes, and DMA usage remain diagnostic rather than
+acceptance requirements.
 
 The iron law is `time = instructions × CPI / frequency`. At the modeled fixed
 frequency, the objective is **total simulated cycles**, not IPC or DMA bandwidth.
-Fitness is the weighted geometric mean of `seed cycles / candidate cycles` over
+Fitness is the equally weighted geometric mean of `seed cycles / candidate cycles` over
 all six tests, including tests that use no DMA. Retired instructions and CPI are
-reported per test and in total. MAP-Elites uses source size and instruction count.
+reported per test and in total. MAP-Elites uses patch size and instruction count.
 This evaluates fixed-clock performance; it does not estimate synthesis Fmax or
 critical-path changes. See the [CS 61C performance equation](https://notes.cs61c.org/content/parallel-tlp/)
 and [RISC-V cycle/instruction counters](https://docs.riscv.org/reference/isa/priv/machine.html).
 
-With fixed inputs and checksum-only acceptance, precomputed outputs and checksum
-collisions are admissible. Requiring general inputs or minimum memory activity
-would be a different objective.
+Fixed-output precomputation and weak-checksum collisions are rejected by the
+runtime-seeded full-buffer digest checks. The Python verifier uses
+[`hashlib.sha256`](https://docs.python.org/3/library/hashlib.html#hashlib.sha256)
+over independently generated expected buffers.
 
-Each simulation has a 300-second wall-time limit and a 10-million-cycle limit.
-Tests are scheduled across the configured simulation CPU slots. A time limit
-rejects a slow run; it does not establish that the baseline meets the tutorial's
-budget under parallel load. The new suite changes the frozen evaluation contract:
+Each public and hidden RTL simulation uses CHIA's native **30-minute timeout**.
+An expired simulation returns a failed result and the proposal fails its test.
+Correctness checks determine validity, and simulated cycle counts determine
+performance. CHIA runs the simulator directly; temporary output files are
+removed after collection or interruption.
+All eight tests are submitted in parallel across the existing simulation slots.
+Per-round `artifacts/CANDIDATE/timing.json` records the public test times, anonymous
+hidden test times, build time, generation time, evaluation time, and total round
+wall time including queueing. `artifacts/exercise-timing.json` records the complete
+command duration and completion status. There is no search-wide wall-clock
+cutoff; search runs for the requested number of iterations. Defaults run two
+optimization proposals concurrently after the baseline, with a 600-second agent
+budget per proposal (no retries) and a 600-second hardware compilation budget.
+See [LOCAL_TIMING.md](LOCAL_TIMING.md) for measured local times and reproduction. The new suite changes the frozen evaluation contract:
 **start a new run** rather than resuming a hardware-only or Embench checkpoint.
 
 Replay is an optional fresh evaluation of saved source, independent of restoring
@@ -511,25 +552,34 @@ requirements, and validation evidence.
 
 | File | Role |
 | --- | --- |
-| `config.yaml` | CHIA cluster resources, container names/images, startup, and tutorial search controls. |
-| `backend.yaml` | Fixed implementation, deployment, and evaluation settings. |
+| `cluster.yaml` | Existing worker placement, containers, native cache settings, and four participant controls. |
 | `base/chipyard.patch` | DMA hardware, observer, and HTIF runtime applied to the pinned build image’s Chipyard source. |
 | `base/prepare.sh` | Materialize the image, patch, and fixed memory-test sources inside Docker. |
 | `base/memory-tests/` | Six C tests, expected checksums, Makefile, and native correctness checks. |
 | `base/README.md` | Base source revisions and baseline update procedure. |
 | `bootstrap.py` | Prepare pinned CHIA/evolve-flows sources and install the host head's Python packages. |
 | `loop.py` | Experiment flow, seed evaluation, native controller setup, replay, and CLI commands. |
-| `chia_dma/config.py` | Merge settings, resolve paths/CPU count, and select frozen settings. |
+| `measure_local.py` | Reproduce fresh baseline build and parallel RTL timing with local Docker. |
+| `LOCAL_TIMING.md` | Measured test and round runtimes, raw JSON records, and estimated exercise duration. |
+| `chia_dma/config_loader.py` | Load YAML, resolve paths, validate placement, and fingerprint frozen settings. |
+| `chia_dma/defaults.py` | Fixed settings, dependency pins, source paths, and configuration declarations. |
+| `chia_dma/observations.py` | Bulk observation transfer, host hashing, and temporary-file cleanup. |
+| `chia_dma/correctness.py` | Private runtime input generation, independent output reference, and correctness gate. |
 | `chia_dma/runtime.py` | Preserve inputs, render deployment, attach CHIA cache/profiler. |
 | `chia_dma/agent.py` | Initialize the selected parent, invoke a native CLI agent with BashTool, and save its proposal. |
-| `chia_dma/evaluation.py` | CHIA worker tasks and the build → benchmark → verify → score pipeline. |
-| `chia_dma/experiment.py` | Preserved source, SQL proposals/metrics, native population hooks, checkpoints, forks, and the writer lock. |
+| `chia_dma/evaluation.py` | Build → simulate → verify → score pipeline and task lifecycle. |
+| `chia_dma/nodes.py` | Required build, simulation, measurement parsing, and equal-weight scoring tasks. |
+| `archive/evaluation_extras.py` | Optional weighted scoring and DMA-event parsing, excluded from the tutorial runtime. |
+| `chia_dma/experiment.py` | Git seed preservation, patch capture/replay, SQL proposals/metrics, checkpoints, forks, and the writer lock. |
 | `chia_dma/__init__.py` | Python package marker. |
-| `tests/test_contract.py` | Source, provider, parser, and fitness contracts. |
+| `tests/test_contract.py` | Source, Antigravity, parser, and fitness contracts. |
+| `tests/test_correctness.py` | Seeded reference validation and checksum-hack regressions. |
+| `tests/test_timing.py` | Native simulation timeout, interruption cleanup, and elapsed-time reporting. |
 | `tests/test_controller_integration.py` | Controller concurrency, cache/profiler, and recovery integration. |
 | `tests/test_native_cluster.py` | Real native worker placement, mount boundaries, staging, and optional provider checks. |
 | `tests/native_fixture.py` | Temporary localhost SSH fixture for native cluster tests. |
 | `tests/test_preservation.py` | Immutable seed reuse, candidate restoration, and archive relocation. |
+| `tests/test_cluster.py` | Existing host placement, native configuration routing, and simulation fan-out across all workers. |
 | `tests/conftest.py` | Load test source inputs from the bundled patch. |
 | `tests/fixtures/memory-observation.txt` | Recorded hardware plus synthetic software counters for parser integration. |
 | `pytest.ini` | Test import paths. |

@@ -18,7 +18,7 @@ The tutorial pins CHIA `a4cedf24`, evolve-flows `62d27130`, and SkyDiscover
 
 [README.md](README.md) contains the runnable procedures:
 
-Commands run from the directory containing `loop.py` and `config.yaml`: the
+Commands run from the directory containing `loop.py` and `cluster.yaml`: the
 repository's `discovery/` directory or the root of a copied tutorial folder.
 
 - [Setup and run](README.md#set-up-and-run): bootstrap the host Python environment,
@@ -46,44 +46,57 @@ needed for a historical continuation.
 
 ## Images and environment
 
-`config.yaml` starts the Ray head directly on the current machine and pins Linux
+`cluster.yaml` starts the Ray head directly on the current machine and pins Linux
 amd64 upstream CHIA worker image manifests by digest. Native `chia up/down`
-manages that head and the build, simulation, and generation containers. There is
+manages that head and the hardware-build, RISC-V-build, simulation, generation, and verification containers. There is
 no top-level Docker configuration or head-container wrapper. The host supplies
 Python 3.10.19, Git, Bash, Docker, SSH/Docker access, state storage, and credential
-files. This configuration is single-host; bind paths are local to its Docker daemon.
+files. The existing `chia-dev` head runs generation/build/verification containers;
+one simulation container runs on each of the five pre-provisioned
+`chia-worker-N` VMs. The configuration describes existing hosts only.
+Native `file_mounts` synchronize Python packages to each host; simulation
+artifacts and inputs move through Ray, without shared bind paths.
+Worker names pass directly to CHIA/SSH; this tutorial performs no cloud inventory lookup.
 
 | Location | Tools and integration |
 | --- | --- |
 | Host head | `.venv` beside `loop.py`: Python 3.10.19/Ray 2.54.0, pinned CHIA, and SkyDiscover from the evolve-flows submodule. Bootstrap installs the selected OpenEvolve dependencies, omitting the unused AlphaEvolve backend. |
 | Build: CHIA chisel-build | Image Java/sbt/Verilator/RISC-V/C++ tools, Make, and dependency caches. Ray uses the image's base Python 3.10.19 to match the head exactly. |
+| Software: CHIA riscv-cross | `RiscvBuildNode.build_program` receives inputs and builds each ELF in an isolated task directory; six slots permit parallel compilation. |
 | Simulation: CHIA verilator-run | Image Python/Ray, spike-dasm, and runtime support; simulator/shared libraries arrive in the build artifact. |
-| Generation: CHIA Antigravity or Claude Code | Published provider executable; Codex uses the Claude image's Node/npm to install its pinned CLI in private scratch. |
+| Generation: CHIA Antigravity | Published CLI with the setup.md login copied into a private worker home. |
+| Verification: CHIA verilator-run | Private reference, parsing, and scoring; private RTL tasks run on simulation workers alongside public tasks. |
 
 Missing worker Python packages are installed inside each container's private
-`/tmp/dma-python`; code checkouts are mounted read-only. No host venv,
+`/tmp/dma-python`; framework packages are mounted read-only. No host venv,
 Conda tools, agent executable, sbt cache, or JVM is mounted as a dependency.
 Builds use the image's dependency caches and explicit image C++ compiler path.
 There is no derived image, host build-tool installation, job-level import
 override, or CHIA package patch. Native YAML activates the host head's venv and
 owns worker import environments. No host agent CLI is invoked.
 
-The tutorial-facing `config.yaml` shows native cluster placement, worker resources
-and counts, Ray startup commands, and provider/search controls. A small recursive
-merge overlays these on the fixed backend settings. Cache/bypass read their fixed settings directly from
-the backend YAML. Host CPU affinity supplies compilation jobs and simulation
-slots automatically; both build heap settings are fixed at 32 GiB.
+The tutorial-facing `cluster.yaml` contains native infrastructure and four loop
+knobs: model, effort, total iterations, and concurrent candidate rounds. Python
+`defaults.py` supplies credential paths, retries, dependency pins, fixed search
+policy, and build/runtime defaults. Native cache/bypass settings remain in YAML.
+Host CPU affinity supplies hardware compilation jobs and simulation slots;
+software has six native RISC-V build slots. Build heap settings are 32 GiB.
 [base/chipyard.patch](base/chipyard.patch) carries DMA hardware/configuration,
 observer, and DMA/HTIF runtime. The six C tests come from `base/memory-tests/`. `base/prepare.sh` runs in
-the pinned build image, copies tracked Chipyard/submodule inputs, and applies the
-patch. The image's Chipyard revision is checked before applying it. Image digest,
+the pinned build image, copies tracked Chipyard/submodule inputs together with
+their existing Git metadata, and applies the patch. Preparation records the
+tutorial additions as baseline commits in those copied repositories. The image's Chipyard revision is checked before applying it. Image digest,
 base revision, patch/script hashes, evaluator hash, and C build-input hashes
 identify the immutable seed and enter the frozen experiment contract. No host Chipyard source is read.
-Builds use a fresh `/home/ray/dma-build` initialized from that preserved seed. Generation mounts the
-same seed read-only at `/workspace`, with its two Scala and six C workload
-files writable. Checksum readers and instrumentation remain read-only. Each generation worker has one serial scheduling slot.
+Builds use a fresh `/home/ray/dma-build` initialized from that preserved seed. Generation gets a complete writable seed copy at `/workspace` and a read-only
+seed at `/seed`. Candidate source changes are unrestricted. Git captures a
+single binary-capable patch across the root and initialized submodule repositories;
+additions, deletions, symlinks, and executable bits round-trip through SQL and replay. The evaluator supplies
+the original checksum, measurement runtime, and build harness as source bytes to
+`RiscvBuildNode.build_program`; changing their workspace copies has no scoring effect.
+Parsing and scoring require a dedicated verification worker resource. Each generation worker has one serial scheduling slot.
 
-Native BashTool uses public node affinity to stay inside its caller's restricted
+Native BashTool uses public node affinity to stay inside its caller's generation
 worker. CLI credentials/scratch live in a private temporary home. Ordinary host
 networking follows the CHIA examples' trusted-agent model; no private network,
 firewall rules, private Ray cluster, or compatibility patches are installed.
@@ -103,8 +116,10 @@ EvolverNode accepts a custom evaluator, but creates its own population/controlle
 and does not expose our CLI initializer, preserved population, context-builder, and
 checkpoint callback. The tutorial therefore constructs the full upstream
 DiscoveryController directly. `agent.py` contains generation; `evaluation.py`
-keeps the CHIA build call, benchmark fan-out, parsing, scoring, and SQL save in
-execution order. The class no longer wraps the build in a second local build method.
+keeps the CHIA build call, benchmark fan-out, verification, and SQL save in
+execution order. `nodes.py` contains the required build/simulation, parsing, and
+scoring tasks. Optional weighted scoring and DMA-event parsing live under
+`archive/` and are not imported by the tutorial. The class no longer wraps the build in a second local build method.
 `experiment.py` holds source preservation and recovery. The refactor retains native controller iteration handling
 and native population save/load; it does not implement another search loop.
 
@@ -119,21 +134,41 @@ would add code and lose callback/cancellation behavior.
 The retained collector uses standard Ray wait, CHIA get, and CHIA cancellation.
 It holds the callback handle until collection and passes only raw refs to
 wait/cancel. There is no second scheduler. The pipeline loads a SQL proposal,
-compiles each candidate’s hardware and C sources in one serial build node,
-captures its six ELFs, submits their simulation tasks, then calls `parse` and
+submits the hardware build and six native RISC-V build tasks together,
+collects their simulator and six ELFs, submits simulation tasks, then calls `parse` and
 `aggregate` CHIA nodes with explicit data inputs. No parser is dynamically
-loaded from the seed. Fixed checksums and simulator assertions remain enabled. Changed DMA activity
+loaded from the seed. Public Ray node affinity assigns successive tests to all
+live simulation workers, then wraps around. Ray owns task queuing and execution;
+there is no cloud lifecycle operation in the loop. Runtime-seeded checksums,
+full-buffer digest verification, and simulator assertions remain enabled. Changed DMA activity
 is allowed; fitness scores all six tests by cycle speedup. Retired instructions
 and CPI explain the iron-law result at the modeled fixed clock. Compilation
 failure and invalid measurements reject a candidate; infrastructure timeout or
 interruption cancels unfinished tasks and leaves completed proposals recoverable.
 
+The verification node samples runtime seeds after compilation and returns the
+seeded binaries for the six scored runs. After collecting those results, it checks
+a SHA-256 digest of every output word and the chain witness against its
+independent Python reference,
+while dispatching two randomly selected binaries with different private seeds
+to the existing simulation workers alongside public tests. Both execution
+paths use identical observation mode. Bulk HTIF transfer occurs outside the
+measured region; native CHIA retains raw stdout until host-side hashing and
+a temporary-directory context removes the transfer files afterwards.
+Only pass/fail and anonymous runtimes escape the private gate. Failure yields validity/fitness zero,
+prevents admission, consumes the proposal, and adds generic next-attempt feedback.
+Private seeds and case outputs are never included in generation requests. The
+private evaluator/reference files are excluded from the generation code mount.
+This uses the native trusted Ray model, not a security boundary against arbitrary
+malicious Ray clients or a compromised simulator executable.
+
 ## SQL recovery and checkpoint boundary
 
 A `proposals` row records a selection before generation. A conditional SQL update
-commits complete sources/hash/response once, before generation returns. SQLite
+commits the complete Git patch/hash/response once, before generation returns. SQLite
 writes are pinned to the head through CHIA; the database file is not mounted in
-generation workers. No proposal/source/diff file archive remains.
+generation workers. SQL is authoritative; evaluation also writes a readable
+`artifacts/ID/candidate.patch` copy.
 
 Final numerical metrics repair the evaluation-complete/admission-pending window.
 The original seed's benchmark rows are also the sole fitness reference. Generation
@@ -180,28 +215,29 @@ Paths below are relative to `experiments/NAME/` beside `loop.py`, except for the
 | `checkpoints/SEQUENCE-SUFFIX/state.json` | Frozen settings hash, admitted candidate IDs, and generated/evaluated flags for SQL requests at that boundary. |
 | `checkpoints/SEQUENCE-SUFFIX/population/` | SkyDiscover's native program and population checkpoint files. |
 | `deployment/cluster.yaml` | Rendered native CHIA configuration with absolute paths. Regenerate after relocation; retain the old copy until its cluster is down. |
-| `work/generation-N/` | Transient eight-file writable workspace for one serial generation worker. Reinitialized from the chosen parent before each invocation. |
+| `work/generation-N/` | Transient full writable source checkout for one serial generation worker. Reinitialized from the chosen parent before each invocation. |
 | `cache/` | CHIA's evictable expensive-task outputs. Not the authoritative proposal or population archive. |
-| `artifacts/ID/build.log` | Collected build stdout/stderr for a candidate. |
 | `artifacts/ID/BENCHMARK.log` | Collected DMA-mode simulator output. |
 | `artifacts/profile/ChiaProfileCollector.log` | Native CHIA JSONL task profiling; `chia viz-profile ... --format table` aggregates task durations. |
-| `artifacts/ID/software-build.log` | Candidate C compiler output. |
+| `artifacts/ID/candidate.patch` | Readable Git patch copied from the authoritative SQL proposal. |
+| `artifacts/ID/NAME-build.log` | Individual hardware or software build output. |
 | `driver.log`, `cluster-up.log` | Optional terminal captures created by the README's `tee` commands. |
-| `../seeds/HASH/manifest.json` and `tree/` | Complete image-plus-patch implementation/evaluation source and provenance hashes. Shared read-only across forks. |
+| `../seeds/HASH/manifest.json` and `tree/` | Complete image-plus-patch source, Git/submodule metadata, and provenance hashes. Shared read-only across forks. |
 
 The `proposals` table is keyed by candidate `id`. It holds `parent`, `island`,
 `sequence`, `kind` (`seed`, `search`, or `replay`), selected request context, the
-eight complete Scala/C sources in JSON, `source_hash`, generation response/transcript,
+plain-text `patch` relative to the seed commits, `patch_hash`, generation response/transcript,
 provider/model, final numerical `metrics`, and native `program_id` linkage.
-A missing `source` means generation is unfinished; a present source with missing
+A NULL `patch` means generation is unfinished; a saved patch with missing
 `metrics` means evaluation is unfinished. `metrics.validity = 0` means rejection.
 `combined_score`, `source_bytes`, `cycles`, `instructions`, and `cpi` live in that metrics
-JSON. A program ID by itself does not prove committed admission: check the
+JSON. `source_bytes` measures the UTF-8 patch size. An empty patch selects the
+baseline and counts as completed generation. A program ID by itself does not prove committed admission: check the
 checkpoint's `admitted` set.
 
 The `benchmarks` table is keyed by `(candidate, name)`. Its JSON metrics retain
-per-workload software cycles/results, activity, hardware observer counters, and
-copy events. Valid scored DMA rows additionally include speedup and correctness
+per-workload software cycles/results and summary activity counters. Detailed
+hardware observer and copy-event records remain in raw simulator logs. Valid scored DMA rows additionally include speedup and correctness
 fields. A row named `error` contains the rejection reason. Seed benchmark rows
 are the sole fitness reference; no `reference.json` is used. The README provides
 queries using Python's standard-library SQLite client, so no separate database
@@ -214,14 +250,14 @@ provide worker diagnostics while tasks are still running.
 A standalone native population directory is insufficient for this tutorial:
 its program payloads refer to proposal IDs, and evaluation also needs SQL, the
 fixed source seed and matching settings. Candidate ELFs are rebuilt from the
-saved hardware/C source bundle or reused from the evictable CHIA build cache. Preserve the following:
+saved hardware/C Git patch or reused from the evictable CHIA build cache. Preserve the following:
 
 1. The selected committed checkpoint, including its `population/` and `state.json`.
 2. Consistent `metrics.db` history, `run.json`, and `latest.json`. Use `fork` to collect/filter this set while the source
    is running; do not copy a live SQLite main file without its WAL or a backup.
 3. The entire referenced seed directory, including `manifest.json`, the full
    tree, executable permissions, and symlinks. The seed is fixed and self-contained;
-   restoring sources overwrites the two Scala and six C files in a private checkout.
+   restoring sources recreates a private checkout and applies all recorded changes.
 4. The matching loop implementation/configuration and pinned dependencies, plus
    the pinned published images, credentials, Docker, and SSH access.
 
@@ -252,7 +288,7 @@ Compatibility is deliberately limited:
   fitness, native search policy, dependency pins, and build/simulation worker
   image/mount/environment/setup contracts are part of that hash. It is not a
   complete toolchain binary fingerprint.
-- Provider/model, total proposal count, in-flight limit, placement, resource
+- Model/effort, total proposal count, in-flight limit, placement, resource
   counts, and Ray connection ports can change between resumes. Redeploy changed
   workers with native `chia down/up`. Generation workspace serialization remains
   enforced.
@@ -270,12 +306,13 @@ Compatibility is deliberately limited:
 
 ## Validation
 
-The current checks cover the six-test workload contract, fixed checksums,
-weighted scoring, incomplete/changed results, passive DMA observations, source
+The current checks cover the six-test workload contract, runtime-seeded outputs,
+equal-weight scoring, incomplete/changed results, passive DMA observations, source
 preservation, candidate C recompilation, captured ELF/checksum isolation,
 relocation, and the frozen-input hashes.
 Baseline native C checks audit original copy counts/bytes and reject skipped
-and truncated copies. Evolved candidates need only match the fixed checksums.
+and truncated copies. Evolved candidates must match the independent full-buffer
+reference for fresh runtime inputs; copy counts remain diagnostic.
 
 ```sh
 make -C base/memory-tests -j6 check
@@ -289,9 +326,12 @@ validate custom DMA hardware or RTL timing. Distributed controller/worker tests
 require local sockets, Docker, and SSH; observer regression tests require
 Verilator.
 
-Each simulation is limited to 300 seconds and 10 million cycles. Calibrate the
-baseline under the tutorial machine's intended parallel load before relying on
-that budget. Simulator compilation and agent generation have separate limits.
+Public and private RTL simulations use CHIA's native 30-minute timeout; an
+expired simulation returns a failed test result. All eight tests are submitted in parallel. Search runs
+for the requested iterations, and per-round and command timings are saved under
+`artifacts/`. See [LOCAL_TIMING.md](LOCAL_TIMING.md). Calibrate the baseline under
+the tutorial machine's intended parallel load to estimate exercise duration.
+Simulator compilation and agent generation have separate limits.
 
 The previous Embench bundle, SCons build target/setup, dynamic parser loader,
 and old benchmark measurement fixture have been removed. Its checkpoints require

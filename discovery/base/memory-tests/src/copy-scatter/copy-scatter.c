@@ -1,7 +1,7 @@
 /* Tile placement: scatter a linear input into padded, permuted output tiles. */
 #include "memory_test.h"
 
-enum { BLOCKS = 128, WORDS = 128, STRIDE = WORDS + 8 };
+enum { BLOCKS = 32, WORDS = 128, STRIDE = WORDS + 8 };
 static uint64_t source[BLOCKS * WORDS] ALIGNED;
 extern uint64_t destination[BLOCKS * STRIDE];
 

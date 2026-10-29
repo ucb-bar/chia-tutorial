@@ -5,9 +5,10 @@ import copy
 import json
 import pytest
 
-from chia_dma.config import ALLOWLIST, digest, load
-from chia_dma.experiment import validate_candidate_files
+from chia_dma.config_loader import HARDWARE_FILES, SOFTWARE_FILES, digest, load
 from chia_dma.evaluation import aggregate as aggregate_node, parse as parse_node
+
+EXAMPLE_FILES = HARDWARE_FILES + SOFTWARE_FILES
 
 # Unit-test the pure node bodies without starting Ray or its profiler.
 aggregate = aggregate_node._chia_original
@@ -23,7 +24,7 @@ def configuration(tmp_path):
 
 @pytest.fixture
 def workloads():
-    from chia_dma.config import ROOT
+    from chia_dma.config_loader import ROOT
     return json.loads((ROOT / "base/memory-tests/workloads.json").read_text())
 
 
@@ -32,8 +33,8 @@ def records(workloads):
     # Synthetic score inputs, not claimed RTL measurements of the new suite.
     result = {}
     for name, spec in workloads.items():
-        offloaded = 112 if name == "copy-mixed" else spec["calls"]
-        count = 130048 if name == "copy-mixed" else spec["payload_bytes"]
+        offloaded = 14 if name == "copy-mixed" else spec["calls"]
+        count = 16256 if name == "copy-mixed" else spec["payload_bytes"]
         result[name] = {
             "benchmark_result": spec["checksum"], "verification_result": 1,
             "benchmark_cycles": 1000, "benchmark_instructions": 500,
@@ -44,9 +45,9 @@ def records(workloads):
     return result
 
 
-def test_memory_reference_and_weighted_geomean(configuration, records, workloads):
+def test_memory_reference_and_geomean(records, workloads):
     score, vector = aggregate(
-        records, records, workloads, {}, {p: "source" for p in ALLOWLIST}
+        records, records, workloads, "candidate patch"
     )
     assert score["combined_score"] == 1
     assert len(vector) == len(records)
@@ -54,23 +55,21 @@ def test_memory_reference_and_weighted_geomean(configuration, records, workloads
     for row in faster.values():
         row["benchmark_cycles"] /= 4
     score, _ = aggregate(
-        faster, records, workloads, configuration["fitness"]["workload_weights"],
-        {p: "source" for p in ALLOWLIST}
+        faster, records, workloads,
+        "candidate patch"
     )
     assert score["combined_score"] == pytest.approx(4)
-    active = [r for k, r in records.items() if r["region_offloaded"]]
     assert score["cycles"] == 250 * len(records)
     assert score["instructions"] == 500 * len(records)
     assert score["cpi"] == pytest.approx(0.5)
     key = next(k for k, r in records.items() if r["region_offloaded"])
-    configuration["fitness"]["workload_weights"] = {key: 2}
     faster[key]["benchmark_cycles"] *= 4
     score, _ = aggregate(
-        faster, records, workloads, configuration["fitness"]["workload_weights"],
-        {p: "source" for p in ALLOWLIST}
+        faster, records, workloads,
+        "candidate patch"
     )
     assert score["combined_score"] == pytest.approx(
-        4 ** ((len(active) - 1) / (len(active) + 1))
+        4 ** ((len(records) - 1) / len(records))
     )
 
 
@@ -81,18 +80,18 @@ def test_changed_dma_activity_is_allowed_but_wrong_checksum_or_missing_test_is_n
     for field in ("bytes", "offloaded", "fallback", "intercepted", "region_bytes", "region_offloaded"):
         bad = copy.deepcopy(records)
         bad[key][field] = 0
-        score, _ = aggregate(bad, records, workloads, {}, {p: "source" for p in ALLOWLIST})
+        score, _ = aggregate(bad, records, workloads, "candidate patch")
         assert score["validity"] == 1
     bad = copy.deepcopy(records)
     del bad[key]
     with pytest.raises(ValueError, match="Full memory-test"):
-        aggregate(bad, records, workloads, {}, {p: "source" for p in ALLOWLIST})
+        aggregate(bad, records, workloads, "candidate patch")
 
     # Even an incorrect seed cannot redefine the fixed expected checksums.
     bad = copy.deepcopy(records)
     bad[key]["benchmark_result"] += 1
     with pytest.raises(ValueError, match="checksum"):
-        aggregate(bad, bad, workloads, {}, {p: "source" for p in ALLOWLIST})
+        aggregate(bad, bad, workloads, "candidate patch")
 
 
 def test_failed_or_incomplete_simulation_never_yields_score():
@@ -109,8 +108,8 @@ def test_fixed_checksum_is_required_and_dma_activity_is_diagnostic():
     text = fixture.read_text()
     result = {"success": True, "returncode": 0, "log": text, "out": ""}
     row = parse(result, 1)
-    assert row["hardware"][0]["write_acks"] == 1
-    assert row["copy_events"][0]["hw_cycles"] == 34
+    assert row["benchmark_cycles"] == 80
+    assert "hardware" not in row and "copy_events" not in row
     with pytest.raises(ValueError, match="verification"):
         parse(result, 2)
     for original, invalid in (
@@ -128,13 +127,13 @@ def test_fixed_checksum_is_required_and_dma_activity_is_diagnostic():
 
 
 def test_cycle_score_accepts_zero_dma_and_does_not_reward_ipc_alone(records, workloads):
-    source = {path: "source" for path in ALLOWLIST}
+    source = "candidate patch"
     slower = copy.deepcopy(records)
     for row in slower.values():
         row["benchmark_cycles"] *= 2
         row["benchmark_instructions"] *= 4  # Better CPI, worse total execution time.
         row["region_offloaded"] = row["region_bytes"] = 0
-    score, _ = aggregate(slower, records, workloads, {}, source)
+    score, _ = aggregate(slower, records, workloads, source)
     assert score["combined_score"] == pytest.approx(0.5)
     assert score["cpi"] == pytest.approx(1)
     faster = copy.deepcopy(records)
@@ -142,28 +141,31 @@ def test_cycle_score_accepts_zero_dma_and_does_not_reward_ipc_alone(records, wor
         row["benchmark_cycles"] /= 2
         row["benchmark_instructions"] /= 4  # Worse CPI, better total execution time.
         row["region_offloaded"] = row["region_bytes"] = 0
-    score, _ = aggregate(faster, records, workloads, {}, source)
+    score, _ = aggregate(faster, records, workloads, source)
     assert score["combined_score"] == pytest.approx(2)
     assert score["cpi"] == pytest.approx(4)
 
 
-def test_candidate_contains_both_hardware_and_c_but_no_checksum_reader():
-    from chia_dma.config import HARDWARE_FILES, SOFTWARE_FILES
-    source = {path: "source" for path in ALLOWLIST}
-    assert len(HARDWARE_FILES) == 2 and len(SOFTWARE_FILES) == 6
-    validate_candidate_files(source)
-    with pytest.raises(ValueError):
-        validate_candidate_files({path: "source" for path in HARDWARE_FILES})
-    with pytest.raises(ValueError):
-        validate_candidate_files({**source, "tests/memory-tests/src/copy-small/checksum.c": "changed"})
+def test_candidates_accept_arbitrary_paths_and_reject_checkout_escapes(tmp_path, base_tree, patch_for):
+    from chia_dma.experiment import materialize_candidate
+    patch = patch_for({"build.sbt": "changed", "new/module.scala": "new"})
+    work = tmp_path / "restored"
+    materialize_candidate(work, base_tree, patch)
+    assert (work / "new/module.scala").read_text() == "new"
+    for name in ("../outside", "/tmp/outside", "a/../../outside", ".git/config"):
+        bad = (f"diff --git a/{name} b/{name}\nnew file mode 100644\n"
+               f"--- /dev/null\n+++ b/{name}\n@@ -0,0 +1 @@\n+bad\n")
+        with pytest.raises(ValueError):
+            materialize_candidate(work, base_tree, bad)
 
 
-def test_proposal_commit_is_immutable_and_has_exact_allowlist(tmp_path, configuration):
+def test_proposal_commit_is_immutable_with_unrestricted_source_paths(tmp_path, configuration, patch_for):
     from chia_dma.experiment import Experiment
     from skydiscover.search.base_database import Program
 
     import ray
 
+    ray.shutdown()
     ray.init(
         address="local",
         num_cpus=1,
@@ -172,61 +174,46 @@ def test_proposal_commit_is_immutable_and_has_exact_allowlist(tmp_path, configur
     )
     experiment = Experiment(configuration, tmp_path)
     try:
-        bundle = {p: "original\n" for p in ALLOWLIST}
-        modified = {**bundle, ALLOWLIST[0]: "original\n// proposal\n"}
+        bundle = patch_for({p: "original\n" for p in EXAMPLE_FILES})
+        modified = patch_for({EXAMPLE_FILES[0]: "original\n// proposal\n"})
         experiment.save_selection(
             Program(
                 id="seed",
-                solution=json.dumps({"source": bundle}),
+                solution=json.dumps({"patch": bundle}),
                 metadata={"island": 0},
             ),
             [],
             candidate_id="candidate",
         )
         saved = experiment.save_proposal(
-            "candidate", modified, {"response": "generated", "backend": "codex"}
+            "candidate", modified, {"response": "generated", "backend": "antigravity"}
         )
-        assert saved["source_hash"] == digest(modified) and saved["source"] == modified
+        assert saved["patch_hash"] == digest(modified.encode()) and saved["patch"] == modified
         assert saved["generation"]["response"] == "generated"
         assert not (tmp_path / "candidates").exists()
         with pytest.raises(ValueError):
             experiment.save_proposal("candidate", bundle, {})
-        with pytest.raises(ValueError):
-            validate_candidate_files({**bundle, "tests/cheat.c": "bad"})
     finally:
         experiment.close()
         ray.shutdown()
 
 
-def test_all_three_real_chia_agent_classes_are_configurable(configuration):
+def test_tutorial_uses_antigravity_with_the_requested_effort(configuration, monkeypatch):
     from chia_dma.agent import make_agent
-
-    names = {
-        "antigravity": "AntigravityLLM",
-        "claude": "ClaudeCodeLLM",
-        "codex": "CodexLLM",
-    }
-    for backend, classname in names.items():
-        configuration["agent"]["backend"] = backend
-        agent = make_agent(configuration)
-        assert type(agent).__name__ == classname
-        assert agent.timeout_seconds == configuration["agent"]["timeout_seconds"]
-
-
-def test_allowlisted_file_cannot_change_fixed_soc_mixin_or_l1():
-    from chia_dma.experiment import validate_integration
-
-    source = {p: "source" for p in ALLOWLIST}
-    source[ALLOWLIST[1]] = (
-        "class Accelerator {\n  io.mem.req.valid := false.B\n}\nclass WithRoCCDMA(x: Int) extends Config(fixed)\n"
-    )
-    candidate = dict(source)
-    candidate[ALLOWLIST[1]] = candidate[ALLOWLIST[1]].replace(
-        "Config(fixed)", "Config(cheating)"
-    )
-    with pytest.raises(ValueError, match="integration"):
-        validate_integration(candidate, source)
-    candidate[ALLOWLIST[1]] = source[ALLOWLIST[1]].replace("false.B", "true.B")
-    with pytest.raises(ValueError, match="L1"):
-        validate_integration(candidate, source)
-    validate_integration(source, source)
+    from chia.models.antigravity import AntigravityQueryResult
+    import ray
+    agent = make_agent(configuration)
+    assert type(agent).__name__ == "AntigravityLLM"
+    assert agent.timeout_seconds == configuration["agent"]["timeout_seconds"]
+    assert agent.extra_cli_args == ["--effort", "high"]
+    calls = []
+    def cli(*args):
+        calls.append(True)
+        return AntigravityQueryResult(result="candidate", returncode=0, stderr="",
+                                      stream_result="", success=True)
+    monkeypatch.setattr(agent, "_run_antigravity", cli)
+    try:
+        assert agent.prompt("Optimize the workload").success
+        assert calls == [True]  # The native API counts attempts in `retries`.
+    finally:
+        ray.shutdown()

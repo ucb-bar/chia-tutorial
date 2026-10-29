@@ -7,6 +7,7 @@ from contextlib import closing
 import json
 from pathlib import Path
 import uuid
+import time
 
 from skydiscover.config import (
     Config,
@@ -22,19 +23,20 @@ from skydiscover.search.default_discovery_controller import (
 )
 
 from chia_dma.agent import CLIClient, ParentContext
-from chia_dma.config import ROOT, load
+from chia_dma.config_loader import ROOT, load
 from chia_dma.evaluation import DMAEvaluator
 from chia_dma.experiment import (
     Experiment,
     RunLock,
     fork,
-    read_candidate_files,
     read_json,
+    write_json,
 )
 from chia_dma.runtime import Runtime, prepare
 
 
 def run_experiment(configuration, run_directory, action, candidate_id=None):
+    started = time.monotonic()
     with RunLock(run_directory):
         metadata = prepare(configuration, run_directory)
         seed_directory = metadata["seed"]
@@ -42,25 +44,38 @@ def run_experiment(configuration, run_directory, action, candidate_id=None):
             print(run_directory / "deployment/cluster.yaml")
             return
 
-        with Runtime(configuration, run_directory), closing(
-            Experiment(configuration, run_directory)
-        ) as experiment:
-            with closing(
-                DMAEvaluator(configuration, experiment, seed_directory)
-            ) as evaluator:
-                if action == "replay":
-                    result = asyncio.run(
-                        replay_candidate(experiment, evaluator, candidate_id)
-                    )
-                    print(result.metrics)
-                else:
-                    best = asyncio.run(
-                        run_search(configuration, experiment, evaluator, seed_directory)
-                    )
-                    print("Completed; best=" + str(best.id if best else None))
+        status = "interrupted"
+        try:
+            with Runtime(configuration, run_directory), closing(
+                Experiment(configuration, run_directory)
+            ) as experiment:
+                with closing(
+                    DMAEvaluator(configuration, experiment, seed_directory)
+                ) as evaluator:
+                    if action == "replay":
+                        result = asyncio.run(
+                            replay_candidate(experiment, evaluator, candidate_id)
+                        )
+                        print(result.metrics)
+                    else:
+                        best = asyncio.run(
+                            run_search(configuration, experiment, evaluator, seed_directory)
+                        )
+                        print("Completed; best=" + str(best.id if best else None))
+            status = "complete"
+        except Exception:
+            status = "failed"
+            raise
+        finally:
+            if action != "replay":
+                write_json(run_directory / "artifacts/exercise-timing.json", {
+                    "wall_seconds": time.monotonic() - started,
+                    "status": status,
+                })
 
 
 async def run_search(configuration, experiment, evaluator, seed_directory):
+    """Evaluate the baseline and run the requested optimization iterations."""
     if not experiment.population.programs:
         await evaluate_seed(configuration, experiment, evaluator, seed_directory)
 
@@ -118,8 +133,8 @@ def create_search_controller(configuration, experiment, evaluator):
 
 
 async def evaluate_seed(configuration, experiment, evaluator, seed_directory):
-    source = read_candidate_files(Path(seed_directory) / "tree")
-    seed_solution = json.dumps({"proposal_id": "seed-dma", "source": source})
+    patch = ""  # An empty Git patch selects the prepared tutorial baseline.
+    seed_solution = json.dumps({"proposal_id": "seed-dma", "patch": patch})
     seed_program = Program(
         id="seed-dma", solution=seed_solution, language="json", metadata={"island": 0}
     )
@@ -130,7 +145,7 @@ async def evaluate_seed(configuration, experiment, evaluator, seed_directory):
         experiment.save_selection(
             seed_program, [], candidate_id="seed-dma", kind="seed"
         )
-    experiment.save_proposal("seed-dma", source, {"backend": None})
+    experiment.save_proposal("seed-dma", patch, {"backend": None})
 
     result = await evaluator.evaluate_program(seed_solution, "seed-dma")
     if result.metrics.get("validity") != 1:
@@ -156,7 +171,7 @@ async def replay_candidate(experiment, evaluator, candidate_id):
     parent = Program(
         id=candidate_id,
         solution=json.dumps(
-            {"proposal_id": candidate_id, "source": candidate["source"]}
+            {"proposal_id": candidate_id, "patch": candidate["patch"]}
         ),
         metadata={"island": selection["island"], "candidate_id": candidate_id},
     )
@@ -165,7 +180,7 @@ async def replay_candidate(experiment, evaluator, candidate_id):
     )
     experiment.save_proposal(
         replay["id"],
-        candidate["source"],
+        candidate["patch"],
         {
             "backend": candidate["backend"],
             "model": candidate["model"],
@@ -182,7 +197,7 @@ def main():
         "action",
         choices=("prepare", "run", "resume", "status", "fork", "replay"),
     )
-    parser.add_argument("--config", default=str(ROOT / "config.yaml"))
+    parser.add_argument("--config", default=str(ROOT / "cluster.yaml"))
     parser.add_argument("--run", default="run-001")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--candidate")
