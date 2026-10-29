@@ -18,6 +18,8 @@ import ray
 import yaml
 from chia.base.ChiaFunction import get
 from chia.base.tools.BashTool import BashTool
+from chia.trace import live_status_monitor
+from chia.trace.live_status_monitor import report
 from chia.trace.profiler import start_collector, stop_collector
 
 from coordinator import Coordinator, Design
@@ -28,6 +30,12 @@ from suite import body_from, load_cases, parse_results, render, score, validate_
 
 ROOT = Path(__file__).resolve().parent
 LOG = logging.getLogger("scale")
+MONITOR = "scale"  # Live status monitor read by monitor.py; one row per agent, plus baseline and best.
+
+
+def show(label, **fields):
+    """Set fields on the live status row of label's agent (agent_0/iter_000/... -> agent_0)."""
+    report(MONITOR, label.split("/")[0], **fields)
 
 
 class EvaluationError(RuntimeError):
@@ -122,6 +130,8 @@ def prepare_builders(settings, known=None):
 
 def evaluate_design(settings, body, cases, build, cache, directory, label):
     groups = case_batches(cases, settings)
+    profile = label.rsplit("/", 1)[-1]
+    show(label, state=f"{profile} compile + build", batches=f"0/{len(groups)}")
     json_file(directory / "batches.json", [[c.name for c in group] for group in groups])
     def compile_tasks():
         for index, group in enumerate(groups):
@@ -158,12 +168,17 @@ def evaluate_design(settings, body, cases, build, cache, directory, label):
     if compile_error is not None:
         raise compile_error
     artifact_ref = ray.put(artifact)
+    show(label, state=f"{profile} simulate")
+    simulated = 0
     def simulation_tasks():
         for index, group, elf in compiled:
             yield index, group, nodes.simulate(artifact_ref, elf, settings)
     def finish_simulation(task):
+        nonlocal simulated
         index, group, ref = task
         result = get(ref)
+        simulated += 1
+        show(label, batches=f"{simulated}/{len(groups)}")
         (directory / f"batch_{index:04d}.log").write_text(result.log)
         if result.returncode:
             (directory / f"batch_{index:04d}.stderr.txt").write_text(result.out)
@@ -192,6 +207,7 @@ def run_baseline(settings, run_directory, builder, quick, full):
               note="Full means the entire configured suite; a test_cases subset is not all available upstream cases."))
     (directory / "memcpy_body.c").write_text(body)
     (directory / "hardware.patch").write_text("")
+    show("baseline", state="done", speedup="1.0000x")
     return Design("baseline", str(directory), body, "", 1.0), build, rows
 
 
@@ -199,12 +215,14 @@ def ask(llm, tool, prompt, directory, label, settings):
     prompt = prompt.replace("FastRTLSimRocketConfig", settings["hardware_config"])
     name = label.split('/')[-1]
     (directory / f"{name}.txt").write_text(prompt + "\n\nPENDING\n")
+    show(label, state=f"model {name}")
     def call():
         return get(llm.prompt.options(num_cpus=0, resources={"antigravity_creds": nodes.ROLE_TAG},
                    scheduling_strategy=nodes.pinned(llm._scale_node_id), max_retries=0).chia_remote(llm, prompt, [tool]))
     def log_retry(attempt, seconds, error):
         json_file(directory / f"{name}.retry_{attempt}.json", dict(attempt=attempt, wait_seconds=seconds, error=str(error)))
         LOG.warning("%s: model throttled; retry %d after %ds", label, attempt, seconds)
+        show(label, state=f"model {name} retry {attempt}")
     answer = with_backoff(call, settings, log_retry)
     (directory / f"{name}.txt").write_text(prompt + "\n\nANSWER\n" + (answer.result or "") + "\n\nSTDERR\n" + (answer.stderr or "") + "\n\nTRANSCRIPT\n" + (answer.stream_result or ""))
     return answer
@@ -227,6 +245,8 @@ def run_agent(index, builder, coordinator, settings, run_directory, quick, full,
             parent = coordinator.snapshot()  # Adopt best only at an iteration boundary.
             summary = dict(agent=index, iteration=iteration, parent=parent.name, strategy=strategy,
                            builder_node_id=node_id, status="failed", attempts=[])
+            show(label, iteration=f"{iteration + 1}/{settings['design_iterations_per_agent']}",
+                 attempt="", batches="", parent=parent.name, state="reset workspace")
             try:
                 get(nodes.workspace.options(scheduling_strategy=nodes.pinned(node_id)).chia_remote(settings["chipyard_path"], "reset"))
                 get(nodes.workspace.options(scheduling_strategy=nodes.pinned(node_id)).chia_remote(settings["chipyard_path"], "apply", parent.patch))
@@ -240,6 +260,7 @@ def run_agent(index, builder, coordinator, settings, run_directory, quick, full,
                 for attempt in range(settings["max_attempts"]):
                     attempt_dir = directory / f"attempt_{attempt:02d}"
                     attempt_dir.mkdir()
+                    show(label, attempt=f"{attempt + 1}/{settings['max_attempts']}", batches="", state="capture patch")
                     try:
                         patch = get(nodes.workspace.options(scheduling_strategy=nodes.pinned(node_id)).chia_remote(settings["chipyard_path"], "capture"))
                         if not patch.strip():
@@ -261,6 +282,9 @@ def run_agent(index, builder, coordinator, settings, run_directory, quick, full,
                         design = Design(label, str(attempt_dir), body, patch, value)
                         improved = coordinator.publish(design)
                         LOG.info("%s full-validated %.4fx; promoted=%s", label, value, improved)
+                        show(label, state="passed", speedup=f"{value:.4f}x")
+                        if improved:
+                            report(MONITOR, "best", design=label, speedup=f"{value:.4f}x", state="done")
                         passed += 1
                         break
                     except Exception as error:
@@ -272,15 +296,18 @@ def run_agent(index, builder, coordinator, settings, run_directory, quick, full,
                         feedback = str(error)
                         summary["attempts"].append(dict(attempt=attempt, status="failed", error=feedback))
                         (attempt_dir / "failure.txt").write_text(feedback)
+                        show(label, state=f"attempt failed: {getattr(error, 'stage', 'evaluation')}")
                         if attempt + 1 < settings["max_attempts"]:
                             body = prompts.answer_body(ask(llm, tool, prompts.debug(getattr(error, "stage", "evaluation"), feedback, attempt + 1, settings["debug_feedback_max_chars"]), directory, label + f"/debug_{attempt + 1}", settings), body)
             except Exception as error:
                 summary["error"] = str(error)
                 LOG.exception("%s stopped", label)
+                show(label, state="failed", error=str(error).splitlines()[0][:80] if str(error) else type(error).__name__)
                 return passed
             finally:
                 summary["wall_seconds"] = time.monotonic() - iteration_start
                 json_file(directory / "summary.json", summary)
+        show(f"agent_{index}", state="done", validated=passed)
     finally:
         tool.stop()
         try:
@@ -319,6 +346,9 @@ def main():
     connection = ray.init(address=args.address or settings["ray_address"], namespace="chia-scale", log_to_driver=False,
              runtime_env={"working_dir": str(ROOT), "excludes": ["out/", ".runtime/", ".venv/", "__pycache__/"]})
     settings["ray_address"] = connection.address_info["gcs_address"]
+    # LIVE STATUS MONITOR: create the monitor actor (it lives as long as this driver) without
+    # watch() printing tables into this output; monitor.py reads it from another terminal.
+    live_status_monitor._monitor()
     start = time.monotonic()
     directory = ROOT / "out" / time.strftime("run_%Y%m%d_%H%M%S")
     try:
@@ -328,8 +358,10 @@ def main():
         json_file(directory / "settings.json", settings)
         json_file(directory / "cases.json", [asdict(c) for c in full])
         LOG.info("Results: %s", directory)
+        report(MONITOR, "run", directory=directory.name, state="running")
         baseline, build, rows = run_baseline(settings, directory, builders[0], quick, full)
         coordinator = Coordinator(directory, baseline)
+        report(MONITOR, "best", design=baseline.name, speedup=f"{baseline.score:.4f}x", state="done")
         count = 0
         if not args.baseline_only:
             available_builders = Queue()
@@ -344,6 +376,7 @@ def main():
                 waiting.parent.mkdir(parents=True, exist_ok=True)
                 waiting.touch()
                 LOG.info("agent_%d waiting for builder", index)
+                show(f"agent_{index}", state="waiting for builder")
                 while True:
                     try:
                         builder = available_builders.get(timeout=10)
@@ -373,6 +406,7 @@ def main():
         json_file(directory / "run_summary.json", dict(validated_candidates=count, wall_seconds=time.monotonic() - start,
                   score_metric="arithmetic_mean_speedup", best=asdict(best)))
         LOG.info("Best configured-suite-validated design: %s (%.4fx)", best.name, best.score)
+        report(MONITOR, "run", state="done")
         if not args.baseline_only and count == 0:
             raise RuntimeError("No agent produced a fully validated candidate; see per-agent summaries")
     finally:

@@ -13,8 +13,8 @@ source load-env.sh
 Increase these starting values under `TUTORIAL` in `settings.yaml`:
 
 ```yaml
-agents: 1       # Increase to run more agents in parallel (up to 5).
-test_cases: 17  # Increase to run more test and benchmark cases.
+agents: 1       # Increase to run more agents in parallel (for example, 3).
+test_cases: 17  # Increase to run more test and benchmark cases (for example, 1024).
 ```
 
 For more agents, provide enough builders in `cluster.yaml`: update the
@@ -31,17 +31,17 @@ There should be a out/run_... value printed out, save this! We will use this to 
 
 ## 4. Check progress
 
-From your local `scale` folder, use the run directory printed by the loop.
-In a new terminal, first run `source load-env.sh` (step 1) to load the head's SSH address.
+In a new terminal, first run `source load-env.sh`,
+then watch the running loop's live status monitor:
 
 ```bash
-python status.py out/run_...
+python monitor.py            # a table every 10 s; Ctrl-C to stop
+python monitor.py --once     # one table
 ```
 
-The script reads results from the head over SSH when the directory is not local.
+Each row is one agent (plus `run`, `baseline` and `best`): its iteration, attempt,
+current state, simulation batches done, and speedup once validated. The monitor exists only while the loop runs.
 Results stay on the head in `~/scale/out/`.
-Status shows geometric-mean benchmark speedup versus baseline when results are available;
-quick-suite speedups are marked preliminary.
 
 ## 5. Scale up cluster
 
@@ -59,7 +59,7 @@ using the old configuration, then edit and bring it up again. `--add` keeps exis
 ## 6. Check progress
 
 ```bash
-python status.py out/run_...
+python monitor.py
 ```
 We should now see the run progressing faster!
 
