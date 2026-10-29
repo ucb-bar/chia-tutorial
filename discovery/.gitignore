@@ -1,5 +1,3 @@
-.deps/
-.venv/
 experiments/
 __pycache__/
 .pytest_cache/

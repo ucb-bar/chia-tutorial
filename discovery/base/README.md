@@ -2,9 +2,8 @@
 
 `chipyard.patch` contains the DMA accelerator and SoC configuration, passive
 simulation observer, DMA `memcpy` wrapper, HTIF timing/statistics, and exit
-workaround. It applies to Chipyard
-`4ab72313087580a44d647b52923389a06ec0712f`, initialized in the published CHIA
-build image pinned in `../cluster.yaml`.
+workaround. It applies to the Chipyard checkout initialized in the published
+CHIA build image named in `../cluster.yaml` (`:latest`).
 
 [memory-tests/](memory-tests/) supplies six short baremetal C workloads, their
 expected checksums, and a Makefile that links the existing DMA/HTIF runtime.
@@ -12,7 +11,7 @@ The loop recompiles the candidate workloads alongside the hardware and runs one
 simulation task per ELF for each candidate. Per-test `checksum.c` files own the
 output storage and verification; evaluation uses the preserved seed copies. The suite README describes each workload and native validation.
 
-`prepare.sh` runs inside the pinned image. It copies tracked source and
+`prepare.sh` runs inside that build image. It copies tracked source and
 initialized submodule Git metadata, applies the patch, and copies the memory-test
 Makefile, manifest, check script, sources, and support files into `tests/memory-tests/`.
 Generated host binaries, Python caches, and build outputs are not copied.

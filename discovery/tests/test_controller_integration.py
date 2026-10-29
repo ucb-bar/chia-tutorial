@@ -14,16 +14,11 @@ from chia.trace.profiler import start_collector, stop_collector, reset_profiler
 from chia.chipyard.state_def import BuildArtifact, ProgramBuildArtifact, RunResult
 from skydiscover.search.base_database import Program
 from chia_dma.config_loader import load, HARDWARE_FILES, SOFTWARE_FILES, digest
-from chia_dma.experiment import (
-    read_json,
-    write_json,
-    capture_patch,
-    initialize_checkout,
-    apply_candidate_diff,
-)
-from chia_dma.experiment import Experiment, save_proposal, load_proposal
+from chia_dma.source import read_json, write_json, capture_patch, initialize_checkout, apply_candidate_diff
+from chia_dma.experiment import Experiment
+from chia_dma.source import save_proposal, load_proposal
 from loop import create_search_controller, replay_candidate, run_search
-from chia_dma.agent import CLIClient, ParentContext
+from chia_dma.search import CLIClient, ParentContext
 from chia_dma.evaluation import DMAEvaluator
 from chia_dma.runtime import cache_hit, from_cache
 
@@ -58,7 +53,7 @@ class Counts:
 
 @pytest.fixture
 def flow(tmp_path, monkeypatch, request, base_tree):
-    from chia_dma import agent, evaluation
+    from chia_dma import evaluation, search
 
     configuration = load()
     configuration["storage"] = str(tmp_path)
@@ -175,7 +170,7 @@ def flow(tmp_path, monkeypatch, request, base_tree):
         )
         return RunResult(name, log, "", 0, True)
 
-    monkeypatch.setattr(agent, "generate", generate)
+    monkeypatch.setattr(search, "generate", generate)
     monkeypatch.setattr(evaluation, "build", build)
     monkeypatch.setattr(evaluation, "simulate", simulate)
     from chia_dma import correctness
@@ -710,7 +705,7 @@ def test_native_profile_commands_show_best_and_failed_candidate_scores(flow, mon
     import subprocess
     import sys
     from chia.trace.profiler import get_collector
-    from chia_dma import agent, evaluation
+    from chia_dma import evaluation, search
     from chia_dma.profiling import export_profiles
 
     configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
@@ -743,7 +738,7 @@ def test_native_profile_commands_show_best_and_failed_candidate_scores(flow, mon
     @ChiaFunction(resources={"generation": 1})
     def generation_failure(*args):
         raise RuntimeError("fixture generation failure")
-    monkeypatch.setattr(agent, "generate", generation_failure)
+    monkeypatch.setattr(search, "generate", generation_failure)
     with pytest.raises(Exception, match="fixture generation failure"):
         asyncio.run(CLIClient(configuration, experiment).generate("", [{
             "role": "user", "content": json.dumps({"request_id": request["id"]}),

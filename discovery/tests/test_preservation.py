@@ -6,7 +6,7 @@ import subprocess
 import pytest
 import yaml
 from chia_dma.config_loader import HARDWARE_FILES, ROOT, SOFTWARE_FILES, digest, load
-from chia_dma.experiment import preserve_source, read_json, capture_patch
+from chia_dma.source import preserve_source, read_json, capture_patch
 
 EXAMPLE_FILES = HARDWARE_FILES + SOFTWARE_FILES
 
@@ -56,7 +56,7 @@ def test_native_riscv_builder_compiles_candidate_and_keeps_the_oracle_fixed(tmp_
 
 
 def test_unrestricted_source_changes_round_trip_and_clear_previous_parent(tmp_path):
-    from chia_dma.experiment import initialize_checkout, apply_candidate_diff
+    from chia_dma.source import initialize_checkout, apply_candidate_diff
 
     seed = tmp_path / "seed"
     seed.mkdir()
@@ -126,7 +126,7 @@ def test_generation_mounts_the_whole_checkout_and_isolates_verification(tmp_path
 
 def test_resume_ignores_old_fingerprints_and_reuses_the_saved_seed(tmp_path, monkeypatch):
     from chia_dma import config_loader as config, runtime
-    from chia_dma.experiment import write_json
+    from chia_dma.source import write_json
 
     shutil.copytree(ROOT / "base", tmp_path / "base",
                     ignore=shutil.ignore_patterns("build", "__pycache__"))
@@ -180,7 +180,7 @@ def test_image_seed_is_immutable_reusable_and_restores_candidates(
         destination = Path(mount.split(",")[1].removeprefix("src="))
         shutil.copytree(base_tree, destination / "tree")
 
-    monkeypatch.setattr("chia_dma.experiment.subprocess.run", materialize_image)
+    monkeypatch.setattr("chia_dma.source.subprocess.run", materialize_image)
     seed = preserve_source(configuration)
     manifest = read_json(seed / "manifest.json")
     assert (
@@ -192,7 +192,7 @@ def test_image_seed_is_immutable_reusable_and_restores_candidates(
     assert not (seed / "tree" / EXAMPLE_FILES[0]).stat().st_mode & 0o222
     assert len(list((seed / "tree/tests/memory-tests/src").iterdir())) == 6
     assert not (seed / "tree/tests/embench-iot").exists()
-    from chia_dma.experiment import initialize_checkout, apply_candidate_diff
+    from chia_dma.source import initialize_checkout, apply_candidate_diff
     restored = tmp_path / "restored"
     initialize_checkout(restored, seed / "tree")
     apply_candidate_diff(restored, seed / "tree", "")
@@ -261,7 +261,7 @@ def test_copied_loop_prepares_and_relocates_without_requiring_a_commit(
     assert meta["loop_dirty"] is (None if repository == "none" else True)
     assert runtime.prepare(configuration, run) == meta
     deployment = yaml.safe_load((run / "deployment/cluster.yaml").read_text())
-    assert deployment["head_env_commands"][0] == f"source {copied}/.venv/bin/activate"
+    assert deployment["head_env_commands"][1] == f"export PYTHONPATH={copied}"
 
     relocated = tmp_path / "relocated-loop"
     shutil.copytree(copied, relocated, symlinks=True)
@@ -280,7 +280,7 @@ def test_copied_loop_prepares_and_relocates_without_requiring_a_commit(
 
 def test_patch_round_trip_preserves_submodule_metadata_and_edits(tmp_path):
     from conftest import commit_tree
-    from chia_dma.experiment import initialize_checkout, apply_candidate_diff, capture_patch
+    from chia_dma.source import initialize_checkout, apply_candidate_diff, capture_patch
     component = tmp_path / "component"
     component.mkdir()
     (component / "helper.c").write_text("int value = 1;\n")

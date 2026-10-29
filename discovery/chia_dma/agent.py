@@ -1,15 +1,13 @@
-"""SkyDiscover LLM interface -> native CHIA CLI agent -> candidate BashTool."""
+"""Native CHIA CLI agent -> candidate BashTool. Runs on generation workers."""
 
-import asyncio
 import json
 import os
 import time
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from chia.base.ChiaFunction import ChiaFunction, get, chia_cancel
+from chia.base.ChiaFunction import ChiaFunction
 from chia.base.tools.BashTool import BashTool
-from skydiscover.llm.base import LLMInterface, LLMResponse
-from .experiment import save_proposal, load_proposal, capture_patch, apply_candidate_diff
+from .source import save_proposal, load_proposal, capture_patch, apply_candidate_diff
 
 CONSTRAINTS = """Co-design the RV64 RoCC DMA hardware and the six baremetal C workloads.
 
@@ -109,39 +107,3 @@ def generate(configuration, sql, task):
         return save_proposal(sql, task["id"], patch, generation, remote=True)
     finally:
         tool.stop()
-
-
-class CLIClient(LLMInterface):
-    def __init__(self, configuration, experiment):
-        self.configuration, self.experiment = configuration, experiment
-
-    async def generate(self, system_message, messages, **kwargs):
-        user_message = messages[-1]
-        selection = json.loads(user_message["content"])
-        candidate_id = selection["request_id"]
-        request = self.experiment.selection(candidate_id)
-        handle = generate.chia_remote(
-            self.configuration,
-            self.experiment.sql,
-            request,
-            _chia_tag="proposal/" + candidate_id,
-        )
-        try:
-            saved = await asyncio.to_thread(get, handle)
-        except asyncio.CancelledError:
-            chia_cancel(getattr(handle, "ref", handle), force=True)
-            raise
-        except Exception:
-            from .profiling import record_scores
-            record_scores(self.experiment, candidate_id, {"validity": 0}, stage="generation")
-            raise
-        candidate = {"proposal_id": candidate_id, "patch": saved["patch"]}
-        return LLMResponse(text="```json\n" + json.dumps(candidate) + "\n```")
-
-
-class ParentContext:
-    def build_prompt(self, current_program, context):
-        return {
-            "system": CONSTRAINTS,
-            "user": json.dumps({"request_id": current_program.metadata["request_id"]}),
-        }

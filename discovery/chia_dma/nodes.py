@@ -11,7 +11,7 @@ from chia.base.ChiaFunction import ChiaFunction
 from chia.chipyard.chisel_build_node import ChiselBuildNode
 
 from .config_loader import digest
-from .experiment import apply_candidate_diff, run_git_command
+from .source import apply_candidate_diff, run_git_command
 from .observations import run_observed
 
 

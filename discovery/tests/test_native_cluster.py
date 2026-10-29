@@ -80,7 +80,7 @@ def boundary_probe(mark, parent_patch, ready, sql, delay=0.2):
     EXAMPLE_FILES = HARDWARE_FILES + SOFTWARE_FILES
 
     # Match production's parent initialization before giving the agent its shell.
-    from chia_dma.experiment import apply_candidate_diff
+    from chia_dma.source import apply_candidate_diff
     apply_candidate_diff("/workspace", "/seed", parent_patch)
     assert all((Path("/workspace") / name).read_text() == mark for name in EXAMPLE_FILES)
     tool = BashTool(
@@ -123,8 +123,8 @@ assert not Path('/opt/loop/chia_dma/evaluation.py').exists()
         time.sleep(delay)
         assert (Path("/workspace") / EXAMPLE_FILES[0]).read_text() == mark + " edited"
         assert (Path("/workspace") / EXAMPLE_FILES[1]).read_text() == mark
-        from chia_dma.experiment import save_proposal
-        from chia_dma.experiment import capture_patch
+        from chia_dma.source import save_proposal
+        from chia_dma.source import capture_patch
 
         assert not Path(sql.db_path).exists()
         save_proposal(
@@ -184,7 +184,7 @@ def test_native_generation_parent_separation_forbidden_writes_and_serial_reuse(
         for mark, result in zip(("parent-A", "parent-B", "parent-C"), results):
             assert "PARENT=" + mark in result["output"]
             assert result["output"].count("DENIED=") == 2
-            from chia_dma.experiment import initialize_checkout, apply_candidate_diff
+            from chia_dma.source import initialize_checkout, apply_candidate_diff
             restored = run / ("verify-" + mark)
             initialize_checkout(restored, seed / "tree")
             apply_candidate_diff(restored, seed / "tree", experiment.load_proposal(mark)["patch"])
@@ -267,7 +267,7 @@ def test_native_build_simulation_worker_placement(native_ssh, base_tree):
 
             @ChiaFunction()
             def probe():
-                import importlib
+                import importlib.util
                 import os
                 import shutil
                 from pathlib import Path
@@ -283,12 +283,9 @@ def test_native_build_simulation_worker_placement(native_ssh, base_tree):
                     (p.read_text() if p.exists() else None),
                     {
                         name: importlib.import_module(name).__file__
-                        for name in (
-                            "chia.base.ChiaFunction",
-                            "chia_dma.agent",
-                            "skydiscover.config",
-                        )
+                        for name in ("chia.base.ChiaFunction", "chia_dma.agent")
                     },
+                    importlib.util.find_spec("skydiscover") is not None,
                 )
 
             build = get(probe.options(resources={"chipyard": 1}).chia_remote())
@@ -312,24 +309,17 @@ def test_native_build_simulation_worker_placement(native_ssh, base_tree):
             )
             assert verification[0] not in {build[0], simulation[0], generation[0]}
             assert head[2]["chia_dma.agent"] == str(ROOT / "chia_dma/agent.py")
-            assert head[2]["chia.base.ChiaFunction"] == str(
-                Path(configuration["chia"]) / "chia/base/ChiaFunction.py"
-            )
+            assert head[3]
+            # Workers use CHIA from their images and never need SkyDiscover.
             for worker in (build, software, simulation, generation, verification):
                 assert worker[2]["chia_dma.agent"] == "/opt/loop/chia_dma/agent.py"
-                assert (
-                    worker[2]["chia.base.ChiaFunction"]
-                    == "/opt/chia/chia/base/ChiaFunction.py"
-                )
-                assert (
-                    worker[2]["skydiscover.config"]
-                    == "/opt/skydiscover/skydiscover/config.py"
-                )
+                assert worker[2]["chia.base.ChiaFunction"].startswith("/home/ray/anaconda3/")
+                assert not worker[3]
             assert ray.cluster_resources()["generation"] == 2
             assert ray.cluster_resources()["riscv_build"] == 6
             from chia.chipyard.riscv_build_node import RiscvBuildNode
             from chia_dma.evaluation import software_inputs
-            from chia_dma.experiment import read_json
+            from chia_dma.source import read_json
 
             compiler = RiscvBuildNode(timeout_seconds=120)
             inputs = ray.put(software_inputs(base_tree, ""))
@@ -387,7 +377,7 @@ def cli_checksum_probe(configuration, source):
     from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
     from chia.base.tools.BashTool import BashTool
     from chia_dma.agent import make_agent
-    from chia_dma.experiment import capture_patch
+    from chia_dma.source import capture_patch
 
     for name, text in source.items():
         (Path("/workspace") / name).write_text(text)
@@ -426,7 +416,7 @@ def cli_checksum_probe(configuration, source):
 @pytest.mark.parametrize("backend", ["antigravity"])
 def test_cli_backend_uses_native_bash_tool(native_ssh, backend):
     from chia_dma.config_loader import digest
-    from chia_dma.experiment import write_json
+    from chia_dma.source import write_json
 
     original, base = native_ssh
     configuration = copy.deepcopy(original)
@@ -442,7 +432,7 @@ def test_cli_backend_uses_native_bash_tool(native_ssh, backend):
         result = get(cli_checksum_probe.chia_remote(configuration, source))
         write_json(run / "result.json", result)
         assert digest(source[EXAMPLE_FILES[0]].encode()) in result["response"]
-        from chia_dma.experiment import initialize_checkout, apply_candidate_diff
+        from chia_dma.source import initialize_checkout, apply_candidate_diff
         restored = run / "verified-proposal"
         initialize_checkout(restored, seed / "tree")
         apply_candidate_diff(restored, seed / "tree", result["patch"])

@@ -10,7 +10,6 @@ from .defaults import (
     DEFAULTS,
     HARDWARE_FILES,
     SOFTWARE_FILES,
-    RELATIVE_PATHS,
     BASE_FILE_PATTERNS,
 )
 
@@ -40,8 +39,7 @@ def load(path=ROOT / "cluster.yaml"):
     )
     configuration["hardware"]["make_jobs"] = int(cpus)
     configuration["cluster"] = document
-    for key in RELATIVE_PATHS:
-        configuration[key] = str((ROOT / configuration[key]).resolve())
+    configuration["storage"] = str((ROOT / configuration["storage"]).resolve())
     configuration["base"]["files"] = {
         str(path.relative_to(ROOT / "base")): digest(path.read_bytes())
         for pattern in BASE_FILE_PATTERNS
