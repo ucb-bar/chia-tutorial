@@ -6,7 +6,6 @@ import asyncio
 from contextlib import closing
 import json
 from pathlib import Path
-import uuid
 import time
 
 from skydiscover.config import (
@@ -35,7 +34,7 @@ from chia_dma.experiment import (
 from chia_dma.runtime import Runtime, prepare
 
 
-def run_experiment(configuration, run_directory, action, candidate_id=None):
+def run_experiment(configuration, run_directory, action):
     started = time.monotonic()
     with RunLock(run_directory):
         metadata = prepare(configuration, run_directory)
@@ -52,26 +51,19 @@ def run_experiment(configuration, run_directory, action, candidate_id=None):
                 with closing(
                     DMAEvaluator(configuration, experiment, seed_directory)
                 ) as evaluator:
-                    if action == "replay":
-                        result = asyncio.run(
-                            replay_candidate(experiment, evaluator, candidate_id)
-                        )
-                        print(result.metrics)
-                    else:
-                        best = asyncio.run(
-                            run_search(configuration, experiment, evaluator, seed_directory)
-                        )
-                        print("Completed; best=" + str(best.id if best else None))
+                    best = asyncio.run(
+                        run_search(configuration, experiment, evaluator, seed_directory)
+                    )
+                    print("Completed; best=" + str(best.id if best else None))
             status = "complete"
         except Exception:
             status = "failed"
             raise
         finally:
-            if action != "replay":
-                write_json(run_directory / "artifacts/exercise-timing.json", {
-                    "wall_seconds": time.monotonic() - started,
-                    "status": status,
-                })
+            write_json(run_directory / "artifacts/exercise-timing.json", {
+                "wall_seconds": time.monotonic() - started,
+                "status": status,
+            })
 
 
 async def run_search(configuration, experiment, evaluator, seed_directory):
@@ -163,39 +155,11 @@ async def evaluate_seed(configuration, experiment, evaluator, seed_directory):
     experiment.save_checkpoint()
 
 
-async def replay_candidate(experiment, evaluator, candidate_id):
-    candidate = experiment.load_proposal(candidate_id)
-    if candidate is None:
-        raise ValueError("No completed proposal for this candidate")
-    selection = experiment.selection(candidate_id)
-    parent = Program(
-        id=candidate_id,
-        solution=json.dumps(
-            {"proposal_id": candidate_id, "patch": candidate["patch"]}
-        ),
-        metadata={"island": selection["island"], "candidate_id": candidate_id},
-    )
-    replay = experiment.save_selection(
-        parent, [], candidate_id="replay-" + uuid.uuid4().hex, kind="replay"
-    )
-    experiment.save_proposal(
-        replay["id"],
-        candidate["patch"],
-        {
-            "backend": candidate["backend"],
-            "model": candidate["model"],
-            "replay_of": candidate_id,
-        },
-    )
-    replay_solution = json.dumps({"proposal_id": replay["id"], "replay": True})
-    return await evaluator.evaluate_program(replay_solution)
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "action",
-        choices=("prepare", "run", "resume", "status", "fork", "replay"),
+        choices=("prepare", "run", "resume", "status", "fork"),
     )
     parser.add_argument("--config", default=str(ROOT / "cluster.yaml"))
     parser.add_argument("--run", default="run-001")
@@ -210,8 +174,6 @@ def main():
             parser.error("Use simple run/candidate/checkpoint names")
     if args.action == "fork" and not args.new_run:
         parser.error("fork requires --new-run")
-    if args.action == "replay" and not args.candidate:
-        parser.error("replay requires --candidate")
 
     configuration = load(args.config)
     run_directory = Path(configuration["storage"]) / args.run
@@ -229,7 +191,7 @@ def main():
         ):
             parser.error("Prepare a new experiment first")
         run_directory.mkdir(parents=True, exist_ok=True)
-        run_experiment(configuration, run_directory, args.action, args.candidate)
+        run_experiment(configuration, run_directory, args.action)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,6 @@ from .experiment import (
     read_json,
     preserve_source,
     write_json,
-    initialize_checkout,
 )
 
 
@@ -80,21 +79,8 @@ def render(configuration, run, seed):
         shutil.copyfile(ROOT / "chia_dma" / name, public / name)
     deployment["file_mounts"][bindings["REMOTE"] + "/generation"] = str(public) + "/"
     deployment["initialization_commands"].append("mkdir -p " + bindings["REMOTE"] + "/generation")
-    generation_template = deployment["available_node_types"].pop("generation")
-    for worker_index in range(generation_template["num_workers"]):
-        workspace = Path(run) / "work" / f"generation-{worker_index}"
-        initialize_checkout(workspace, Path(seed) / "tree")
-        worker = expand(
-            generation_template, {"INDEX": str(worker_index), "WORK": str(workspace)}
-        )
-        worker["num_workers"] = 1
-        worker["docker"]["run_options"] = [
-            option.replace("src=" + bindings["REMOTE"] + "/chia_dma,",
-                           "src=" + bindings["REMOTE"] + "/generation,")
-            for option in worker["docker"]["run_options"]
-        ]
-        worker["worker_setup_commands"] += expand(AGENT_SETUP, bindings)
-        deployment["available_node_types"][f"generation-{worker_index}"] = worker
+    generation = deployment["available_node_types"]["generation"]
+    generation["worker_setup_commands"] += expand(AGENT_SETUP, bindings)
     path = Path(run) / "deployment/cluster.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(deployment, sort_keys=False))

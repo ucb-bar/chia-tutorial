@@ -81,11 +81,11 @@ def boundary_probe(mark, parent_patch, ready, sql, delay=0.2):
 
     # Match production's parent initialization before giving the agent its shell.
     from chia_dma.experiment import apply_candidate_diff
-    apply_candidate_diff("/workspace", "/seed", parent_patch)
-    assert all((Path("/workspace") / name).read_text() == mark for name in EXAMPLE_FILES)
+    apply_candidate_diff("/home/ray/workspace", "/seed", parent_patch)
+    assert all((Path("/home/ray/workspace") / name).read_text() == mark for name in EXAMPLE_FILES)
     tool = BashTool(
         "boundary_bash",
-        work_dir="/workspace",
+        work_dir="/home/ray/workspace",
         task_options={
             "scheduling_strategy": NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
@@ -98,14 +98,14 @@ def boundary_probe(mark, parent_patch, ready, sql, delay=0.2):
         script = (
             """from pathlib import Path
 import errno
-p=Path('/workspace/"""
+p=Path('/home/ray/workspace/"""
             + EXAMPLE_FILES[0]
             + """')
 print('PARENT='+p.read_text())
 p.write_text(p.read_text()+' edited')
-c=Path('/workspace/tests/memory-tests/src/copy-small/copy-small.c')
+c=Path('/home/ray/workspace/tests/memory-tests/src/copy-small/copy-small.c')
 c.write_text(c.read_text()+' C edited')
-for name in ['/workspace/build.sbt','/workspace/software/benchmark.c','/workspace/tests/memory-tests/src/copy-small/checksum.c']:
+for name in ['/home/ray/workspace/build.sbt','/home/ray/workspace/software/benchmark.c','/home/ray/workspace/tests/memory-tests/src/copy-small/checksum.c']:
  Path(name).write_text('EDITED')
 for name in ['/opt/loop/chia_dma/evaluation.py','/seed/tests/memory-tests/src/copy-small/checksum.c']:
  try: Path(name).write_text('FORBIDDEN')
@@ -121,8 +121,8 @@ assert not Path('/opt/loop/chia_dma/evaluation.py').exists()
         )
         output = tool.run_command("python -c " + shlex.quote(script))
         time.sleep(delay)
-        assert (Path("/workspace") / EXAMPLE_FILES[0]).read_text() == mark + " edited"
-        assert (Path("/workspace") / EXAMPLE_FILES[1]).read_text() == mark
+        assert (Path("/home/ray/workspace") / EXAMPLE_FILES[0]).read_text() == mark + " edited"
+        assert (Path("/home/ray/workspace") / EXAMPLE_FILES[1]).read_text() == mark
         from chia_dma.experiment import save_proposal
         from chia_dma.experiment import capture_patch
 
@@ -130,7 +130,7 @@ assert not Path('/opt/loop/chia_dma/evaluation.py').exists()
         save_proposal(
             sql,
             mark,
-            capture_patch("/workspace", "/seed"),
+            capture_patch("/home/ray/workspace", "/seed"),
             {"response": "BashTool boundary proof"},
             remote=True,
         )
@@ -155,6 +155,7 @@ def test_native_generation_parent_separation_forbidden_writes_and_serial_reuse(
     configuration, run, seed, path = cluster(configuration, base, "boundaries")
     try:
         chia(configuration, "up", path)
+        assert not (run / "work").exists()
         attach(configuration)
         from chia_dma.experiment import Experiment
         from skydiscover.search.base_database import Program
@@ -390,11 +391,11 @@ def cli_checksum_probe(configuration, source):
     from chia_dma.experiment import capture_patch
 
     for name, text in source.items():
-        (Path("/workspace") / name).write_text(text)
-    os.chdir("/workspace")
+        (Path("/home/ray/workspace") / name).write_text(text)
+    os.chdir("/home/ray/workspace")
     tool = BashTool(
         "dma_bash",
-        work_dir="/workspace",
+        work_dir="/home/ray/workspace",
         timeout_seconds=120,
         task_options={
             "scheduling_strategy": NodeAffinitySchedulingStrategy(
@@ -404,7 +405,7 @@ def cli_checksum_probe(configuration, source):
     )
     try:
         prompt = (
-            "Use dma_bash_run_command to run pwd and sha256sum /workspace/"
+            "Use dma_bash_run_command to run pwd and sha256sum /home/ray/workspace/"
             + EXAMPLE_FILES[0]
             + ". Report the directory and checksum. Do not edit any files."
         )
@@ -413,7 +414,7 @@ def cli_checksum_probe(configuration, source):
         return {
             "response": result.result,
             "transcript": result.stream_result,
-            "patch": capture_patch("/workspace", "/seed"),
+            "patch": capture_patch("/home/ray/workspace", "/seed"),
         }
     finally:
         tool.stop()

@@ -64,8 +64,7 @@ class DMAEvaluator:
 
         proposal = self.experiment.load_proposal(candidate_id)
         patch = proposal["patch"]
-        cache_key = candidate_id if candidate.get("replay") else proposal["patch_hash"]
-        cache_tag = f"{self.cache_prefix}/{cache_key}"
+        cache_tag = f"{self.cache_prefix}/{proposal['patch_hash']}"
         log_directory = self.experiment.run / "artifacts" / candidate_id
         log_directory.mkdir(parents=True, exist_ok=True)
         (log_directory / "candidate.patch").write_text(patch)

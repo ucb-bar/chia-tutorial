@@ -121,14 +121,12 @@ def test_cache_eviction_reexecutes_the_original_task(monkeypatch):
 def test_generation_can_restore_bypass_state_without_private_modules(tmp_path):
     from ray import cloudpickle
     import os
-    import shutil
     import subprocess
     import sys
     from chia_dma import runtime
-    package = tmp_path / "public/chia_dma"
-    package.mkdir(parents=True)
-    for name in ("__init__.py", "agent.py", "defaults.py", "config_loader.py", "experiment.py", "runtime.py"):
-        shutil.copyfile(runtime.ROOT / "chia_dma" / name, package / name)
+    run = tmp_path / "run"
+    runtime.render(load(), run, tmp_path / "seed")
+    package = run / "deployment/generation-python/chia_dma"
     state = tmp_path / "provider.pkl"
     state.write_bytes(cloudpickle.dumps(runtime.cache_provider("build")))
     code = (

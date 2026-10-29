@@ -9,9 +9,9 @@ auth:
   ssh_user: ${USER}
   ssh_private_key: ${HOME}/.ssh/chia-key
 
-# Worker placement and containers. Generation can edit the entire /workspace.
+# Worker placement and containers. Generation edits a private container checkout.
 # Verification has its own Ray node and no candidate workspace mount.
-# run_options retain only required mounts and the workspace file owner.
+# run_options retain only required mounts and the credential file owner.
 available_node_types:
   build:
     resources:
@@ -94,15 +94,14 @@ available_node_types:
     - ${CHIA_HEAD}
     docker:
       image: ghcr.io/ucb-bar/chia-antigravity@sha256:e4a1dfdcc9fea188667178311d47a2da7ac8dd150877f74748fce24b39329a0f
-      container_name: dma-${NAME}-generation-${INDEX}
+      container_name: dma-${NAME}-generation
       pull_before_run: true
       pull_timeout: 7200
       run_options:
       - --user ${UID}:${GID}
-      - --mount 'type=bind,src=${REMOTE}/chia_dma,dst=/opt/loop/chia_dma,readonly'
+      - --mount 'type=bind,src=${REMOTE}/generation,dst=/opt/loop/chia_dma,readonly'
       - --mount 'type=bind,src=${REMOTE}/chia,dst=/opt/chia/chia,readonly'
       - --mount 'type=bind,src=${REMOTE}/skydiscover,dst=/opt/skydiscover/skydiscover,readonly'
-      - --mount 'type=bind,src=${WORK},dst=/workspace'
       - --mount 'type=bind,src=${SEED}/tree,dst=/seed,readonly'
       - --mount 'type=bind,src=${CREDENTIALS},dst=/credentials,readonly'
     worker_env_commands:
@@ -113,6 +112,7 @@ available_node_types:
     worker_setup_commands:
     - python -m pip install --disable-pip-version-check --target /tmp/dma-python openai==3.35.1
       pydantic==2.12.4
+    - python -c 'from chia_dma.experiment import initialize_checkout; initialize_checkout("/home/ray/workspace", "/seed")'
   verification:
     resources:
       verification: 1

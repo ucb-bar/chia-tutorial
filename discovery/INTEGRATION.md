@@ -43,8 +43,7 @@ repository's `discovery/` directory or the root of a copied tutorial folder.
 
 `run` and `resume` use the same recovery path. There is no special restore action:
 selecting an older snapshot creates an independent fork, whose `latest.json`
-points at that snapshot. `replay` is a separate evaluation command and is not
-needed for a historical continuation.
+points at that snapshot.
 
 ## Images and environment
 
@@ -91,11 +90,14 @@ tutorial additions as baseline commits in those copied repositories. Image
 digest, declared base revision, patch/script hashes, and C build-input hashes
 identify new seeds; they are not a resume compatibility gate. No host Chipyard source is read.
 Builds reuse a private `/home/ray/dma-build` Git checkout; generation reuses a
-private `/workspace` checkout and reads the preserved baseline at `/seed`.
+private container-local `/home/ray/workspace` checkout and reads the preserved
+baseline at `/seed`. Native CHIA `num_workers` creates the generation containers;
+each initializes its own checkout during worker setup without a host workspace mount.
 Startup copies the preserved repositories and Git metadata once. Each
 candidate starts with Git reset/clean to the seed commits before its patch is applied. Candidate source changes are unrestricted. Git captures a
 single binary-capable patch across the root and initialized submodule repositories;
-additions, deletions, symlinks, and executable bits round-trip through SQL and replay. The evaluator supplies
+additions, deletions, symlinks, and executable bits round-trip through SQL and
+candidate restoration. The evaluator supplies
 the original checksum, measurement runtime, and build harness as source bytes to
 `RiscvBuildNode.build_program`; changing their workspace copies has no scoring effect.
 Parsing and scoring require a dedicated verification worker resource. Each generation worker has one serial scheduling slot.
@@ -190,9 +192,8 @@ proposals, generations, and evaluations are removed from the fork; pending
 requests retain their original context. Consequently, a proposal completed
 *after* a historical snapshot is not a completed proposal in that fork, even if
 it exists in the source run now. The no-regeneration guarantee applies to
-completed proposals retained at the selected recovery boundary. Replay
-materializes the same source from SQL with fresh expensive-task tags and makes no LLM call or population
-admission. Cache eviction never deletes SQL proposals. There are no checkpoint
+completed proposals retained at the selected recovery boundary.
+Cache eviction never deletes SQL proposals. There are no checkpoint
 migrations or format-version branches; create new runs after changing the loop.
 Native RNG state is not checkpointed, so only already selected work is promised
 exact context recovery.
@@ -220,7 +221,6 @@ Paths below are relative to `experiments/NAME/` beside `loop.py`, except for the
 | `checkpoints/SEQUENCE-SUFFIX/state.json` | Admitted candidate IDs and generated/evaluated flags for SQL requests at that boundary. |
 | `checkpoints/SEQUENCE-SUFFIX/population/` | SkyDiscover's native program and population checkpoint files. |
 | `deployment/cluster.yaml` | Rendered native CHIA configuration with absolute paths. Regenerate after relocation; retain the old copy until its cluster is down. |
-| `work/generation-N/` | Transient full writable source checkout for one serial generation worker. Reinitialized from the chosen parent before each invocation. |
 | `cache/` | CHIA's evictable expensive-task outputs. Not the authoritative proposal or population archive. |
 | `artifacts/ID/BENCHMARK.log` | Collected DMA-mode simulator output. |
 | `artifacts/profile/ChiaProfileCollector.log` | Complete native CHIA JSONL task events and score metadata, appended across resumes. |
@@ -231,8 +231,13 @@ Paths below are relative to `experiments/NAME/` beside `loop.py`, except for the
 | `driver.log`, `cluster-up.log` | Optional terminal captures created by the README's `tee` commands. |
 | `../seeds/HASH/manifest.json` and `tree/` | Complete image-plus-patch source, Git/submodule metadata, and provenance hashes. Shared read-only across forks. |
 
+Each generation container keeps its transient checkout at `/home/ray/workspace`;
+it is reset to the chosen parent before each invocation. Patches and generation
+transcripts are saved to SQL before returning, so replacing a container needs no
+checkout recovery from the host. Unfinished generations may run again.
+
 The `proposals` table is keyed by candidate `id`. It holds `parent`, `island`,
-`sequence`, `kind` (`seed`, `search`, or `replay`), selected request context, the
+`sequence`, `kind` (`seed` or `search`), selected request context, the
 plain-text `patch` relative to the seed commits, `patch_hash`, generation response/transcript,
 provider/model, final numerical `metrics`, and native `program_id` linkage.
 A NULL `patch` means generation is unfinished; a saved patch with missing
@@ -310,8 +315,7 @@ Tutorial resume policy:
   inspirations, but future sampling and asynchronous completion order can differ.
 - A fork preserves work visible at its selected boundary. A normal latest-state
   resume additionally uses durable SQL completions made since that checkpoint to
-  repair interruption before admission. Replay uses a new ID/fresh task tags,
-  records new metrics, and never adds a population member.
+  repair interruption before admission.
 
 ## Validation
 

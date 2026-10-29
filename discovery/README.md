@@ -120,10 +120,11 @@ Chipyard environment; the host environment is never mounted into workers.
 Set `tutorial.agent.model` and `tutorial.agent.effort` in `cluster.yaml`. A null
 model uses the authenticated Antigravity default; effort defaults to `high`.
 `tutorial.search.iterations` is the **total** number of search proposals across all
-resumes (20 means 20 proposals total), excluding the seed and replay evaluations.
+resumes (20 means 20 proposals total), excluding the seed evaluation.
 To extend a run, increase that total. `tutorial.search.max_in_flight` bounds concurrent
 candidate iterations (2 means up to 2 candidates progressing at once);
-generation `num_workers` sets the number of isolated generation workspaces.
+generation `num_workers` sets the number of generation containers, each with its
+own writable `/home/ray/workspace` checkout initialized from the read-only seed.
 Hardware builds, software builds, and simulations have independent limits.
 Hardware compilation uses the head CPU count; software has six parallel build
 slots. Each existing worker advertises the head CPU count in simulation slots
@@ -149,7 +150,11 @@ chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 preserves a complete read-only source seed, including Git and submodule metadata. Its identity includes the image and
 patch, preparation-script, and C test hashes. Repeated preparation reuses that seed; checkpoint restores
 use the run's recorded seed. Startup prepares private build and generation
-checkouts from the preserved repositories, then reuses them with Git reset/clean before applying each patch. The original development
+checkouts inside their respective containers from the preserved repositories,
+then reuses them with Git reset/clean before applying each patch. Generation
+checkouts are transient: patches and transcripts are saved to SQL before a
+generation task returns, and a replacement container reconstructs its checkout
+from the seed and selected parent patch. The original development
 checkout is never read or modified. `chia up` pulls the pinned worker images.
 The absolute entrypoint uses the head's local checkout; omit `--working-dir` to
 avoid uploading experiment artifacts. Head/worker imports come from native YAML.
@@ -448,12 +453,12 @@ first successful evaluation provides the fitness reference; there is no `referen
 Live read-only queries are safe. To copy a live database, use `fork` or SQLite's
 backup API rather than copying `metrics.db` alone while its WAL is active.
 
-## Evaluation, replay, and validation
+## Evaluation and validation
 
 Each generation resets its entire writable checkout to the selected parent.
 There is no edit allowlist: additions, deletions, renames, executable files,
 binaries, and SoC/build-file changes are recorded as changes relative to the
-immutable seed. Parent replay clears files left by the previous generation.
+immutable seed. Restoring the parent clears files left by the previous generation.
 BashTool runs in that generation container. The evaluator implementation and
 seed are mounted read-only; SQL/history and other candidate workspaces are not
 mounted there. Native CHIA uses trusted agents on a shared host network; this
@@ -492,7 +497,7 @@ unfinished requests remain available for resume.
 Each proposal is one ordinary Git patch against the prepared seed commits.
 Git stages edits and new files, then emits a binary-capable diff for the root
 repository and each initialized submodule. Submodule paths are included in the
-same patch. Replay resets and cleans the existing checkouts to the seed commits,
+same patch. Candidate restoration resets and cleans the existing checkouts to the seed commits,
 then applies one `git apply`. Git preserves
 file contents, additions, deletions, symlinks, and executable bits. SQL stores the
 patch text directly; `artifacts/CANDIDATE/candidate.patch` is a readable copy.
@@ -563,20 +568,8 @@ See [LOCAL_TIMING.md](LOCAL_TIMING.md) for historical local timing measurements.
 Hardware-only, Embench, and source-map checkpoints use different saved-data
 formats and require their original implementations.
 
-Replay is an optional fresh evaluation of saved source, independent of restoring
-search state. It makes no generation call and does not change the population:
-
-```sh
-# With this run's native cluster up, and no other writer for this same run:
-JOB="$RUN-replay-$(date +%s)"
-chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait -- \
-  python -u "$PWD/loop.py" replay --run "$RUN" --candidate "$CANDIDATE"
-chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
-```
-
-A replay has a new `replay-*` SQL row and fresh cache tags. If the original driver
-is live, fork first and replay in the child instead. One writer is allowed per
-run. Completed evaluation records repair interruption before population admission.
+One writer is allowed per run. Completed evaluation records repair interruption
+before population admission.
 Native checkpoints do not save RNG state: already selected work retains its
 parent/island context, while future stochastic choices can differ. Runs require
 the current matching checkpoint format; there are no old-format migrations.
@@ -600,7 +593,7 @@ requirements, and validation evidence.
 | `base/memory-tests/` | Six C tests, expected checksums, Makefile, and native correctness checks. |
 | `base/README.md` | Base source revisions and baseline update procedure. |
 | `bootstrap.py` | Install the host packages; pin new dependency clones and reuse existing checkouts. |
-| `loop.py` | Experiment flow, seed evaluation, native controller setup, replay, and CLI commands. |
+| `loop.py` | Experiment flow, seed evaluation, native controller setup, and CLI commands. |
 | `LOCAL_TIMING.md` | Historical test and round runtimes and estimated exercise duration. |
 | `chia_dma/config_loader.py` | Load YAML, resolve paths, set serial checkout slots, and identify new source seeds. |
 | `chia_dma/defaults.py` | Fixed settings, dependency pins, source paths, and configuration declarations. |
@@ -612,7 +605,7 @@ requirements, and validation evidence.
 | `chia_dma/evaluation.py` | Build → simulate → verify → score pipeline and task lifecycle. |
 | `chia_dma/nodes.py` | Required build, simulation, measurement parsing, and equal-weight scoring tasks. |
 | `archive/evaluation_extras.py` | Optional weighted scoring and DMA-event parsing, excluded from the tutorial runtime. |
-| `chia_dma/experiment.py` | Git seed preservation, patch capture/replay, SQL proposals/metrics, checkpoints, forks, and the writer lock. |
+| `chia_dma/experiment.py` | Git seed preservation, patch capture/restoration, SQL proposals/metrics, checkpoints, forks, and the writer lock. |
 | `chia_dma/__init__.py` | Python package marker. |
 | `tests/test_contract.py` | Source, Antigravity, parser, and fitness contracts. |
 | `tests/test_correctness.py` | Seeded reference validation and checksum-hack regressions. |

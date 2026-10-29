@@ -19,6 +19,10 @@ def test_native_cluster_uses_every_existing_worker(tmp_path, base_tree, monkeypa
     deployment = yaml.safe_load(path.read_text())
     native = load_config(str(path))
     assignments = assign_nodes(native)
+    generators = [a for a in assignments if a.node_type.name == 'generation']
+    assert len(generators) == 2
+    assert {a.worker_index for a in generators} == {0, 1}
+    assert all(a.ip == '10.0.0.1' and a.resources['generation'] == 1 for a in generators)
     simulations = [a for a in assignments if a.node_type.name == 'simulation']
     assert {a.ip for a in simulations} == {f'chia-worker-{i}' for i in range(1, 6)}
     assert len(simulations) == 5
@@ -26,7 +30,7 @@ def test_native_cluster_uses_every_existing_worker(tmp_path, base_tree, monkeypa
     assert deployment['auth']['ssh_private_key'].endswith('/.ssh/chia-key')
     assert configuration['agent']['effort'] == 'high'
     mounts = deployment['available_node_types']['simulation']['docker']['run_options']
-    assert not any(str(seed) in option or 'dst=/workspace' in option for option in mounts)
+    assert not any(str(seed) in option or 'dst=/home/ray/workspace' in option for option in mounts)
     assert all(source.endswith('/') for source in deployment['file_mounts'].values())
     assert all('${' not in destination for destination in deployment['file_mounts'])
 

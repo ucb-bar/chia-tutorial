@@ -22,7 +22,7 @@ from chia_dma.experiment import (
     apply_candidate_diff,
 )
 from chia_dma.experiment import Experiment, save_proposal, load_proposal
-from loop import create_search_controller, replay_candidate, run_search
+from loop import create_search_controller, run_search
 from chia_dma.agent import CLIClient, ParentContext
 from chia_dma.evaluation import DMAEvaluator
 from chia_dma.runtime import cache_hit, from_cache
@@ -390,7 +390,7 @@ def test_generation_survives_interruption_without_another_llm_call(flow):
         restored.close()
 
 
-def test_historical_fork_retains_pending_context_excludes_future_and_replay_is_independent(
+def test_historical_fork_retains_pending_context_and_excludes_future(
     flow,
 ):
     from chia_dma.experiment import fork
@@ -446,18 +446,6 @@ def test_historical_fork_retains_pending_context_excludes_future_and_replay_is_i
         )
         assert get(counts.read.remote())[0]["generate"] == before_resume["generate"] + 1
         assert selected["id"] in child.admitted
-        # A historical replay uses a new tag and never calls the generator/add.
-        before, _ = get(counts.read.remote())
-        replay = DMAEvaluator(configuration, child, seed)
-        result = asyncio.run(replay_candidate(child, replay, selected["id"]))
-        after, _ = get(counts.read.remote())
-        assert (
-            result.metrics["validity"] == 1 and after["generate"] == before["generate"]
-        )
-        assert (
-            after["build"] == before["build"] + 1
-            and after["simulate"] == before["simulate"] + 6
-        )
         assert child.admitted == {"seed-dma", selected["id"]}
         assert (experiment.run / "latest.json").read_bytes() == original_latest
     finally:

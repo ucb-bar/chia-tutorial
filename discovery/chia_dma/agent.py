@@ -33,7 +33,7 @@ outputs and checksum collisions fail correctness checks. Do not bypass the
 measurement harness or runtime input initialization.
 
 EDITING
-Use dma_bash_run_command to edit any source in /workspace. You may create,
+Use dma_bash_run_command to edit any source in /home/ray/workspace. You may create,
 delete, rename, or replace files, including SoC configuration and build files.
 The framework saves a Git patch relative to the seed and rebuilds the candidate.
 The external evaluator, expected checksums, and measurement harness are fixed;
@@ -57,7 +57,7 @@ def make_agent(configuration):
         timeout_seconds=configuration["agent"]["timeout_seconds"],
         retries=configuration["agent"]["retries"],
         resume_session=False,
-        work_dir="/workspace",
+        work_dir="/home/ray/workspace",
         extra_cli_args=["--effort", configuration["agent"]["effort"]],
     )
     if configuration["agent"]["model"]:
@@ -74,15 +74,15 @@ def generate(configuration, sql, task):
     selected_parent = task["parent"]
     parent_solution = json.loads(selected_parent["solution"])
     parent_patch = parent_solution["patch"]
-    apply_candidate_diff("/workspace", "/seed", parent_patch)
-    os.chdir("/workspace")
+    apply_candidate_diff("/home/ray/workspace", "/seed", parent_patch)
+    os.chdir("/home/ray/workspace")
     prompt = CONSTRAINTS + "\nSelected parent and inspirations:\n" + json.dumps(task)
     guidance = configuration["search"]["island_guidance"]
     if guidance:
         prompt += "\nIsland guidance: " + guidance[task["island"] % len(guidance)]
     tool = BashTool(
         "dma_bash",
-        work_dir="/workspace",
+        work_dir="/home/ray/workspace",
         timeout_seconds=120,
         task_options={
             "scheduling_strategy": NodeAffinitySchedulingStrategy(
@@ -105,7 +105,7 @@ def generate(configuration, sql, task):
             "transcript": result.stream_result,
             "wall_seconds": time.monotonic() - started,
         }
-        patch = capture_patch("/workspace", "/seed")
+        patch = capture_patch("/home/ray/workspace", "/seed")
         return save_proposal(sql, task["id"], patch, generation, remote=True)
     finally:
         tool.stop()

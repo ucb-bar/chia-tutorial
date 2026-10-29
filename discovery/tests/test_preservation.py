@@ -1,8 +1,10 @@
 """The fixed image and bundled patch replace the host Chipyard checkout."""
 
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
+import sys
 import pytest
 import yaml
 from chia_dma.config_loader import HARDWARE_FILES, ROOT, SOFTWARE_FILES, digest, load
@@ -100,20 +102,28 @@ def test_unrestricted_source_changes_round_trip_and_clear_previous_parent(tmp_pa
     assert (seed / "build.sbt").read_text() == "baseline"
 
 
-def test_generation_mounts_the_whole_checkout_and_isolates_verification(tmp_path, base_tree):
+@pytest.mark.parametrize("workers", [1, 3])
+def test_generation_uses_native_workers_and_isolates_verification(tmp_path, workers, monkeypatch):
     from chia_dma.runtime import render
 
+    monkeypatch.setenv("CHIA_HEAD", "127.0.0.1")
     seed = tmp_path / "seed"
-    shutil.copytree(base_tree, seed / "tree")
     run = tmp_path / "run"
-    run.mkdir()
-    deployment = yaml.safe_load(render(load(), run, seed).read_text())
-    for index in (0, 1):
-        options = deployment["available_node_types"][f"generation-{index}"]["docker"]["run_options"]
-        writable = [option for option in options if f"src={run}/work/" in option]
-        assert len(writable) == 1 and "dst=/workspace'" in writable[0]
-        assert "readonly" not in writable[0]
-        assert (run / f"work/generation-{index}/tests/memory-tests/src/copy-small/checksum.c").is_file()
+    configuration = load()
+    configuration["cluster"]["available_node_types"]["generation"]["num_workers"] = workers
+    deployment = yaml.safe_load(render(configuration, run, seed).read_text())
+    generation = deployment["available_node_types"]["generation"]
+    assert generation["num_workers"] == workers
+    assert generation["resources"]["generation"] == 1
+    assert not any(name.startswith("generation-") for name in deployment["available_node_types"])
+    assert not (run / "work").exists()
+    options = generation["docker"]["run_options"]
+    mounts = [option for option in options if option.startswith("--mount")]
+    assert all("readonly" in option for option in mounts)
+    assert not any("dst=/home/ray/workspace" in option for option in mounts)
+    assert any(f"src={seed}/tree,dst=/seed,readonly" in option for option in mounts)
+    assert any("/generation,dst=/opt/loop/chia_dma,readonly" in option for option in mounts)
+    assert "${" not in str(generation)
     public = run / "deployment/generation-python/chia_dma"
     assert (public / "agent.py").is_file()
     assert not (public / "evaluation.py").exists()
@@ -121,7 +131,42 @@ def test_generation_mounts_the_whole_checkout_and_isolates_verification(tmp_path
     assert not (public / "correctness.py").exists()
     verification = deployment["available_node_types"]["verification"]
     assert verification["resources"] == {"verification": 1}
-    assert not any("dst=/workspace" in option for option in verification["docker"]["run_options"])
+    assert not any("dst=/home/ray/workspace" in option for option in verification["docker"]["run_options"])
+
+
+def test_generation_worker_setup_recreates_independent_checkouts(tmp_path, base_tree, patch_for):
+    from chia_dma.experiment import apply_candidate_diff
+    from chia_dma.runtime import render
+
+    deployment = yaml.safe_load(render(load(), tmp_path / "run", base_tree.parent).read_text())
+    commands = deployment["available_node_types"]["generation"]["worker_setup_commands"]
+    startup = next(command for command in commands if "initialize_checkout" in command)
+    workspaces = [tmp_path / name / "home/ray/workspace" for name in ("container-a", "container-b")]
+
+    def setup(workspace):
+        command = startup.replace("/home/ray/workspace", str(workspace)).replace("/seed", str(base_tree))
+        subprocess.run([sys.executable, *shlex.split(command)[1:]], check=True)
+
+    filename = SOFTWARE_FILES[0]
+    for workspace, text in zip(workspaces, ("parent A", "parent B")):
+        setup(workspace)
+        patch = patch_for({filename: text})
+        apply_candidate_diff(workspace, base_tree, patch)
+    assert [(workspace / filename).read_text() for workspace in workspaces] == ["parent A", "parent B"]
+
+    edited = workspaces[0]
+    (edited / filename).write_text("candidate A")
+    (edited / "new-source.c").write_text("candidate addition")
+    patch = capture_patch(edited, base_tree)
+    setup(edited)  # Reusing a running container preserves its checkout until parent reset.
+    assert (edited / filename).read_text() == "candidate A"
+    shutil.rmtree(edited)  # A replacement container has no previous workspace.
+    setup(edited)
+    apply_candidate_diff(edited, base_tree, patch)
+    assert (edited / filename).read_text() == "candidate A"
+    assert (edited / "new-source.c").read_text() == "candidate addition"
+    assert (workspaces[1] / filename).read_text() == "parent B"
+    assert (base_tree / filename).read_bytes() == (ROOT / "base/memory-tests/src/copy-small/copy-small.c").read_bytes()
 
 
 def test_resume_ignores_old_fingerprints_and_reuses_the_saved_seed(tmp_path, monkeypatch):
