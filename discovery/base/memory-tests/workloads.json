@@ -1,0 +1,32 @@
+{
+  "copy-small": {
+    "checksum": 1683660947,
+    "calls": 256,
+    "payload_bytes": 16384
+  },
+  "copy-stream": {
+    "checksum": 1176047413,
+    "calls": 2,
+    "payload_bytes": 32768
+  },
+  "copy-gather": {
+    "checksum": 1743832587,
+    "calls": 64,
+    "payload_bytes": 32768
+  },
+  "copy-scatter": {
+    "checksum": 1884936520,
+    "calls": 32,
+    "payload_bytes": 32768
+  },
+  "copy-chain": {
+    "checksum": 2062308453,
+    "calls": 512,
+    "payload_bytes": 262144
+  },
+  "copy-mixed": {
+    "checksum": 1772281019,
+    "calls": 48,
+    "payload_bytes": 40666
+  }
+}

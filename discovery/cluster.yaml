@@ -1,0 +1,136 @@
+# Existing VMs from ../setup.md; this file never provisions cloud instances.
+# Run `source load-env.sh` (exports DMA_ROOT) and `python loop.py prepare`
+# first, then pass this file directly to chia up/down. Loop code reaches workers
+# through `chia job submit --working-dir .`; experiments/ and private/ stay local.
+# The head is chia-dev; all five workers participate in simulation.
+cluster_name: dma
+connection: vpc
+provider:
+  head_ip: ${CHIA_HEAD}
+auth:
+  ssh_user: ${USER}
+  ssh_private_key: ${HOME}/.ssh/chia-key
+
+# Worker placement and containers. Generation edits a private container checkout
+# copied from the preserved seed; build workers recreate the same seed from their
+# own image and check its baseline commit. Only verification sees private/.
+available_node_types:
+  build:
+    resources:
+      chipyard: 1
+    num_workers: 4
+    compatible_ips:
+    - chia-worker-1
+    - chia-worker-2
+    - chia-worker-3
+    - chia-worker-4
+    - chia-worker-5
+    docker:
+      # Pinned: build workers recreate the seed from this exact image.
+      image: ghcr.io/ucb-bar/chia-chisel-build@sha256:0a8b31fb15c9e9ee815733fa43f2e88a9c0dcd9f026e0b616ff4337e912d7647
+      container_name: dma-build
+      pull_before_run: true
+      pull_timeout: 7200
+    worker_env_commands:
+    - source /home/ray/chipyard/env.sh
+    - export PATH=/home/ray/anaconda3/bin:/home/ray/chipyard/.conda-env/riscv-tools/bin:/home/ray/chipyard/.conda-env/bin:/usr/local/bin:/usr/bin:/bin
+    - export RISCV=/home/ray/chipyard/.conda-env/riscv-tools
+    - export JAVA_TOOL_OPTIONS='-Xmx32G -Xss8M -Djava.io.tmpdir=/tmp -Duser.home=/home/ray'
+    - export COURSIER_CACHE=/home/ray/.cache/coursier/v1
+  software:
+    resources: {riscv_build: 6}
+    num_workers: 2
+    compatible_ips: ["${CHIA_HEAD}"]
+    docker:
+      image: ghcr.io/ucb-bar/chia-riscv-cross:latest
+      container_name: dma-software
+      pull_timeout: 7200
+    worker_env_commands:
+    - export PATH=/home/ray/conda/envs/riscv-tools/riscv-tools/bin:/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
+  simulation:
+    resources:
+      verilator_run: 8
+    num_workers: 5
+    compatible_ips:
+    - chia-worker-1
+    - chia-worker-2
+    - chia-worker-3
+    - chia-worker-4
+    - chia-worker-5
+    docker:
+      image: ghcr.io/ucb-bar/chia-verilator-run:latest
+      container_name: dma-simulation
+      pull_before_run: true
+      pull_timeout: 7200
+    worker_env_commands:
+    - export PATH=/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
+    balance_level: worker
+  generation:
+    resources:
+      generation: 1
+    num_workers: 4
+    compatible_ips:
+    - ${CHIA_HEAD}
+    docker:
+      image: ghcr.io/ucb-bar/chia-antigravity:latest
+      container_name: dma-generation
+      pull_before_run: true
+      pull_timeout: 7200
+      run_options:
+      - "--user $(id -u):$(id -g)"
+      - "-v ${HOME}/.gemini:/tmp/gemini-login:ro"
+      - --mount 'type=bind,src=${DMA_ROOT}/experiments/seeds,dst=${DMA_ROOT}/experiments/seeds,readonly'
+      run_setup_commands:
+      - echo "user:x:$(id -u):$(id -g)::/home/ray:/bin/bash" >> /etc/passwd
+    worker_env_commands:
+    - export PATH=/home/ray/.local/bin:/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
+    # Each container works on its own copy of the setup.md login, so agent
+    # sessions and token refreshes never touch the host's ~/.gemini.
+    worker_setup_commands:
+    - cp -r /tmp/gemini-login/. /home/ray/.gemini/
+  verification:
+    resources:
+      verification: 2
+    num_workers: 2
+    compatible_ips: ["${CHIA_HEAD}"]
+    docker:
+      image: ghcr.io/ucb-bar/chia-verilator-run:latest
+      container_name: dma-verification
+      run_options:
+      - --mount 'type=bind,src=${DMA_ROOT}/private,dst=/opt/private,readonly'
+      pull_timeout: 7200
+    worker_env_commands:
+    - export PATH=/home/ray/anaconda3/bin:/usr/local/bin:/usr/bin:/bin
+    - export PYTHONPATH=/opt/private
+
+# CHIA comes from each image; seeds and credentials stay on chia-dev and
+# simulation inputs travel through Ray. Worker names resolve directly over SSH.
+# The build image is pinned by digest because build workers recreate the seed
+# from it; a mismatched image fails the build with a clear message.
+head_env_commands:
+- source ~/.bashrc && conda activate chia_env
+head_start_ray_commands:
+- ray start --head --node-ip-address=${CHIA_HEAD} --port=6387 --num-cpus=4 --dashboard-host=0.0.0.0
+  --dashboard-port=8287 --temp-dir=/tmp/ray/dma
+worker_start_ray_commands:
+- /home/ray/anaconda3/bin/ray start --address=$RAY_HEAD_IP:6387
+  --dashboard-agent-listen-port=0
+
+# Participant-facing loop controls; implementation defaults are in Python.
+tutorial:
+  agent:
+    model: gemini-3.8-flash-medium  # null uses the authenticated AGY default
+    effort: medium
+  search:
+    iterations: 100           # total optimization proposals after the baseline
+    max_in_flight: 6        # candidate rounds progressing concurrently
+
+# Native CHIA cache/bypass controls.
+cache:
+  build: true
+  build_program: true
+  simulate: true
+bypass:
+  build: true
+  build_program: true
+  simulate: true

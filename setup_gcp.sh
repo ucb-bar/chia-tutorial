@@ -10,8 +10,9 @@
 #                                CLI (agy, signed in), and an SSH key (~/.ssh/chia-key)
 #   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo + its conda env, and
 #                                chia-dev's key in authorized_keys, so chia-dev can ssh in
-# chia-dev and workers 1-2 go in us-west4, workers 3-5 in europe-west4. Every VM
-# also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
+# chia-dev and workers 1-2 go in europe-west1, workers 3-5 in europe-west4. Every VM
+# also starts pulling the chia-chisel-build, chia-verilator-run and chia-antigravity
+# images (ghcr.io/ucb-bar) in the background.
 #
 # Usage:
 #   ./setup_gcp.sh [--project ID] [--billing-account ID] [--from-step N]
@@ -24,16 +25,17 @@
 # are reused.
 #
 # Steps: 1 project + billing, 2 APIs, 3 network + machine-type check, 4 quota requests,
-# 5 VMs, 6 VM setup, 7 agy sign-in, 8 workers' SSH access. --from-step N skips steps
-# 1 to N-1: the project must already exist, and from step 6 on so must the VMs.
+# 5 VMs, 6 VM setup, 7 agy sign-in, 8 Gemini / Antigravity check, 9 workers' SSH access.
+# --from-step N skips steps 1 to N-1: the project must already exist, and from step 6 on
+# so must the VMs.
 #
 # Optional environment overrides:
-#   DEV_REGION=us-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
-#   WORKER_REGIONS="us-west4=2 europe-west4=3"   chia-worker VMs per region
-#   QUOTA_REGIONS="us-west4=100 europe-west4=100"   vCPU targets per region
+#   DEV_REGION=europe-west1   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
+#   WORKER_REGIONS="europe-west1=2 europe-west4=3"   chia-worker VMs per region
+#   QUOTA_REGIONS="europe-west1=100 europe-west4=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
-#   QUOTA_HDB_GB=1000                               Hyperdisk Balanced GB per region
-#   BOOT_DISK_GB=150                                boot disk size of every VM
+#   QUOTA_HDB_GB=3000                               Hyperdisk Balanced GB per region
+#   BOOT_DISK_GB=1000                               boot disk size of every VM
 set -euo pipefail
 
 usage() { grep '^#   \./setup_gcp' "$0" | sed 's/^#   /usage: /'; exit 1; }
@@ -51,7 +53,7 @@ done
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
-case "$FROM_STEP" in [1-8]) ;; *) die "--from-step takes a step number from 1 to 8" ;; esac
+case "$FROM_STEP" in [1-9]) ;; *) die "--from-step takes a step number from 1 to 9" ;; esac
 do_step() { [ "$FROM_STEP" -le "$1" ]; }  # step number -> true unless --from-step skips it
 
 command -v gcloud >/dev/null || die "gcloud not found. Run this script in Google Cloud Shell: https://shell.cloud.google.com"
@@ -66,10 +68,10 @@ if [ -z "${PROJECT_ID:-}" ] && [ -f "$STATE" ]; then
     . "$STATE"     # remembers this account's PROJECT_ID between runs
 fi
 
-DEV_REGION="${DEV_REGION:-us-west4}"
+DEV_REGION="${DEV_REGION:-europe-west1}"
 # C4 rejects --min-cpu-platform, so the CPU generation isn't pinned.
 DEV_VM=chia-dev    DEV_TYPE=c4-highcpu-32
-WORKER_REGIONS="${WORKER_REGIONS:-us-west4=2 europe-west4=3}"   WORKER_TYPE=c4-highcpu-32
+WORKER_REGIONS="${WORKER_REGIONS:-europe-west1=2 europe-west4=3}"   WORKER_TYPE=c4-highcpu-32
 # Workers are numbered across the regions in order: chia-worker-1..2 in the first,
 # chia-worker-3..5 in the second. region_of_worker maps a name back to its region.
 WORKERS="" i=0
@@ -83,7 +85,8 @@ region_of_worker() {  # chia-worker-N -> region
         [ "$n" -le "$i" ] && { echo "${spec%%=*}"; return; }
     done
 }
-CHISEL_IMAGE=ghcr.io/ucb-bar/chia-chisel-build:latest
+# Pulled in the background on every VM, in this order (chisel-build is the biggest).
+PULL_IMAGES="ghcr.io/ucb-bar/chia-chisel-build:latest ghcr.io/ucb-bar/chia-verilator-run:latest ghcr.io/ucb-bar/chia-antigravity:latest"
 LOGS="$TUT_HOME/logs"
 # The VMs are created by region and Google picks the zone, so look zones up (this
 # also finds a chia-dev made by an older version of this script in another zone).
@@ -97,15 +100,28 @@ IMAGE=(--image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud)
 # --- Teardown / purge ---------------------------------------------------------
 if [ -n "$TEARDOWN" ]; then
     if [ -n "${PROJECT_ID:-}" ]; then
+        # One list call finds every tutorial VM and its zone. Then one delete per zone
+        # (gcloud deletes the VMs in a call in parallel), with all zones at once.
+        # The tutorial's VMs are picked out here by exact name rather than with a
+        # --filter regex, whose ( | ) gcloud's filter syntax treats as its own.
+        all="$(gcloud compute instances list --project "$PROJECT_ID" \
+                   --format='value(name,zone.basename())' </dev/null)" \
+            || die "couldn't list the VMs in $PROJECT_ID (see gcloud's error above)"
+        found="$(printf '%s\n' "$all" | awk -v names="$DEV_VM $WORKERS" \
+            'BEGIN { n = split(names, a, " "); for (i = 1; i <= n; i++) want[a[i]] = 1 } want[$1]')"
         for vm in $DEV_VM $WORKERS; do
-            zone="$(zone_of "$vm")"
-            if [ -n "$zone" ]; then
-                log "Deleting $vm ($zone) in $PROJECT_ID"
-                gcloud compute instances delete "$vm" --zone "$zone" --project "$PROJECT_ID" --quiet || true
-            else
-                echo "No $vm found in $PROJECT_ID"
-            fi
+            printf '%s\n' "$found" | awk -v n="$vm" '$1 == n { f = 1 } END { exit !f }' \
+                || echo "No $vm found in $PROJECT_ID"
         done
+        pids=""
+        for zone in $(printf '%s\n' "$found" | awk '{ print $2 }' | sort -u); do
+            vms="$(printf '%s\n' "$found" | awk -v z="$zone" '$2 == z { print $1 }' | tr '\n' ' ')"
+            log "Deleting ${vms}($zone) in $PROJECT_ID"
+            # shellcheck disable=SC2086
+            gcloud compute instances delete $vms --zone "$zone" --project "$PROJECT_ID" --quiet </dev/null &
+            pids="$pids $!"
+        done
+        for pid in $pids; do wait "$pid" || true; done
     elif [ -z "$PURGE" ]; then
         die "no project recorded in $STATE"
     fi
@@ -232,13 +248,13 @@ fi
 # tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
 # are requested. Google reviews requests asynchronously, so this doesn't wait for
 # approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
-# chia-dev + 2 workers in us-west4 and 3 workers in europe-west4 are 96 C4 vCPUs each.
-QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 europe-west4=100}"
+# chia-dev + 2 workers in europe-west1 and 3 workers in europe-west4 are 96 C4 vCPUs each.
+QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west1=100 europe-west4=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 # Every VM's boot disk is Hyperdisk Balanced (C4 needs it), which has its own storage
-# quota: new projects get 500 GB per region. 3 x 150 GB fits in that; 3 x 200 GB didn't.
-QUOTA_HDB_GB="${QUOTA_HDB_GB:-1000}"
-BOOT_DISK_GB="${BOOT_DISK_GB:-150}"
+# quota: new projects get 500 GB per region. Each region has 3 VMs x 1 TB = 3000 GB.
+QUOTA_HDB_GB="${QUOTA_HDB_GB:-3000}"
+BOOT_DISK_GB="${BOOT_DISK_GB:-1000}"
 
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
     local out           # on failure, prints gcloud's error and returns non-zero
@@ -395,13 +411,15 @@ fi
 ssh_on() { gcloud compute ssh "$1" --zone "$2" --quiet --command "${3:-bash -s}"; }  # vm zone [cmd]
 vm_ssh() { ssh_on "$DEV_VM" "$DEV_ZONE" "$@"; }
 
-# Starts pulling the chisel-build image on a VM, detached so it keeps going after
-# this SSH session ends (it's large). Progress: ~/chisel-pull.log on the VM.
-start_chisel_pull() {  # vm zone
+# Starts pulling the tutorial's Docker images on a VM, one after another, detached so
+# it keeps going after this SSH session ends (they're large). Progress:
+# ~/image-pull.log on the VM.
+start_image_pulls() {  # vm zone
     # flock -n makes a second run exit at once while a pull still holds the lock.
-    ssh_on "$1" "$2" "echo \"\$(date) starting pull\" >> ~/chisel-pull.log;
-        sudo nohup setsid flock -n /tmp/chisel-pull.lock docker pull $CHISEL_IMAGE \
-            >> ~/chisel-pull.log 2>&1 </dev/null &" </dev/null
+    ssh_on "$1" "$2" "echo \"\$(date) starting pulls\" >> ~/image-pull.log;
+        sudo nohup setsid flock -n /tmp/image-pull.lock \
+            sh -c 'for img in $PULL_IMAGES; do docker pull \$img; done' \
+            >> ~/image-pull.log 2>&1 </dev/null &" </dev/null
 }
 
 # Environment variables the tutorial uses, and activating its conda env, at the end
@@ -441,7 +459,7 @@ setup_worker() {  # vm zone
     set -e
     wait_for_docker "$1" "$2"
     ssh_on "$1" "$2" 'sudo usermod -aG docker "$USER"' </dev/null
-    start_chisel_pull "$1" "$2"
+    start_image_pulls "$1" "$2"
     ssh_on "$1" "$2" <<'EOF'
 set -e
 if [ ! -x ~/miniforge3/bin/conda ]; then
@@ -472,15 +490,15 @@ EOF
 }
 
 # WORKER_JOBS lists each worker as name:zone:pid of its background setup. When this
-# step is skipped, the pid is empty and step 8 only gives chia-dev SSH access.
+# step is skipped, the pid is empty and step 9 only gives chia-dev SSH access.
 WORKER_JOBS=""
 if do_step 6; then
     # The docker command appears partway through Docker's install, before its group
     # and service exist, so wait for those instead.
     log "Waiting for SSH + Docker on $DEV_VM (the VM installs Docker on first boot, a few minutes)"
     wait_for_docker "$DEV_VM" "$DEV_ZONE" || die "Docker isn't running on $DEV_VM"
-    start_chisel_pull "$DEV_VM" "$DEV_ZONE"
-    echo "Pulling $CHISEL_IMAGE in the background on every VM (log: ~/chisel-pull.log on each)"
+    start_image_pulls "$DEV_VM" "$DEV_ZONE"
+    echo "Pulling $PULL_IMAGES in the background on every VM (log: ~/image-pull.log on each)"
 
     # Start the workers' setup now, after the first SSH to chia-dev has put this Cloud
     # Shell's key in the project metadata (parallel first-time SSHs would race on that).
@@ -583,7 +601,25 @@ EOF
         || echo "WARNING: no agy login found in ~/.gemini on $DEV_VM; re-run this script to try again."
 fi
 
-# --- 8. Workers: finish, and let chia-dev SSH into them ------------------------
+# --- 8. Gemini / Antigravity check -------------------------------------------
+AGY_CHECK_MODELS="gemini-4-argon-medium gemini-3.8-flash-medium"
+if do_step 8; then
+    log "Checking Gemini / Antigravity model availability on $DEV_VM: $AGY_CHECK_MODELS"
+    vm_ssh <<EOF || die "Gemini / Antigravity check failed on $DEV_VM"
+set -e
+[ -x ~/.local/bin/agy ] || { echo "ERROR: ~/.local/bin/agy not found (run step 7 first)" >&2; exit 1; }
+models="\$(~/.local/bin/agy models </dev/null)"
+printf '%s\n' "\$models"
+for model in $AGY_CHECK_MODELS; do
+    if ! printf '%s\n' "\$models" | awk '{print \$1}' | grep -qxF "\$model"; then
+        echo "ERROR: \$model is not available in 'agy models'" >&2
+        exit 1
+    fi
+done
+EOF
+fi
+
+# --- 9. Workers: finish, and let chia-dev SSH into them ------------------------
 READY="" FIRST_READY=""
 if [ -n "$WORKER_JOBS" ]; then
     log "Waiting for the workers' setup to finish"
