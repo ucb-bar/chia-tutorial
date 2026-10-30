@@ -102,9 +102,13 @@ if [ -n "$TEARDOWN" ]; then
     if [ -n "${PROJECT_ID:-}" ]; then
         # One list call finds every tutorial VM and its zone. Then one delete per zone
         # (gcloud deletes the VMs in a call in parallel), with all zones at once.
-        found="$(gcloud compute instances list --project "$PROJECT_ID" \
-            --filter="name~^($(echo $DEV_VM $WORKERS | tr ' ' '|'))\$" \
-            --format='value(name,zone.basename())' 2>/dev/null </dev/null || true)"
+        # The tutorial's VMs are picked out here by exact name rather than with a
+        # --filter regex, whose ( | ) gcloud's filter syntax treats as its own.
+        all="$(gcloud compute instances list --project "$PROJECT_ID" \
+                   --format='value(name,zone.basename())' </dev/null)" \
+            || die "couldn't list the VMs in $PROJECT_ID (see gcloud's error above)"
+        found="$(printf '%s\n' "$all" | awk -v names="$DEV_VM $WORKERS" \
+            'BEGIN { n = split(names, a, " "); for (i = 1; i <= n; i++) want[a[i]] = 1 } want[$1]')"
         for vm in $DEV_VM $WORKERS; do
             printf '%s\n' "$found" | awk -v n="$vm" '$1 == n { f = 1 } END { exit !f }' \
                 || echo "No $vm found in $PROJECT_ID"
