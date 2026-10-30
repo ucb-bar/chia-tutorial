@@ -32,8 +32,8 @@
 #   WORKER_REGIONS="us-west4=2 europe-west4=3"   chia-worker VMs per region
 #   QUOTA_REGIONS="us-west4=100 europe-west4=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
-#   QUOTA_HDB_GB=1000                               Hyperdisk Balanced GB per region
-#   BOOT_DISK_GB=150                                boot disk size of every VM
+#   QUOTA_HDB_GB=3000                               Hyperdisk Balanced GB per region
+#   BOOT_DISK_GB=1000                               boot disk size of every VM
 set -euo pipefail
 
 usage() { grep '^#   \./setup_gcp' "$0" | sed 's/^#   /usage: /'; exit 1; }
@@ -236,9 +236,9 @@ fi
 QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 europe-west4=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 # Every VM's boot disk is Hyperdisk Balanced (C4 needs it), which has its own storage
-# quota: new projects get 500 GB per region. 3 x 150 GB fits in that; 3 x 200 GB didn't.
-QUOTA_HDB_GB="${QUOTA_HDB_GB:-1000}"
-BOOT_DISK_GB="${BOOT_DISK_GB:-150}"
+# quota: new projects get 500 GB per region. Each region has 3 VMs x 1 TB = 3000 GB.
+QUOTA_HDB_GB="${QUOTA_HDB_GB:-3000}"
+BOOT_DISK_GB="${BOOT_DISK_GB:-1000}"
 
 quota_limit() {  # quota-id region family -> current limit ("" region/family = none)
     local out           # on failure, prints gcloud's error and returns non-zero
