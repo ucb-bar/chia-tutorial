@@ -73,9 +73,10 @@ SOFTWARE_FILES = (
     "tests/memory-tests/src/copy-mixed/copy-mixed.c",
 )
 
+# prepare.sh is the recipe, not an input: its output is checked by baseline
+# revisions, so editing it does not invalidate seeds or checkpoints.
 BASE_FILE_PATTERNS = (
     "chipyard.patch",
-    "prepare.sh",
     "memory-tests/Makefile",
     "memory-tests/workloads.json",
     "memory-tests/check.py",

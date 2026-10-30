@@ -26,7 +26,8 @@ available_node_types:
     - chia-worker-4
     - chia-worker-5
     docker:
-      image: ghcr.io/ucb-bar/chia-chisel-build:latest
+      # Pinned: build workers recreate the seed from this exact image.
+      image: ghcr.io/ucb-bar/chia-chisel-build@sha256:0a8b31fb15c9e9ee815733fa43f2e88a9c0dcd9f026e0b616ff4337e912d7647
       container_name: dma-build
       pull_before_run: true
       pull_timeout: 7200
@@ -104,8 +105,8 @@ available_node_types:
 
 # CHIA comes from each image; seeds and credentials stay on chia-dev and
 # simulation inputs travel through Ray. Worker names resolve directly over SSH.
-# Build workers need the same build image as the seed (pull_before_run keeps
-# them current; a mismatch fails the build with a clear message).
+# The build image is pinned by digest because build workers recreate the seed
+# from it; a mismatched image fails the build with a clear message.
 head_env_commands:
 - source ~/.bashrc && conda activate chia_env
 head_start_ray_commands:
