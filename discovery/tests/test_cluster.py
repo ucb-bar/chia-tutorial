@@ -9,6 +9,39 @@ from chia_dma.runtime import render
 from chia_dma.evaluation import DMAEvaluator
 
 
+@pytest.mark.parametrize("state", ["unprepared", "prepared", "checkpointed"])
+def test_status_handles_runs_before_and_after_the_first_checkpoint(tmp_path, monkeypatch, capsys, state):
+    import json
+    import sys
+    import loop
+    from chia_dma.source import write_json
+
+    run = tmp_path / "DMADiscovery"
+    monkeypatch.setattr(loop, "load", lambda path: {"storage": str(tmp_path)})
+    monkeypatch.setattr(sys, "argv", ["loop.py", "status", "--run", "DMADiscovery"])
+    if state == "unprepared":
+        with pytest.raises(SystemExit) as error:
+            loop.main()
+        assert error.value.code == 2
+        assert "has not been prepared" in capsys.readouterr().err
+        assert not run.exists()
+        return
+
+    write_json(run / "run.json", {"run_id": "DMADiscovery"})
+    saved = {"admitted": ["seed-dma"], "requests": {"seed-dma": {"generated": True, "evaluated": True}}}
+    if state == "checkpointed":
+        write_json(run / "latest.json", {"checkpoint": "00000000-test"})
+        write_json(run / "checkpoints/00000000-test/state.json", saved)
+    loop.main()
+    output = capsys.readouterr().out
+    if state == "prepared":
+        assert "No checkpoint yet" in output
+        assert "baseline evaluation" in output
+        assert not (run / "latest.json").exists()
+    else:
+        assert json.loads(output) == saved
+
+
 def test_native_cluster_uses_every_existing_worker(tmp_path, base_tree, monkeypatch):
     monkeypatch.setenv('CHIA_HEAD', '10.0.0.1')
     configuration = load()

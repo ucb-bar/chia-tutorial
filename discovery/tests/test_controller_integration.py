@@ -89,6 +89,10 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     output = fixture.read_text()
     from conftest import commit_tree
     commit_tree(tree)
+    write_json(seed / "manifest.json", {
+        "image": "ghcr.io/ucb-bar/chia-chisel-build@sha256:" + "a" * 64,
+        **configuration["base"],
+    })
     elf = b"fixture ELF"
     counts = Counts.remote()
 

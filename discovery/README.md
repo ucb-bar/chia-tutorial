@@ -256,6 +256,11 @@ Forking works while the source driver is running: it reads immutable checkpoints
 and takes an online SQLite backup, then removes history later than the selected
 snapshot. The source run continues independently.
 
+Every fork records the build image's registry
+digest, baseline file hashes, and baseline Git revisions in `run.json`, so the
+attendee can reconstruct the source seed without receiving its large source tree
+and Git histories. The saved population and SQL history are unchanged.
+
 `fork` creates the restored branch on disk; it does not start a cluster or
 resume the search. A repeated fork to the same destination raises
 `FileExistsError`; continue with the existing branch. Use its run name with the
@@ -264,36 +269,30 @@ archive can skip checkpoint selection and forking entirely.
 
 ## Restore the tutorial archive
 
-The archive contains the matching loop code, a stopped experiment, and its
-complete seed. CPU-affinity counts may differ when restoring it.
+Distribute a portable fork with compatible tutorial code and the original
+`base/` files. The archive contains SQL history, candidate patches, a native
+population checkpoint, and a small seed rebuild recipe. It omits Chipyard source,
+Git histories, task caches, and other cached seeds. CPU-affinity counts may differ
+when restoring it. See [run.md](run.md) for the minimal runbook.
 
-After [stopping the loop](#stop-and-resume), the instructor creates the archive
-from the directory containing `loop.py`. Set `RUN` to the experiment to share:
+From the directory containing `loop.py`, select a candidate from `RUN` and package
+its fork. The destination must not already exist:
 
 ```sh
 RUN=run-001
-tar -czf ../loop-tutorial.tar.gz \
-  --exclude=__pycache__ --exclude=.writer.lock \
-  --exclude=base/memory-tests/build \
-  --exclude="experiments/$RUN/cache" --exclude="experiments/$RUN/artifacts" \
-  --exclude="experiments/$RUN/deployment" --exclude="experiments/$RUN/work" \
-  *.py *.yaml load-env.sh chia_dma base tests README.md INTEGRATION.md pytest.ini \
-  "experiments/$RUN" experiments/seeds
+python loop.py fork --run "$RUN" --candidate "$CANDIDATE" --new-run tutorial
+tar -czf loop-tutorial.tar.gz experiments/tutorial
 ```
 
-This includes saved population/SQL hardware and C sources, preserves seed links
-and permissions, and leaves installed environments and generated work out.
-
-Attendees complete the setup under
-[Set up and run](#set-up-and-run), then extract into a new folder and resume:
+Attendees complete the setup under [Set up and run](#set-up-and-run), then work
+inside the cloned repository's `discovery/` directory and extract into a checkout
+without an existing `experiments/tutorial` run:
 
 ```sh
-mkdir loop
-tar -xzf loop-tutorial.tar.gz -C loop
-cd loop
+tar -xzf loop-tutorial.tar.gz
 source load-env.sh
 
-RUN=run-001  # Use the run name packaged by the instructor.
+RUN=tutorial
 RUN_DIR="$PWD/experiments/$RUN"
 CLUSTER="$RUN_DIR/deployment/cluster.yaml"
 python loop.py status --run "$RUN"
@@ -306,8 +305,11 @@ chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 ```
 
 `status` shows the saved checkpoint's admitted candidates and pending-work flags.
-`prepare` finds the bundled seed under `experiments/seeds/HASH/` and regenerates
-paths for the extracted folder. `chia up` must finish before submitting the
+`prepare` reconstructs a missing seed from the recipe's recorded image digest
+and the original `base/` files, verifies its Git revisions, and caches it under
+`experiments/seeds/`. Subsequent preparation reuses that seed. The first restore
+requires access to the recorded Docker image and can take time. Existing full-seed
+archives still work. `chia up` must finish before submitting the
 resume job, which loads the saved population and recovers unfinished SQL work.
 Completed proposals are retained; unfinished evaluations may run again.
 
@@ -602,6 +604,7 @@ requirements, and validation evidence.
 | `tests/test_native_cluster.py` | Real native worker placement, mount boundaries, staging, and optional provider checks. |
 | `tests/native_fixture.py` | Temporary localhost SSH fixture for native cluster tests. |
 | `tests/test_preservation.py` | Immutable seed reuse, candidate restoration, and archive relocation. |
+| `tests/test_portable.py` | Small archive round trips, complete proposal history, seed reconstruction, and baseline mismatch detection. |
 | `tests/test_cluster.py` | Existing host placement, native configuration routing, and simulation fan-out across all workers. |
 | `tests/conftest.py` | Load test source inputs from the bundled patch. |
 | `tests/fixtures/memory-observation.txt` | Recorded hardware plus synthetic software counters for parser integration. |

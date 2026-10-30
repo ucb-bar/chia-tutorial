@@ -54,13 +54,56 @@ def save_proposal(sql, candidate_id, patch, generation, *, remote=False):
     return saved
 
 
-def preserve_source(configuration):
-    image = configuration["cluster"]["available_node_types"]["build"]["docker"]["image"]
-    manifest = {"image": image, **configuration["base"]}
+def seed_revisions(tree):
+    repositories = [""] + run_git_command(
+        tree, "submodule", "foreach", "--quiet", "--recursive",
+        'printf "%s\\n" "$displaypath"',
+    ).splitlines()
+    return {
+        relative: run_git_command(Path(tree) / relative, "rev-parse", "HEAD").strip()
+        for relative in repositories
+    }
+
+
+def seed_recipe(seed):
+    """Describe how to reconstruct a seed without shipping its source or Git history."""
+    seed = Path(seed)
+    manifest = read_json(seed / "manifest.json")
+    image = manifest["image"]
+    if "@sha256:" not in image:
+        result = subprocess.run(
+            ["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", image],
+            check=True, capture_output=True, text=True,
+        )
+        repository = image.split("@", 1)[0]
+        if ":" in repository.rsplit("/", 1)[-1]:
+            repository = repository.rsplit(":", 1)[0]
+        images = json.loads(result.stdout) or []
+        image = next((value for value in images if value.startswith(repository + "@sha256:")), None)
+        if image is None:
+            raise ValueError("Portable checkpoints require a registry digest for the seed's build image")
+    return {
+        "manifest": manifest,
+        "image": image,
+        "repositories": seed_revisions(seed / "tree"),
+    }
+
+
+def preserve_source(configuration, *, recipe=None):
+    if recipe is None:
+        image = configuration["cluster"]["available_node_types"]["build"]["docker"]["image"]
+        manifest = {"image": image, **configuration["base"]}
+    else:
+        image = recipe["image"]
+        manifest = recipe["manifest"]
+        if configuration["base"]["files"] != manifest["files"]:
+            raise ValueError("Cannot rebuild checkpoint seed: use the original base/ files")
     seed_store = Path(configuration["storage"]) / "seeds"
     seed_store.mkdir(parents=True, exist_ok=True)
-    seed_directory = seed_store / digest(manifest)
+    seed_directory = seed_store / digest(recipe if recipe is not None else manifest)
     if seed_directory.exists():
+        if recipe is not None and seed_revisions(seed_directory / "tree") != recipe["repositories"]:
+            raise ValueError("Cached seed differs from the checkpoint baseline")
         return seed_directory
 
     capture_directory = seed_store / (".capture-" + uuid.uuid4().hex)
@@ -87,6 +130,9 @@ def preserve_source(configuration):
         ],
         check=True,
     )
+    if recipe is not None and seed_revisions(capture_directory / "tree") != recipe["repositories"]:
+        shutil.rmtree(capture_directory)
+        raise ValueError("Rebuilt seed differs from the checkpoint baseline; use its original build image and base/ files")
     write_json(capture_directory / "manifest.json", manifest)
     subprocess.run(["chmod", "-R", "a-w", str(capture_directory)], check=True)
     capture_directory.rename(seed_directory)

@@ -20,6 +20,11 @@ retaining their original history. `prepare` freezes the complete source and Git
 metadata under `experiments/seeds/HASH/`. Each candidate is saved as one Git patch
 relative to those baseline commits, including changes inside initialized submodules.
 
+Every `fork` records a small rebuild recipe rather than
+copying this source tree into the archive. Attendee preparation reconstructs the
+seed from its recorded image digest and original `base/` files, then verifies the
+baseline Git revisions before using saved candidate patches.
+
 New seed identities include the image name, patch/script, and every
 memory-test build input. Resume uses the saved seed without comparing current
 code or settings against its fingerprint.

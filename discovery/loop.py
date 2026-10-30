@@ -176,7 +176,15 @@ def main():
         destination = run_directory.parent / Path(args.new_run).expanduser()
         fork(run_directory, args.checkpoint, destination, candidate=args.candidate)
     elif args.action == "status":
-        latest = read_json(run_directory / "latest.json")
+        latest_path = run_directory / "latest.json"
+        if not latest_path.exists():
+            if not (run_directory / "run.json").exists():
+                parser.error(f"Run {args.run!r} has not been prepared")
+            print(f"No checkpoint yet for run {args.run!r}.")
+            print("The first checkpoint is saved after the baseline evaluation finishes.")
+            print("Check the submitted job with chia job status or chia job logs.")
+            return
+        latest = read_json(latest_path)
         checkpoint_directory = run_directory / "checkpoints" / latest["checkpoint"]
         print(json.dumps(read_json(checkpoint_directory / "state.json"), indent=2))
     else:

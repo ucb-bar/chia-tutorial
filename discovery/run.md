@@ -14,27 +14,33 @@ to set the total proposal budget.
 - **Inspect checkpoints:** `python loop.py status --run DMADiscovery` lists admitted candidate IDs in the latest automatic checkpoint.
 - **Stop:** `chia job stop DMADiscovery --chia-cluster experiments/DMADiscovery/deployment/cluster.yaml` stops the driver; wait for it to finish before teardown.
 - **Tear down:** `chia down experiments/DMADiscovery/deployment/cluster.yaml -y`
-- **Select a candidate:** `python loop.py fork --run DMADiscovery --candidate CANDIDATE_ID --new-run tutorial` creates a distributable branch with the full search state and history through the earliest checkpoint admitting that candidate. Replace `CANDIDATE_ID` with an admitted ID; `experiments/tutorial` must not already exist.
+- **Select a candidate:** `python loop.py fork --run DMADiscovery --candidate CANDIDATE_ID --new-run tutorial` saves the full search state and history through that candidate's first checkpoint, plus a recipe for rebuilding its source seed. Replace `CANDIDATE_ID` with an admitted ID; `experiments/tutorial` must not already exist.
 - **Create the distribution directory:** `mkdir -p checkpoints`
-- **Package:** `tar -czf checkpoints/tutorial.tar.gz experiments/tutorial experiments/seeds` bundles the branch and preserved source seeds. Distribute this tarball with the matching tutorial repository revision.
+- **Package:** `tar -czf checkpoints/tutorial.tar.gz experiments/tutorial` bundles the branch only. Distribute it with compatible tutorial code and the original `base/` files.
 
-Checkpoints are automatic. The branch retains the selected snapshot's entire
+Checkpoints are automatic; the first is saved after the baseline evaluation
+finishes. Until then, `status` reports that there is no checkpoint yet. The
+branch retains the selected snapshot's entire
 population, including other candidates admitted concurrently. Forking omits
 cache, build workspaces, deployment files, and artifact logs; SQL history and
-checkpoint state are retained.
+checkpoint state are retained. The tarball contains candidate patches and search
+history, without the large Chipyard source tree, Git histories, or other cached
+seeds. Every fork includes the rebuild recipe. If
+`experiments/tutorial` already exists from an earlier fork, use a fresh branch
+name throughout these commands.
 
 ## 2. Tutorial attendee run
 
-Clone the matching tutorial repository revision, complete the same setup, and
+Clone a compatible tutorial repository version, complete the same setup, and
 work in `chia-tutorial/discovery`. Place the distributed
 tarball at `checkpoints/tutorial.tar.gz`. Increase
 `tutorial.search.iterations` above the number of proposals already saved to
 generate additional candidates. Extract into a checkout without an existing
 `experiments/tutorial` run.
 
-- **Extract:** `tar -xzf checkpoints/tutorial.tar.gz` restores the run, all history through the selected checkpoint, and source seeds under `experiments`.
+- **Extract:** `tar -xzf checkpoints/tutorial.tar.gz` restores the run and all history through the selected checkpoint under `experiments`.
 - **Load environment:** `source load-env.sh`
-- **Prepare restored paths:** `python loop.py prepare --run tutorial`
+- **Prepare restored paths:** `python loop.py prepare --run tutorial` reconstructs the source seed from the recorded Docker image digest and `base/` files, verifies the baseline, and renders local paths. The first restoration can take time; the seed is then cached locally.
 - **Start workers:** `chia up experiments/tutorial/deployment/cluster.yaml -y`
 - **Resume:** `chia job submit --chia-cluster experiments/tutorial/deployment/cluster.yaml --submission-id attendee -- python "$PWD/loop.py" resume --run tutorial` (choose a fresh submission ID for each resume).
 - **Visualize scores over time:** after the job exits, run `chia viz-profile experiments/tutorial/artifacts/profile/prof_candidates.log --format html` and open the generated `prof_candidates_profile.html`; select a `score_point` to see its candidate ID and score. This timeline covers evaluations performed after the fork; earlier history remains in `metrics.db`.

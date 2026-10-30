@@ -13,7 +13,7 @@ from skydiscover.config import OpenEvolveNativeDatabaseConfig
 from skydiscover.search.base_database import Program
 from skydiscover.search.openevolve_native.database import OpenEvolveNativeDatabase
 from .profiling import record_scores
-from .source import load_proposal, save_proposal, read_json, write_json
+from .source import load_proposal, save_proposal, read_json, write_json, seed_recipe
 
 
 class Experiment:
@@ -230,7 +230,7 @@ class Population(OpenEvolveNativeDatabase):
 
 
 def fork(origin, checkpoint, target, *, candidate=None):
-    """Keep the native population and only SQL history visible at this checkpoint."""
+    """Keep checkpoint history and a recipe for rebuilding its source seed."""
     if target.resolve().is_relative_to(origin.resolve()):
         raise ValueError("Fork destination must be outside the source experiment")
     if candidate:
@@ -248,6 +248,12 @@ def fork(origin, checkpoint, target, *, candidate=None):
         checkpoint = latest["checkpoint"]
     checkpoint_directory = origin / "checkpoints" / checkpoint
     envelope = read_json(checkpoint_directory / "state.json")
+    meta = read_json(origin / "run.json")
+    if "seed_recipe" not in meta:
+        seed = origin.parent / "seeds" / Path(meta["seed"]).name
+        if not seed.is_dir():
+            seed = Path(meta["seed"])
+        meta["seed_recipe"] = seed_recipe(seed)
     shutil.copytree(
         origin,
         target,
@@ -267,7 +273,6 @@ def fork(origin, checkpoint, target, *, candidate=None):
     ) as source_database, sqlite3.connect(target / "metrics.db") as fork_database:
         source_database.backup(fork_database)
         restore_history(fork_database, envelope)
-    meta = read_json(target / "run.json")
     meta.update(
         run_id=target.name, forked_from={"run": origin.name, "checkpoint": checkpoint}
     )

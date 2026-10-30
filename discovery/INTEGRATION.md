@@ -214,7 +214,7 @@ Paths below are relative to `experiments/NAME/` beside `loop.py`, except for the
 
 | Path | Contents and use |
 | --- | --- |
-| `run.json` | Preserved-seed path (bundled `experiments/seeds/HASH/` preferred), optional loop Git revision/dirty flag, and fork provenance. |
+| `run.json` | Preserved-seed path, optional portable seed rebuild recipe, loop Git revision/dirty flag, and fork provenance. |
 | `metrics.db` | CHIA SQLite proposal/source archive and consolidated numerical history. Keep WAL/SHM companions while a writer is live. |
 | `latest.json` | Name of the latest committed checkpoint, used by resume. |
 | `checkpoints/SEQUENCE-SUFFIX/state.json` | Admitted candidate IDs and generated/evaluated flags for SQL requests at that boundary. |
@@ -266,27 +266,30 @@ saved hardware/C Git patch or reused from the evictable CHIA build cache. Preser
 1. The selected committed checkpoint, including its `population/` and `state.json`.
 2. Consistent `metrics.db` history, `run.json`, and `latest.json`. Use `fork` to collect/filter this set while the source
    is running; do not copy a live SQLite main file without its WAL or a backup.
-3. The entire referenced seed directory, including `manifest.json`, the full
-   tree, executable permissions, and symlinks. The seed is fixed and self-contained;
-   restoring sources recreates a private checkout and applies all recorded changes.
+3. The `seed_recipe` saved by `fork` in `run.json`.
+   The recipe requires the original `base/` files and recorded build image digest;
+   reconstruction verifies every initialized repository's baseline commit.
 4. A loop implementation that can read the saved SQL/checkpoint format, plus
    the published images, credentials, Docker, and SSH access.
 
-The archive includes the loop implementation/configuration as well as saved
-state; attendees run `source load-env.sh` after extraction.
+Portable archives contain the run state only; attendees use a compatible tutorial
+checkout and run `source load-env.sh` after extraction.
 No host Chipyard checkout, toolchain, or Git metadata is required.
 
 `prepare` prefers the bundled seed under `experiments/seeds/HASH/` over the
 original absolute path in `run.json`, even if the original seed still exists.
 If no local seed is present, same-host forks can use the original shared seed.
-No metadata edits are needed after extracting the archive. Keep seed contents
-available; `prepare` reuses that seed and regenerates deployment with local
-paths and current settings. It does not enforce a code/configuration fingerprint
-or audit the seed contents against its manifest.
+Forks reconstruct a missing or different local seed from
+their recorded recipe and verify its baseline commits. Reconstructed seeds are
+cached by recipe so they can coexist with seeds from a different `:latest` image.
+No metadata edits are needed after extracting the archive. Deployment uses local
+paths and current settings; no overall code/configuration fingerprint is enforced.
 
 Historical forks remain optional: `fork` copies the selected native checkpoint,
 filtered SQL, retaining a reference to the source seed. Raw
 logs, task caches, deployments, and workspaces remain in the source run.
+Every fork saves the seed recipe in `run.json`; archive only that fork's
+directory, without `experiments/seeds/`.
 
 Tutorial resume policy:
 
@@ -295,8 +298,9 @@ Tutorial resume policy:
   parameters do not block it. Existing `frozen_hash` fields are ignored.
 - Existing scores and populations are retained when settings change; there is no
   comparison or automatic reconciliation of old measurements.
-- Source fingerprints identify new seeds only. A missing saved seed, unreadable
-  checkpoint/SQL data, or a patch that Git cannot apply still needs to be fixed.
+- Normal resume reuses its saved seed. Portable seed reconstruction checks the
+  original baseline files and Git revisions. A missing seed without a recipe,
+  unreadable checkpoint/SQL data, or a patch that Git cannot apply still needs to be fixed.
 - Checkout scheduling slots are normalized to one per build/generation worker;
   additional resources are accepted. A missing cache artifact is rebuilt.
 - Metric parsing accepts extra fields and version changes, and missing instruction

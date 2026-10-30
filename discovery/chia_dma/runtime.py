@@ -17,6 +17,7 @@ from .source import (
     git,
     read_json,
     preserve_source,
+    seed_revisions,
     write_json,
 )
 
@@ -36,8 +37,14 @@ def prepare(configuration, run):
         write_json(run / "run.json", meta)
     seed = run.parent / "seeds" / Path(meta["seed"]).name
     meta["seed"] = str(seed if seed.is_dir() else meta["seed"])
-    if not (Path(meta["seed"]) / "tree").is_dir():
-        raise FileNotFoundError("Preserved Chipyard seed is missing: " + meta["seed"])
+    missing_seed = not (Path(meta["seed"]) / "tree").is_dir()
+    if not missing_seed and "seed_recipe" in meta:
+        missing_seed = seed_revisions(Path(meta["seed"]) / "tree") != meta["seed_recipe"]["repositories"]
+    if missing_seed:
+        if "seed_recipe" not in meta:
+            raise FileNotFoundError("Preserved Chipyard seed is missing: " + meta["seed"])
+        print("Restoring the checkpoint's source seed from its recorded image...")
+        meta["seed"] = str(preserve_source(configuration, recipe=meta["seed_recipe"]))
     render(configuration, run, meta["seed"])
     return meta
 
