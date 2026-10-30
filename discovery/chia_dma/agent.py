@@ -15,29 +15,37 @@ from .source import (
 CONSTRAINTS = """Co-design the RV64 RoCC DMA hardware and the six baremetal C workloads.
 
 OBJECTIVE
-Minimize total cycles for each correctly checksummed test. At the modeled fixed
+Minimize total cycles for each correct test. At the modeled fixed
 clock, time = instructions * CPI / frequency, so minimize instructions * CPI.
 The score is the equally weighted geometric mean of seed cycles / candidate cycles
 across ALL six tests. Retired instructions and CPI explain the result; neither
 IPC nor DMA throughput is the objective by itself.
 
+CO-DESIGN
+This is a hardware/software co-design exercise. Prefer proposals that change
+the DMA hardware (RoCCDMA.scala, DMAController.scala, DMAConfigs.scala) together
+with the C workloads that use it, so the software exploits what the new
+hardware provides. Replacing DMA copies with CPU load/store loops is a known
+software-only baseline, not the goal, it is highly discouraged; aim for a DMA that beats it. 
+When a software-only change is still the best step, explain why hardware would not help.
+
 CORRECTNESS
 The six workloads are scored with fresh runtime inputs. A separate verification
 node also checks additional runtime-varying inputs against an independent
 reference. Every output buffer and guard region must remain correct for those
-inputs. Hidden cases and expected outputs are not disclosed. The harness times
-initialization, benchmark execution, and checksum calculation together.
+inputs. Hidden cases and expected outputs are not disclosed. Every memory
+region the tests write, including guard regions around each output, is verified.
 You may change algorithms, data movement, layout, batching, and DMA usage.
 You need not preserve memcpy call counts, bytes transferred, intermediate
 states, or DMA use. Preserve the computation for changing inputs; hardcoded
-outputs and checksum collisions fail correctness checks. Do not bypass the
+outputs fail verification. Do not bypass the
 measurement harness or runtime input initialization.
 
 EDITING
 Use dma_bash_run_command to edit any source in /home/ray/workspace. You may create,
 delete, rename, or replace files, including SoC configuration and build files.
 The framework saves a Git patch relative to the seed and rebuilds the candidate.
-The external evaluator, expected checksums, and measurement harness are fixed;
+The external evaluator, verification, and measurement harness are fixed;
 changing their workspace copies does not change the evaluation contract.
 
 CODE MAP (paths relative to /home/ray/workspace; about 530 lines in total)
@@ -47,22 +55,24 @@ Read these first. They are the whole design under optimization:
 - generators/chipyard/src/main/scala/config/DMAConfigs.scala: DMARocketConfig, the SoC built.
 - tests/memory-tests/src/*/copy-*.c: the six workloads (small, stream, gather, scatter,
   chain, mixed).
-Fixed harness, useful as reference only (the evaluator restores these):
+Fixed driver, useful as reference only (the evaluator restores it):
 - software/rocc-dma/: rocc_dma.h/.c driver API, memcpy_wrap.c (memcpy -> DMA above
-  DMA_THRESHOLD), boardsupport.c timing; sim/ holds the passive observer.
-- tests/memory-tests/support/, */checksum.c, Makefile, workloads.json, check.py.
+  DMA_THRESHOLD).
+The rest of tests/memory-tests/ and software/rocc-dma/ is fixed measurement and
+verification harness; you do not need to read it.
 The rest of Chipyard (rocket-chip, other generators, sims/) is unmodified upstream
 infrastructure. Consult it when a design decision depends on it, such as an
 interface or parameter your change touches, rather than surveying it broadly.
 
 WORKFLOW
 1. Read the selected parent's hardware, C code, and recorded cycle/instruction data.
-2. Choose a focused hardware/software change that could reduce total cycles.
-3. Edit hardware, C workloads, or both, preserving their callable interfaces.
+2. Choose a focused change to the DMA hardware and the C code that drives it
+   that could reduce total cycles.
+3. Edit the hardware and the C workloads together, preserving callable interfaces.
 4. Finish with a short description and the expected instruction-count/CPI tradeoff.
 
-The framework rebuilds BOTH hardware and candidate C tests, runs all six, checks
-their checksums, and measures the results. Do not compile or run the evaluator
+The framework rebuilds BOTH hardware and candidate C tests, runs all six, verifies
+their outputs, and measures the results. Do not compile or run the evaluator
 inside this generation worker. Do not claim an improvement without measurement.
 """
 

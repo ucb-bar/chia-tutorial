@@ -161,7 +161,11 @@ def capture_patch(tree, baseline):
     # Prefix submodule paths so every diff applies from the Chipyard root.
     for relative in repositories:
         original = run_git_command(baseline / relative, "rev-parse", "HEAD").strip()
-        run_git_command(tree / relative, "add", "--all")
+        # Chipyard's .gitignore covers build outputs; Python caches are the gap.
+        run_git_command(
+            tree / relative, "add", "--all", "--", ".",
+            ":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.pyc",
+        )
         prefix = relative + "/" if relative else ""
         patches.append(run_git_command(
             tree / relative, "diff", "--cached", "--binary", "--full-index",
@@ -178,6 +182,30 @@ def initialize_checkout(tree, baseline):
         return
     shutil.copytree(baseline, tree, symlinks=True, dirs_exist_ok=True)
     subprocess.run(["chmod", "-R", "u+w", str(tree)], check=True)
+
+
+def prepare_checkout(tree, baseline_commit):
+    """Recreate the seed from this worker's own image instead of copying it in.
+
+    prepare.sh commits with a fixed author and date, so the same image yields the
+    same baseline commit; a different hash means the image no longer matches the seed.
+    """
+    tree = Path(tree)
+    if (tree / ".git").exists():
+        if run_git_command(tree, "rev-parse", "HEAD").strip() == baseline_commit:
+            return
+        shutil.rmtree(tree)
+    subprocess.run(
+        ["bash", str(ROOT / "base" / "prepare.sh")],
+        env={**os.environ, "BASE": str(ROOT / "base"), "TREE": str(tree)},
+        check=True,
+    )
+    commit = run_git_command(tree, "rev-parse", "HEAD").strip()
+    if commit != baseline_commit:
+        raise RuntimeError(
+            f"Build image does not reproduce the seed: baseline {commit}, seed {baseline_commit}. "
+            "Pull the image the seed was prepared from, or rerun `python loop.py prepare`."
+        )
 
 
 def apply_candidate_diff(tree, baseline, patch):

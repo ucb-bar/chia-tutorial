@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# The seed (/base → /seed/tree) and each build worker's checkout use one recipe.
+export BASE=${BASE:-/base}
+export TREE=${TREE:-/seed/tree}
 cd /home/ray/chipyard
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0='*'
-mkdir -p /seed/tree
+mkdir -p "$TREE"
 git ls-files --recurse-submodules -z |
     tar --null --no-recursion -T - -cf - |
-    tar -C /seed/tree -xf -
+    tar -C "$TREE" -xf -
 
 # Preserve the existing repositories, including submodule history and relative links.
-cp -a --no-preserve=ownership .git /seed/tree/.git
+cp -a --no-preserve=ownership .git "$TREE/.git"
 git submodule foreach --quiet --recursive \
-    'cp -a --no-preserve=ownership .git "/seed/tree/$displaypath/.git"'
-cd /seed/tree
-git apply /base/chipyard.patch
+    'cp -a --no-preserve=ownership .git "$TREE/$displaypath/.git"'
+cd "$TREE"
+git apply "$BASE/chipyard.patch"
 mkdir -p tests/memory-tests
-cp /base/memory-tests/Makefile /base/memory-tests/workloads.json /base/memory-tests/check.py tests/memory-tests/
-cp -a /base/memory-tests/src /base/memory-tests/support tests/memory-tests/
+cp "$BASE"/memory-tests/{Makefile,workloads.json,check.py} tests/memory-tests/
+cp -a "$BASE"/memory-tests/{src,support} tests/memory-tests/
 
 # Record the tutorial baseline once; candidate patches are relative to these commits.
 export GIT_AUTHOR_NAME='CHIA Tutorial' GIT_COMMITTER_NAME='CHIA Tutorial'

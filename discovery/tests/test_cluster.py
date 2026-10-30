@@ -51,8 +51,8 @@ def test_native_cluster_uses_every_existing_worker(monkeypatch):
     native = load_config(str(path))
     assignments = assign_nodes(native)
     generators = [a for a in assignments if a.node_type.name == 'generation']
-    assert len(generators) == 2
-    assert {a.worker_index for a in generators} == {0, 1}
+    count = deployment['available_node_types']['generation']['num_workers']
+    assert {a.worker_index for a in generators} == set(range(count))
     assert all(a.ip == '10.0.0.1' and a.resources['generation'] == 1 for a in generators)
     simulations = [a for a in assignments if a.node_type.name == 'simulation']
     assert {a.ip for a in simulations} == {f'chia-worker-{i}' for i in range(1, 6)}
