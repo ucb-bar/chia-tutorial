@@ -376,6 +376,25 @@ seconds. It summarizes completed calls by function rather than listing candidate
 scores. Summed execution times can exceed elapsed round time because tasks run
 in parallel, and enclosing local spans include their child tasks.
 
+The updated HTML viewer also plots numeric metadata against completion time.
+To see both candidate points and the recorded best-so-far step line, use the
+original collector log, which includes both score series. From `discovery/`:
+
+```sh
+PYTHONPATH=../chia chia viz-profile experiments/DMADiscovery/artifacts/profile/ChiaProfileCollector.log --format html
+```
+
+This uses the viewer in the local CHIA checkout instead of setup's installed
+PyPI version. Pull the CHIA viewer changes into that checkout before rendering.
+The chart initially selects `combined_score` and groups by `metric_series`;
+you can change the metric, function, grouping, and each series' point/step style.
+Hover for candidate IDs or click to select the corresponding timeline event.
+The command can read the log while a discovery job is running. It writes a
+snapshot: rerun it and reload the HTML to see newer completed evaluations.
+No worker restart, job resubmission, checkpoint restore, or loop-code update is
+required. Both score series must already have been logged; a fork's profile
+starts with evaluations performed after the fork.
+
 The configured Ray dashboard is at `http://127.0.0.1:8287`. Worker Ray logs are under `/tmp/ray/session_latest/logs` **inside each
 container**; use `docker ps` to find its name (`dma-ROLE`), then `docker exec` to
 inspect those files. Head Ray logs are on the host under
