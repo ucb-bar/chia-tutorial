@@ -2,10 +2,16 @@
 
 ## Commands attendees run, in order
 
-Everything runs from `~/chia-tutorial/debugging`. `./run_debugging.sh` runs this
-same list unattended.
+Everything runs from `~/chia-tutorial/debugging`, except bringing up the accel
+cluster. `./run_debugging.sh` runs the section (setup to 5) unattended, on a cluster
+that is already up.
 
 ```bash
+# If you have just arrived (missed the accel session): bring up its cluster
+conda activate chia_env
+cd ~/chia-tutorial/accel
+chia up --yes cluster.yaml
+
 # Setup
 conda activate chia_env
 cd ~/chia-tutorial/debugging
@@ -35,10 +41,24 @@ cd ~/chia_logs/sims
 ls -lsa
 exit
 
-# 5. Cluster Debugging
-chia status --chia-cluster cluster.yaml          # then any cheat-sheet line, with --chia-cluster cluster.yaml
+# 5. Cluster Debugging: the cheat sheet, each line with --chia-cluster cluster.yaml
+chia status --chia-cluster cluster.yaml                           # is the cluster up? free resources
+chia list nodes --chia-cluster cluster.yaml                       # machines alive or dead
+chia list jobs --chia-cluster cluster.yaml                        # jobs that ran, failed, are running
+chia job status <submission_id> --chia-cluster cluster.yaml       # did my job succeed?
+chia job logs <submission_id> --chia-cluster cluster.yaml         # what did my job print?
+chia list tasks --filter "state=RUNNING" --chia-cluster cluster.yaml
+chia ray summary tasks --chia-cluster cluster.yaml                # tasks per function, by state
+chia list actors --filter "state=ALIVE" --chia-cluster cluster.yaml
+chia ray summary actors --chia-cluster cluster.yaml               # actors by class, alive and dead
+chia ray memory --stats-only --chia-cluster cluster.yaml          # is the object store filling up?
+chia ray logs cluster --chia-cluster cluster.yaml                 # log files on each machine
+chia ray stack --chia-cluster cluster.yaml                        # where a stuck job's Python is now
+chia job stop <id> --kill-tracked-pids --chia-cluster cluster.yaml   # stop a job and its processes
+chia ray kill-actor --name <name> --chia-cluster cluster.yaml     # remove a leftover named actor
 
-# At the very end, when you are done with the cluster
+# At the very end: take the whole cluster down (the storage worker included)
+cd ~/chia-tutorial/debugging
 chia down --yes cluster.yaml
 ```
 
