@@ -7,7 +7,7 @@ import tempfile
 
 import pytest
 from chia.chipyard.riscv_build_node import RiscvBuildNode
-from chia_dma import correctness
+import correctness
 from chia_dma.evaluation import software_inputs
 
 

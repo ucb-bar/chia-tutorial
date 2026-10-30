@@ -5,17 +5,15 @@ import pytest
 import yaml
 from chia.cluster.config import load_config, assign_nodes
 from chia_dma.config_loader import load
-from chia_dma.runtime import render
 from chia_dma.evaluation import DMAEvaluator
 
 
-def test_native_cluster_uses_every_existing_worker(tmp_path, base_tree, monkeypatch):
+def test_native_cluster_uses_every_existing_worker(monkeypatch):
+    from chia_dma.config_loader import ROOT
     monkeypatch.setenv('CHIA_HEAD', '10.0.0.1')
+    monkeypatch.setenv('DMA_ROOT', '/loop')
     configuration = load()
-    seed = tmp_path / 'seed'
-    import shutil
-    shutil.copytree(base_tree, seed / 'tree')
-    path = render(configuration, tmp_path / 'run', seed)
+    path = ROOT / 'cluster.yaml'
     deployment = yaml.safe_load(path.read_text())
     native = load_config(str(path))
     assignments = assign_nodes(native)
@@ -29,10 +27,9 @@ def test_native_cluster_uses_every_existing_worker(tmp_path, base_tree, monkeypa
     assert 'gcp_nodes' not in deployment
     assert deployment['auth']['ssh_private_key'].endswith('/.ssh/chia-key')
     assert configuration['agent']['effort'] == 'high'
-    mounts = deployment['available_node_types']['simulation']['docker']['run_options']
-    assert not any(str(seed) in option or 'dst=/home/ray/workspace' in option for option in mounts)
-    assert all(source.endswith('/') for source in deployment['file_mounts'].values())
-    assert all('${' not in destination for destination in deployment['file_mounts'])
+    # Loop code arrives through `chia job submit --working-dir .`, not file mounts.
+    assert 'file_mounts' not in deployment
+    assert 'run_options' not in deployment['available_node_types']['simulation']['docker']
 
 
 def test_tutorial_namespace_preserves_native_chia_settings(tmp_path):

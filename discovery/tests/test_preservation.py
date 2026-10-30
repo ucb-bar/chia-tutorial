@@ -1,10 +1,8 @@
 """The fixed image and bundled patch replace the host Chipyard checkout."""
 
 from pathlib import Path
-import shlex
 import shutil
 import subprocess
-import sys
 import pytest
 import yaml
 from chia_dma.config_loader import HARDWARE_FILES, ROOT, SOFTWARE_FILES, digest, load
@@ -102,50 +100,30 @@ def test_unrestricted_source_changes_round_trip_and_clear_previous_parent(tmp_pa
     assert (seed / "build.sbt").read_text() == "baseline"
 
 
-@pytest.mark.parametrize("workers", [1, 3])
-def test_generation_uses_native_workers_and_isolates_verification(tmp_path, workers, monkeypatch):
-    from chia_dma.runtime import render
-
-    monkeypatch.setenv("CHIA_HEAD", "127.0.0.1")
-    seed = tmp_path / "seed"
-    run = tmp_path / "run"
-    configuration = load()
-    configuration["cluster"]["available_node_types"]["generation"]["num_workers"] = workers
-    deployment = yaml.safe_load(render(configuration, run, seed).read_text())
-    generation = deployment["available_node_types"]["generation"]
-    assert generation["num_workers"] == workers
-    assert generation["resources"]["generation"] == 1
-    assert not any(name.startswith("generation-") for name in deployment["available_node_types"])
-    assert not (run / "work").exists()
-    options = generation["docker"]["run_options"]
-    mounts = [option for option in options if option.startswith("--mount")]
-    assert all("readonly" in option for option in mounts)
-    assert not any("dst=/home/ray/workspace" in option for option in mounts)
-    assert any(f"src={seed}/tree,dst=/seed,readonly" in option for option in mounts)
-    assert any("/generation,dst=/opt/loop/chia_dma,readonly" in option for option in mounts)
-    assert "${" not in str(generation)
-    public = run / "deployment/generation-python/chia_dma"
-    assert (public / "agent.py").is_file()
-    assert not (public / "evaluation.py").exists()
-    assert not (public / "nodes.py").exists()
-    assert not (public / "correctness.py").exists()
-    verification = deployment["available_node_types"]["verification"]
-    assert verification["resources"] == {"verification": 1}
-    assert not any("dst=/home/ray/workspace" in option for option in verification["docker"]["run_options"])
+def test_only_verification_mounts_the_hidden_correctness_tests():
+    deployment = yaml.safe_load((ROOT / "cluster.yaml").read_text())
+    workers = deployment["available_node_types"]
+    for name, worker in workers.items():
+        options = " ".join(worker["docker"].get("run_options", []))
+        assert ("/private" in options) == (name == "verification")
+    generation = " ".join(workers["generation"]["docker"]["run_options"])
+    assert "experiments/seeds,readonly" in generation
+    assert "${HOME}/.gemini:/tmp/gemini-login:ro" in generation
+    assert "dst=/home/ray/workspace" not in generation
+    # Ray skips these when uploading the working directory to workers.
+    assert "private/" in (ROOT / ".rayignore").read_text().split()
+    assert "experiments/" in (ROOT / ".gitignore").read_text().split()
+    assert not (ROOT / "chia_dma/correctness.py").exists()
 
 
 def test_generation_worker_setup_recreates_independent_checkouts(tmp_path, base_tree, patch_for):
-    from chia_dma.source import apply_candidate_diff
-    from chia_dma.runtime import render
+    from chia_dma.source import apply_candidate_diff, initialize_checkout
 
-    deployment = yaml.safe_load(render(load(), tmp_path / "run", base_tree.parent).read_text())
-    commands = deployment["available_node_types"]["generation"]["worker_setup_commands"]
-    startup = next(command for command in commands if "initialize_checkout" in command)
     workspaces = [tmp_path / name / "home/ray/workspace" for name in ("container-a", "container-b")]
 
     def setup(workspace):
-        command = startup.replace("/home/ray/workspace", str(workspace)).replace("/seed", str(base_tree))
-        subprocess.run([sys.executable, *shlex.split(command)[1:]], check=True)
+        # The first generation task in a container creates its checkout.
+        initialize_checkout(workspace, base_tree)
 
     filename = SOFTWARE_FILES[0]
     for workspace, text in zip(workspaces, ("parent A", "parent B")):
@@ -193,12 +171,9 @@ def test_resume_ignores_old_fingerprints_and_reuses_the_saved_seed(tmp_path, mon
     seed = run.parent / "seeds/existing"
     (seed / "tree").mkdir(parents=True)
     write_json(run / "run.json", {"seed": "/old/machine/seeds/existing", "frozen_hash": "old-hash"})
-    rendered = []
-    monkeypatch.setattr(runtime, "render", lambda *args: rendered.append(args))
     monkeypatch.setattr(runtime, "preserve_source", lambda *args: pytest.fail("Do not replace a saved seed"))
     meta = runtime.prepare(changed, run)
     assert meta["seed"] == str(seed)
-    assert rendered[0][2] == str(seed)
     (seed / "tree").rmdir()
     with pytest.raises(FileNotFoundError, match="Preserved Chipyard seed is missing"):
         runtime.prepare(changed, run)
@@ -305,8 +280,6 @@ def test_copied_loop_prepares_and_relocates_without_requiring_a_commit(
     assert bool(meta["loop_revision"]) == (repository == "committed")
     assert meta["loop_dirty"] is (None if repository == "none" else True)
     assert runtime.prepare(configuration, run) == meta
-    deployment = yaml.safe_load((run / "deployment/cluster.yaml").read_text())
-    assert deployment["head_env_commands"][1] == f"export PYTHONPATH={copied}"
 
     relocated = tmp_path / "relocated-loop"
     shutil.copytree(copied, relocated, symlinks=True)
@@ -318,7 +291,6 @@ def test_copied_loop_prepares_and_relocates_without_requiring_a_commit(
     expected = relocated / "experiments/seeds/frozen-seed" if bundled else seed
     assert restored["seed"] == str(expected)
     assert read_json(run / "run.json") == meta
-    assert str(copied) not in (run / "deployment/cluster.yaml").read_text()
     shutil.rmtree(copied)
     assert runtime.prepare(configuration, run) == restored
 

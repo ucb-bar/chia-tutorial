@@ -11,7 +11,7 @@ from chia.base.ChiaFunction import ChiaFunction
 from chia.chipyard.chisel_build_node import ChiselBuildNode
 
 from .config_loader import digest
-from .source import apply_candidate_diff, run_git_command
+from .source import apply_candidate_diff, initialize_checkout, run_git_command
 from .observations import run_observed
 
 
@@ -62,6 +62,7 @@ def software_inputs(baseline, patch):
 def build(configuration, seed, patch):
     tree = Path("/home/ray/dma-build")
     baseline = Path(seed) / "tree"
+    initialize_checkout(tree, baseline)
     apply_candidate_diff(tree, baseline, patch)
     for name in (".sbt", ".ivy2"):
         if not (tree / name).exists():

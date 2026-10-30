@@ -255,7 +255,6 @@ def fork(origin, checkpoint, target, *, candidate=None):
             "checkpoints",
             "cache",
             "artifacts",
-            "deployment",
             "work",
             ".writer.lock",
             "metrics.db*",

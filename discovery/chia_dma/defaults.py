@@ -7,8 +7,6 @@ DEFAULTS = {
         "effort": "high",
         "timeout_seconds": 600,
         "retries": 1,  # CHIA counts total attempts: one call, no retry.
-        "credentials": "${HOME}/.gemini",
-        "credential_target": "/tmp/agent-home/.gemini",
     },
     "search": {
         "random_seed": 42,
@@ -58,15 +56,6 @@ DEFAULTS = {
     "storage": "./experiments",
     "base": {},
 }
-
-# Copy the setup.md login into a private agent home.
-AGENT_SETUP = [
-    "mkdir -p ${CREDENTIAL_TARGET}",
-    "rsync -a --exclude conversations --exclude sessions --exclude projects --exclude logs "
-    '--exclude "*.log" --exclude tmp --exclude history.jsonl --exclude shell_snapshots '
-    '--exclude "*.sock" --exclude app-server-control --exclude app-server-daemon '
-    "/credentials/ ${CREDENTIAL_TARGET}/",
-]
 
 # Tutorial example paths, not an edit allowlist.
 HARDWARE_FILES = (

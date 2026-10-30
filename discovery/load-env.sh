@@ -8,3 +8,5 @@ conda activate chia_env || return
 python -m pip install --quiet openai==3.35.1 numpy==1.26.4 tqdm==4.67.1 || return
 python -m pip install --quiet --no-deps \
     'skydiscover @ git+https://github.com/ucb-bar/skydiscover.git@78833ea6ad4ee1efffe5781112da4ceb95ff5535' || return
+# cluster.yaml mounts the seeds and private/ from this directory.
+export DMA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
