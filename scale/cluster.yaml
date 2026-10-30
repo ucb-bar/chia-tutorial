@@ -50,8 +50,8 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536"]
 
     antigravity:
-        resources: {antigravity_creds: 1} # TUTORIAL: the number of antigravity resources per antigravity worker. I.e., the number of parallel agents that can run at once
-        num_workers: 1
+        resources: {antigravity_creds: 1}
+        num_workers: 1 # TUTORIAL: the number of antigravity workers. I.e., the number of parallel agents that can run at once
         compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
             image: ghcr.io/ucb-bar/chia-antigravity:latest
