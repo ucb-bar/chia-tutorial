@@ -26,7 +26,7 @@ available_node_types:
                 - --shm-size=10.24gb
 
     verilator_run:
-        resources: {verilator_run: 8}
+        resources: {verilator_run: 8} # TUTORIAL: the number of verilator resources per worker. Try increasing it further
         num_workers: 1  # TUTORIAL: simulator workers; match the VM count below.
         compatible_ips: ["chia-worker-4"] # TUTORIAL: add the correct IPs here.
         docker:
@@ -50,7 +50,7 @@ available_node_types:
             run_options: ["--ulimit nofile=65536:65536"]
 
     antigravity:
-        resources: {antigravity_creds: 1}
+        resources: {antigravity_creds: 1} # TUTORIAL: the number of antigravity resources per antigravity worker. I.e., the number of parallel agents that can run at once
         num_workers: 1
         compatible_ips: ["${CHIA_HEAD_IP}"]
         docker:
