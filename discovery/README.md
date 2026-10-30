@@ -376,24 +376,24 @@ seconds. It summarizes completed calls by function rather than listing candidate
 scores. Summed execution times can exceed elapsed round time because tasks run
 in parallel, and enclosing local spans include their child tasks.
 
-The updated HTML viewer also plots numeric metadata against completion time.
-To see both candidate points and the recorded best-so-far step line, use the
-original collector log, which includes both score series. From `discovery/`:
+For a separate XY score chart, use the discovery viewer from `discovery/`:
 
 ```sh
-PYTHONPATH=../chia chia viz-profile experiments/DMADiscovery/artifacts/profile/ChiaProfileCollector.log --format html
+python loop.py scores --run DMADiscovery
 ```
 
-This uses the viewer in the local CHIA checkout instead of setup's installed
-PyPI version. Pull the CHIA viewer changes into that checkout before rendering.
-The chart initially selects `combined_score` and groups by `metric_series`;
-you can change the metric, function, grouping, and each series' point/step style.
-Hover for candidate IDs or click to select the corresponding timeline event.
-The command can read the log while a discovery job is running. It writes a
-snapshot: rerun it and reload the HTML to see newer completed evaluations.
-No worker restart, job resubmission, checkpoint restore, or loop-code update is
-required. Both score series must already have been logged; a fork's profile
-starts with evaluations performed after the fork.
+Open `experiments/DMADiscovery/artifacts/profile/scores.html`. Time is on X and
+score is on Y. Each candidate appears once, with its last 6 ID characters next
+to its dot; hover or select the dot for its full ID, score, and completion time.
+The best valid score is a separate number above the chart, including any best
+inherited from a checkpoint. Failed attempts remain visible as pink dots.
+
+This viewer lives entirely in `discovery/` and reads the existing native
+`ChiaProfileCollector.log`; CHIA's `viz-profile` commands continue to provide
+the task timelines. The command works while discovery runs and writes a snapshot:
+rerun it and reload the page for newer completed evaluations. Pulling the viewer
+changes requires no job restart, worker restart, or checkpoint restore. A fork's
+profile starts with evaluations performed after the fork.
 
 The configured Ray dashboard is at `http://127.0.0.1:8287`. Worker Ray logs are under `/tmp/ray/session_latest/logs` **inside each
 container**; use `docker ps` to find its name (`dma-ROLE`), then `docker exec` to
@@ -609,6 +609,7 @@ requirements, and validation evidence.
 | `private/correctness.py` | Hidden correctness tests: private runtime inputs, independent output reference, and correctness gate. Mounted only into the verification container. |
 | `chia_dma/runtime.py` | Preserve the seed, attach CHIA cache/profiler. |
 | `chia_dma/profiling.py` | Native score metadata and best/candidate views of the collected profile. |
+| `chia_dma/score_viz.py` | Standalone XY candidate score chart and best-score readout from the native CHIA log. |
 | `chia_dma/agent.py` | Initialize the selected parent, invoke a native CLI agent with BashTool, and save its proposal. |
 | `chia_dma/search.py` | SkyDiscover adapters that hand selected parents to the agent (head only). |
 | `chia_dma/evaluation.py` | Build → simulate → verify → score pipeline and task lifecycle. |
@@ -622,6 +623,7 @@ requirements, and validation evidence.
 | `tests/test_timing.py` | Native simulation timeout, interruption cleanup, and elapsed-time reporting. |
 | `tests/test_controller_integration.py` | Controller concurrency, cache/profiler, and recovery integration. |
 | `tests/test_profiling.py` | Paired native score events across resumed jobs. |
+| `tests/test_score_viz.py` | One labeled dot per proposal, best-score readout, live-log handling, and offline rendering. |
 | `tests/test_native_cluster.py` | Live-container checks, currently skipped pending migration to static configuration and working-directory uploads. |
 | `tests/native_fixture.py` | Temporary localhost SSH fixture for native cluster tests. |
 | `tests/test_preservation.py` | Immutable seed reuse, candidate restoration, and archive relocation. |

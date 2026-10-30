@@ -156,7 +156,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "action",
-        choices=("prepare", "run", "resume", "status", "fork"),
+        choices=("prepare", "run", "resume", "status", "fork", "scores"),
     )
     parser.add_argument("--config", default=str(ROOT / "cluster.yaml"))
     parser.add_argument("--run", default="run-001")
@@ -174,7 +174,13 @@ def main():
 
     configuration = load(args.config)
     run_directory = Path(configuration["storage"]) / args.run
-    if args.action == "fork":
+    if args.action == "scores":
+        from chia_dma.score_viz import render_scores
+        try:
+            print(render_scores(run_directory))
+        except FileNotFoundError:
+            parser.error("No profile log yet for run " + repr(args.run))
+    elif args.action == "fork":
         destination = run_directory.parent / Path(args.new_run).expanduser()
         fork(run_directory, args.checkpoint, destination, candidate=args.candidate)
     elif args.action == "status":
