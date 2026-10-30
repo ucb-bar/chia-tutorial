@@ -1,4 +1,4 @@
-"""Private, unscored correctness runs. Never mounted in generation containers."""
+"""Private, unscored correctness runs. Mounted only into the verification container."""
 
 import hashlib
 import re
@@ -139,7 +139,7 @@ def run_hidden_tests(configuration, simulator, software, dram_settings, scored_s
     Return only pass/fail and anonymous execution times. Case names, seeds,
     expected data, and simulator output never enter controller/agent feedback.
     """
-    from .nodes import simulate
+    from chia_dma.nodes import simulate
     started = time.monotonic()
     tasks, timings = [], []
     try:

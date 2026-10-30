@@ -5,6 +5,7 @@ from contextlib import closing
 from dataclasses import asdict
 import json
 from pathlib import Path
+import sys
 import threading
 import time
 
@@ -15,7 +16,7 @@ from chia.chipyard.riscv_build_node import RiscvBuildNode
 from chia.trace.profiler import get_profiler
 from skydiscover.evaluation.evaluation_result import EvaluationResult
 
-from chia_dma.config_loader import digest
+from chia_dma.config_loader import ROOT, digest
 from chia_dma.source import read_json, write_json
 from chia_dma.nodes import build, simulate, parse, aggregate, software_inputs, require
 
@@ -89,7 +90,9 @@ class DMAEvaluator:
                         software[name] = artifact.files[elf]
 
             timing["build_seconds"] = time.monotonic() - started
-            from chia_dma.correctness import prepare_scored_inputs, run_hidden_tests, verify_correctness
+            # private/ is never uploaded to workers; verification mounts it.
+            sys.path.insert(0, str(ROOT / "private"))
+            from correctness import prepare_scored_inputs, run_hidden_tests, verify_correctness
             challenge = self.resolve(prepare_scored_inputs.chia_remote(software))
             raw_results = {}
             rtl_started = time.monotonic()

@@ -34,8 +34,10 @@ def run_experiment(configuration, run_directory, action):
     with RunLock(run_directory):
         metadata = prepare(configuration, run_directory)
         seed_directory = metadata["seed"]
+        # Generation workers read the parent's baseline from this mounted seed.
+        configuration["seed"] = seed_directory
         if action == "prepare":
-            print(run_directory / "deployment/cluster.yaml")
+            print("Prepared " + str(run_directory) + " with seed " + seed_directory)
             return
 
         status = "interrupted"

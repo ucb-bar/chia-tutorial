@@ -2,12 +2,15 @@
 
 import json
 import os
+from pathlib import Path
 import time
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from chia.base.ChiaFunction import ChiaFunction
 from chia.base.tools.BashTool import BashTool
-from .source import save_proposal, load_proposal, capture_patch, apply_candidate_diff
+from .source import (
+    save_proposal, load_proposal, capture_patch, apply_candidate_diff, initialize_checkout,
+)
 
 CONSTRAINTS = """Co-design the RV64 RoCC DMA hardware and the six baremetal C workloads.
 
@@ -72,7 +75,9 @@ def generate(configuration, sql, task):
     selected_parent = task["parent"]
     parent_solution = json.loads(selected_parent["solution"])
     parent_patch = parent_solution["patch"]
-    apply_candidate_diff("/home/ray/workspace", "/seed", parent_patch)
+    baseline = Path(configuration["seed"]) / "tree"
+    initialize_checkout("/home/ray/workspace", baseline)
+    apply_candidate_diff("/home/ray/workspace", baseline, parent_patch)
     os.chdir("/home/ray/workspace")
     prompt = CONSTRAINTS + "\nSelected parent and inspirations:\n" + json.dumps(task)
     guidance = configuration["search"]["island_guidance"]
@@ -103,7 +108,7 @@ def generate(configuration, sql, task):
             "transcript": result.stream_result,
             "wall_seconds": time.monotonic() - started,
         }
-        patch = capture_patch("/home/ray/workspace", "/seed")
+        patch = capture_patch("/home/ray/workspace", baseline)
         return save_proposal(sql, task["id"], patch, generation, remote=True)
     finally:
         tool.stop()

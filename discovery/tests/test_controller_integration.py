@@ -177,7 +177,7 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     monkeypatch.setattr(search, "generate", generate)
     monkeypatch.setattr(evaluation, "build", build)
     monkeypatch.setattr(evaluation, "simulate", simulate)
-    from chia_dma import correctness
+    import correctness
     def prepare_scored_inputs(software):
         import secrets
         challenge = secrets.randbits(64)
@@ -617,7 +617,7 @@ def test_interrupted_evaluation_cancels_raw_ref_and_preserves_completed_proposal
 
 
 def test_private_correctness_failure_rejects_the_round_and_returns_generic_feedback(flow, monkeypatch, patch_for):
-    from chia_dma import correctness
+    import correctness
     configuration, experiment, seed, evaluator, counts, cache, tmp_path = flow
     parent = next(iter(experiment.population.programs.values()))
     request = experiment.save_selection(parent, [], kind="search")

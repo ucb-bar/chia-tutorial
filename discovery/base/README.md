@@ -28,7 +28,7 @@ baseline Git revisions before using saved candidate patches.
 New seed identities include the image name, patch/script, and every
 memory-test build input. Resume uses the saved seed without comparing current
 code or settings against its fingerprint.
-Startup prepares private build and generation checkouts once, then uses Git
+The first task prepares each private build or generation checkout, then uses Git
 reset/clean and patch application for each candidate. The seed stays read-only. The
 evaluation node stages the original checksum readers and measurement harness
 separately from the candidate checkout. No host Chipyard

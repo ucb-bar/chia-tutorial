@@ -118,16 +118,13 @@ def test_cache_eviction_reexecutes_the_original_task(monkeypatch):
     assert calls == [(1, "elf")]
 
 
-@pytest.mark.parametrize("generation_only", [False, True])
-def test_workers_restore_bypass_state_without_skydiscover(tmp_path, generation_only):
+@pytest.mark.parametrize("role", ["worker", "verification"])
+def test_workers_restore_bypass_state_without_skydiscover(tmp_path, role):
     from ray import cloudpickle
     import os
     import subprocess
     import sys
     from chia_dma import runtime
-    run = tmp_path / "run"
-    runtime.render(load(), run, tmp_path / "seed")
-    package = run / "deployment/generation-python/chia_dma"
     state = tmp_path / "provider.pkl"
     state.write_bytes(cloudpickle.dumps(runtime.cache_provider("build")))
     code = """
@@ -143,16 +140,14 @@ class NoSkyDiscover(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoSkyDiscover())
 from ray import cloudpickle
 import chia_dma.agent
-if sys.argv[2] == "generation":
-    assert importlib.util.find_spec("chia_dma.nodes") is None
-else:
-    import chia_dma.nodes
-    import chia_dma.correctness
+import chia_dma.nodes
+# Only the verification container mounts private/.
+assert (importlib.util.find_spec("correctness") is not None) == (sys.argv[2] == "verification")
 provider = cloudpickle.loads(open(sys.argv[1], "rb").read())
 assert callable(provider) and provider.__name__
 assert "skydiscover" not in sys.modules
 """
-    source = str(package.parent if generation_only else runtime.ROOT)
-    role = "generation" if generation_only else "evaluation"
+    paths = [str(runtime.ROOT)] + ([str(runtime.ROOT / "private")] if role == "verification" else [])
     subprocess.run([sys.executable, "-c", code, str(state), role], check=True, cwd=tmp_path,
-                   env={**os.environ, "PYTHONPATH": source}, capture_output=True, text=True)
+                   env={**os.environ, "PYTHONPATH": os.pathsep.join(paths)},
+                   capture_output=True, text=True)

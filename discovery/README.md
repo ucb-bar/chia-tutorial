@@ -34,11 +34,11 @@ and candidate patches without importing SkyDiscover on workers.
 
 Edit [cluster.yaml](cluster.yaml) for native CHIA placement, containers, and four
 participant-facing knobs: `tutorial.agent.model`, `tutorial.agent.effort`,
-`tutorial.search.iterations`, and `tutorial.search.max_in_flight`. Credentials,
-retries, dependency pins, build policy, and fixed search settings live in
-[defaults.py](chia_dma/defaults.py). The tutorial uses Antigravity and the login
-created by `setup.md`. `prepare` renders `deployment/cluster.yaml`; pass that
-native deployment to `chia up/down`.
+`tutorial.search.iterations`, and `tutorial.search.max_in_flight`. Retry policy,
+build policy, and fixed search settings live in [defaults.py](chia_dma/defaults.py);
+dependency pins are in `load-env.sh`. The tutorial uses Antigravity and the login
+created by `setup.md`. Pass `cluster.yaml` directly to `chia up/down`; jobs
+upload the loop code with `--working-dir .`.
 
 **Checkpoint selection is a CLI option, not a YAML setting.** `resume --run NAME`
 loads the run's latest checkpoint. To continue from an older checkpoint, use
@@ -75,9 +75,11 @@ names are passed directly to native CHIA/SSH, as in the gem5 tutorial. SSH/DNS
 and internal VPC connectivity must work between them. If you changed `WORKER_REGIONS`
 during setup, update simulation `compatible_ips` and `num_workers` to match the
 existing hosts.
-No shared filesystem is required: native CHIA `file_mounts` synchronize Python
-packages to each host, and Ray carries simulator/ELF bytes and DRAM settings.
-The seed, agent credentials, SQL, and history stay on `chia-dev`.
+No shared filesystem is required: `chia job submit --working-dir .` uploads the
+loop code to every worker, and Ray carries simulator/ELF bytes and DRAM settings.
+`experiments/` (via `.gitignore`) and the hidden correctness tests in `private/`
+(via `.rayignore`) are never uploaded; only the verification container mounts
+`private/`. The seed, agent credentials, SQL, and history stay on `chia-dev`.
 
 Load the environment in each new terminal. It activates the `chia_env` that
 `setup_gcp.sh` created (CHIA is already installed there) and adds SkyDiscover
@@ -115,43 +117,45 @@ generation `num_workers` sets the number of generation containers, each with its
 own writable `/home/ray/workspace` checkout initialized from the read-only seed.
 Hardware builds, software builds, and simulations have independent limits.
 Hardware compilation uses the head CPU count; software has six parallel build
-slots. Each existing worker advertises the head CPU count in simulation slots
-(the setup VMs have matching CPU counts). Ray assigns the
+slots. Each simulation worker advertises 32 simulation slots, matching the setup
+VMs, and starts Ray with its local CPU count. Ray assigns the
 six simulations across the five workers; candidates can overlap up to the search
 limit. The JVM heap is fixed at 32 GiB.
 
 ```sh
 RUN=run-001
 RUN_DIR="$PWD/experiments/$RUN"
-CLUSTER="$RUN_DIR/deployment/cluster.yaml"
+CLUSTER="$PWD/cluster.yaml"
 JOB="$RUN-$(date +%s)"
 set -o pipefail
 
 python loop.py prepare --run "$RUN"
 chia up "$CLUSTER" -y 2>&1 | tee -a "$RUN_DIR/cluster-up.log"
-chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait -- \
+chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait --working-dir . -- \
   python -u "$PWD/loop.py" run --run "$RUN"
 chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 ```
 
+When upgrading from a generated deployment, stop the old job and tear down its
+cluster using the original `experiments/RUN/deployment/cluster.yaml` before
+starting the static cluster.
+
 `prepare` launches the CHIA build image, applies the bundled patch, and
 preserves a complete read-only source seed, including Git and submodule metadata. Its identity includes the image and
 patch, preparation-script, and C test hashes. Repeated preparation reuses that seed; checkpoint restores
-use the run's recorded seed. Startup prepares private build and generation
-checkouts inside their respective containers from the preserved repositories,
+use the run's recorded seed. The first task on each build and generation worker
+creates a private checkout inside its container from the preserved repositories,
 then reuses them with Git reset/clean before applying each patch. Generation
 checkouts are transient: patches and transcripts are saved to SQL before a
 generation task returns, and a replacement container reconstructs its checkout
 from the seed and selected parent patch. The original development
 checkout is never read or modified. `chia up` pulls the worker images.
-The absolute entrypoint uses the head's local checkout; omit `--working-dir` to
-avoid uploading experiment artifacts. Head/worker imports come from native YAML.
-`--chia-cluster` selects the correct job server from the rendered YAML, including
-for a live fork.
+The absolute entrypoint uses the head's local checkout; `--working-dir .` gives
+workers the same loop code. `--chia-cluster` selects the job server.
 
-Antigravity comes from its CHIA image. The login from `setup.md` is
-copied from a read-only mount into a private worker home. Redeploy the generation
-containers to refresh an expired login after authenticating again.
+Antigravity comes from its CHIA image. Each agent container copies the `setup.md`
+login from `~/.gemini` at startup, so agent sessions never write to the host copy.
+After re-authenticating on the host, restart the cluster to pick up the new login.
 
 ## Stop and resume
 
@@ -169,11 +173,10 @@ Use `chia job list --chia-cluster "$CLUSTER"` to recover a job ID from another
 terminal. Wait for the stop command to finish before teardown. Saving its logs
 retains them after the job server stops.
 
-Use the deployment YAML that actually started those workers. Keep it until
-teardown; do not regenerate it with changed ports/providers first. A completed
-driver also leaves workers running until `chia down`. Teardown retains experiment
-files, SQL history, checkpoints, and the preserved seed. Other live runs should
-use their own deployment YAML and distinct names/ports.
+Tear down with the same `cluster.yaml` that started the workers; do not change its
+ports or hosts first. A completed driver also leaves workers running until
+`chia down`. Teardown retains experiment files, SQL history, checkpoints, and the
+preserved seed.
 
 To continue the latest state later, run `source load-env.sh` on the host and set
 `RUN`, `RUN_DIR`, and `CLUSTER` as above. Each submission needs a new
@@ -183,7 +186,7 @@ job ID; the experiment run name stays the same:
 python loop.py prepare --run "$RUN"
 chia up "$CLUSTER" -y
 JOB="$RUN-$(date +%s)"
-chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait -- \
+chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait --working-dir . -- \
   python -u "$PWD/loop.py" resume --run "$RUN"
 chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 ```
@@ -294,12 +297,12 @@ source load-env.sh
 
 RUN=tutorial
 RUN_DIR="$PWD/experiments/$RUN"
-CLUSTER="$RUN_DIR/deployment/cluster.yaml"
+CLUSTER="$PWD/cluster.yaml"
 python loop.py status --run "$RUN"
 python loop.py prepare --run "$RUN"
 chia up "$CLUSTER" -y
 JOB="$RUN-$(date +%s)"
-chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait -- \
+chia job submit --chia-cluster "$CLUSTER" --submission-id "$JOB" --no-wait --working-dir . -- \
   python -u "$PWD/loop.py" resume --run "$RUN"
 chia job logs --chia-cluster "$CLUSTER" "$JOB" --follow
 ```
@@ -314,9 +317,9 @@ resume job, which loads the saved population and recovers unfinished SQL work.
 Completed proposals are retained; unfinished evaluations may run again.
 
 The same run name and default ports work on each attendee's separate machine.
-If switching runs on one machine, tear down the previous cluster with its
-original deployment YAML first. Only simultaneous clusters on the same machine
-need separate Ray/dashboard ports and matching head/worker connection settings.
+One cluster per user runs on a machine; the cluster is not tied to a run name,
+so runs and forks using the same baseline can reuse it. Switching to a run with
+a different baseline requires `chia down` and `chia up` to recreate worker checkouts.
 See [INTEGRATION.md](INTEGRATION.md#restore-contract-and-compatibility) for the
 saved-state contract.
 
@@ -373,11 +376,10 @@ seconds. It summarizes completed calls by function rather than listing candidate
 scores. Summed execution times can exceed elapsed round time because tasks run
 in parallel, and enclosing local spans include their child tasks.
 
-The configured Ray dashboard is at `http://127.0.0.1:8287` (branch example:
-`8288`). Worker Ray logs are under `/tmp/ray/session_latest/logs` **inside each
-container**; use `docker ps` to find its rendered name, then `docker exec` to
+The configured Ray dashboard is at `http://127.0.0.1:8287`. Worker Ray logs are under `/tmp/ray/session_latest/logs` **inside each
+container**; use `docker ps` to find its name (`dma-ROLE`), then `docker exec` to
 inspect those files. Head Ray logs are on the host under
-`/tmp/ray/dma-$RUN/session_latest/logs`.
+`/tmp/ray/dma/session_latest/logs`.
 `cluster-up.log` captures native deployment output when started with the command
 above. Generation response/transcript data lives in SQL, not a separate log file.
 
@@ -446,9 +448,9 @@ Each generation resets its entire writable checkout to the selected parent.
 There is no edit allowlist: additions, deletions, renames, executable files,
 binaries, and SoC/build-file changes are recorded as changes relative to the
 immutable seed. Restoring the parent clears files left by the previous generation.
-BashTool runs in that generation container. The evaluator implementation and
-seed are mounted read-only; SQL/history and other candidate workspaces are not
-mounted there. Native CHIA uses trusted agents on a shared host network; this
+BashTool runs in that generation container. Seeds are mounted read-only; hidden
+correctness code is mounted only into verification, and SQL/history and other
+candidate workspaces are not mounted there. Native CHIA uses trusted agents on a shared host network; this
 filesystem separation is not a sandbox for hostile native code or Ray clients.
 
 The hardware build and six `RiscvBuildNode.build_program` calls are submitted
@@ -513,8 +515,8 @@ so a candidate cannot distinguish them using a public seed-zero or validation-mo
 branch. Buffer reporting occurs after the timed interval. The original seed-zero
 checksums remain available for the standalone native baseline audit.
 
-The reference implementation and evaluator modules are absent from the generation
-container's Python mount. Private seeds and observations stay on the verification
+The hidden correctness module and reference implementation are excluded from the
+uploaded code and mounted only into verification. Private seeds and observations stay on the verification
 node, except for the binaries sent to the execution workers. Only pass/fail and
 anonymous test runtimes return from private evaluation. Any correctness failure gives the
 proposal zero fitness, prevents population admission, counts against the proposal
@@ -585,8 +587,8 @@ requirements, and validation evidence.
 | `chia_dma/config_loader.py` | Load YAML, resolve paths, set serial checkout slots, and identify new source seeds. |
 | `chia_dma/defaults.py` | Fixed settings, source paths, and configuration declarations. |
 | `chia_dma/observations.py` | Bulk observation transfer, host hashing, and temporary-file cleanup. |
-| `chia_dma/correctness.py` | Private runtime input generation, independent output reference, and correctness gate. |
-| `chia_dma/runtime.py` | Preserve inputs, render deployment, attach CHIA cache/profiler. |
+| `private/correctness.py` | Hidden correctness tests: private runtime inputs, independent output reference, and correctness gate. Mounted only into the verification container. |
+| `chia_dma/runtime.py` | Preserve the seed, attach CHIA cache/profiler. |
 | `chia_dma/profiling.py` | Native score metadata and best/candidate views of the collected profile. |
 | `chia_dma/agent.py` | Initialize the selected parent, invoke a native CLI agent with BashTool, and save its proposal. |
 | `chia_dma/search.py` | SkyDiscover adapters that hand selected parents to the agent (head only). |
@@ -601,7 +603,7 @@ requirements, and validation evidence.
 | `tests/test_timing.py` | Native simulation timeout, interruption cleanup, and elapsed-time reporting. |
 | `tests/test_controller_integration.py` | Controller concurrency, cache/profiler, and recovery integration. |
 | `tests/test_profiling.py` | Paired native score events across resumed jobs. |
-| `tests/test_native_cluster.py` | Real native worker placement, mount boundaries, staging, and optional provider checks. |
+| `tests/test_native_cluster.py` | Live-container checks, currently skipped pending migration to static configuration and working-directory uploads. |
 | `tests/native_fixture.py` | Temporary localhost SSH fixture for native cluster tests. |
 | `tests/test_preservation.py` | Immutable seed reuse, candidate restoration, and archive relocation. |
 | `tests/test_portable.py` | Small archive round trips, complete proposal history, seed reconstruction, and baseline mismatch detection. |

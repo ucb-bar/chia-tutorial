@@ -27,7 +27,7 @@ repository's `discovery/` directory or the root of a copied tutorial folder.
   `prepare` the bundled baseline inside the build image, native `chia up`,
   then `chia job submit` with the tutorial entrypoint. Routine commands run on the host.
 - [Stop and resume](README.md#stop-and-resume): use `chia job stop` for the submitted
-  job, then `chia down` with the original rendered deployment YAML. Ctrl-C while
+  job, then `chia down` with the same `cluster.yaml`. Ctrl-C while
   following logs only detaches the viewer. Submit a new job ID when resuming.
   `resume --run NAME` reads `latest.json`; increase the YAML proposal total to
   extend the search.
@@ -35,9 +35,9 @@ repository's `discovery/` directory or the root of a copied tutorial folder.
   `state.json` envelopes, then `fork --checkpoint NAME --new-run OTHER` or
   `fork --candidate ID --new-run OTHER`. No checkpoint selector lives in YAML.
 - [Restore the tutorial archive](README.md#restore-the-tutorial-archive): extract
-  the supplied code/state/seed archive, `source load-env.sh`,
-  then `prepare`, `chia up`, and submit a `resume` job. Attendees use their own
-  provider credentials; no Git checkout, rsync, fork, or metadata edits are needed.
+  the supplied run-state archive into a compatible tutorial checkout, `source load-env.sh`,
+  then `prepare`, `chia up`, and submit a `resume` job. Preparation reconstructs
+  the seed from its recipe. Attendees use their own provider credentials.
 - [Inspect logs and metrics](README.md#logs-and-consolidated-metrics): `chia job logs`,
   raw candidate logs, native CHIA profiling, and read-only consolidated SQL queries.
 
@@ -55,8 +55,10 @@ Python 3.10.19, Git, Bash, Docker, SSH/Docker access, state storage, and credent
 files. The existing `chia-dev` head runs generation/build/verification containers;
 one simulation container runs on each of the five pre-provisioned
 `chia-worker-N` VMs. The configuration describes existing hosts only.
-Native `file_mounts` synchronize Python packages to each host; simulation
-artifacts and inputs move through Ray, without shared bind paths.
+`chia job submit --working-dir .` uploads the loop code to each worker, excluding
+`experiments/` (`.gitignore`) and `private/` (`.rayignore`); simulation
+artifacts and inputs move through Ray. Only the verification container mounts
+`private/`, and build/generation mount the preserved seeds read-only.
 Worker names pass directly to CHIA/SSH; this tutorial performs no cloud inventory lookup.
 
 | Location | Tools and integration |
@@ -65,11 +67,11 @@ Worker names pass directly to CHIA/SSH; this tutorial performs no cloud inventor
 | Build: CHIA chisel-build | Image Java/sbt/Verilator/RISC-V/C++ tools, Make, and dependency caches. Ray uses the image's base Python 3.10.19 to match the head exactly. |
 | Software: CHIA riscv-cross | `RiscvBuildNode.build_program` receives inputs and builds each ELF in an isolated task directory; six slots permit parallel compilation. |
 | Simulation: CHIA verilator-run | Image Python/Ray, spike-dasm, and runtime support; simulator/shared libraries arrive in the build artifact. |
-| Generation: CHIA Antigravity | Published CLI with the setup.md login copied into a private worker home. |
+| Generation: CHIA Antigravity | Published CLI with its own copy of the setup.md login from `~/.gemini`. |
 | Verification: CHIA verilator-run | Private reference, parsing, and scoring; private RTL tasks run on simulation workers alongside public tasks. |
 
-Workers use the CHIA installed in each image; only `chia_dma` is synchronized and
-mounted read-only. Worker modules import no SkyDiscover. No host environment,
+Workers use the CHIA installed in each image; Ray delivers loop code through the
+job's working directory. Worker modules import no SkyDiscover. No host environment,
 Conda tools, agent executable, sbt cache, or JVM is mounted as a dependency.
 Builds use the image's dependency caches and explicit image C++ compiler path.
 There is no derived image, host build-tool installation, job-level import
@@ -78,9 +80,10 @@ owns worker import environments. No host agent CLI is invoked.
 
 The tutorial-facing `cluster.yaml` contains native infrastructure and four loop
 knobs: model, effort, total iterations, and concurrent candidate rounds. Python
-`defaults.py` supplies credential paths, retries, fixed search
+`defaults.py` supplies retries, fixed search
 policy, and build/runtime defaults. Native cache/bypass settings remain in YAML.
-Host CPU affinity supplies hardware compilation jobs and simulation slots;
+Host CPU affinity supplies hardware compilation jobs; simulation workers advertise
+32 slots each, matching the setup VMs, and use their local CPU counts for Ray;
 software has six native RISC-V build slots. Build heap settings are 32 GiB.
 [base/chipyard.patch](base/chipyard.patch) carries DMA hardware/configuration,
 observer, and DMA/HTIF runtime. The six C tests come from `base/memory-tests/`. `base/prepare.sh` runs in
@@ -91,9 +94,11 @@ name, patch/script hashes, and C build-input hashes
 identify new seeds; they are not a resume compatibility gate. No host Chipyard source is read.
 Builds reuse a private `/home/ray/dma-build` Git checkout; generation reuses a
 private container-local `/home/ray/workspace` checkout and reads the preserved
-baseline at `/seed`. Native CHIA `num_workers` creates the generation containers;
-each initializes its own checkout during worker setup without a host workspace mount.
-Startup copies the preserved repositories and Git metadata once. Each
+seed from its read-only mount. Native CHIA `num_workers` creates the generation
+containers; each initializes its own checkout on first use without a host workspace mount.
+Runs and forks with the same baseline can reuse these containers. A different
+baseline requires cluster teardown and restart to recreate their checkouts.
+The first task copies the preserved repositories and Git metadata once. Each
 candidate starts with Git reset/clean to the seed commits before its patch is applied. Candidate source changes are unrestricted. Git captures a
 single binary-capable patch across the root and initialized submodule repositories;
 additions, deletions, symlinks, and executable bits round-trip through SQL and
@@ -103,7 +108,7 @@ the original checksum, measurement runtime, and build harness as source bytes to
 Parsing and scoring require a dedicated verification worker resource. Each generation worker has one serial scheduling slot.
 
 Native BashTool uses public node affinity to stay inside its caller's generation
-worker. CLI credentials/scratch live in a private temporary home. Ordinary host
+worker. Each container copies the setup.md login from a read-only `~/.gemini` mount at startup. Ordinary host
 networking follows the CHIA examples' trusted-agent model; no private network,
 firewall rules, private Ray cluster, or compatibility patches are installed.
 
@@ -163,7 +168,8 @@ a temporary-directory context removes the transfer files afterwards.
 Only pass/fail and anonymous runtimes escape the private gate. Failure yields validity/fitness zero,
 prevents admission, consumes the proposal, and adds generic next-attempt feedback.
 Private seeds and case outputs are never included in generation requests. The
-private evaluator/reference files are excluded from the generation code mount.
+private correctness/reference module is excluded from the uploaded working directory
+and mounted only into the verification container.
 This uses the native trusted Ray model, not a security boundary against arbitrary
 malicious Ray clients or a compromised simulator executable.
 
@@ -219,7 +225,6 @@ Paths below are relative to `experiments/NAME/` beside `loop.py`, except for the
 | `latest.json` | Name of the latest committed checkpoint, used by resume. |
 | `checkpoints/SEQUENCE-SUFFIX/state.json` | Admitted candidate IDs and generated/evaluated flags for SQL requests at that boundary. |
 | `checkpoints/SEQUENCE-SUFFIX/population/` | SkyDiscover's native program and population checkpoint files. |
-| `deployment/cluster.yaml` | Rendered native CHIA configuration with absolute paths. Regenerate after relocation; retain the old copy until its cluster is down. |
 | `cache/` | CHIA's evictable expensive-task outputs. Not the authoritative proposal or population archive. |
 | `artifacts/ID/BENCHMARK.log` | Collected DMA-mode simulator output. |
 | `artifacts/profile/ChiaProfileCollector.log` | Complete native CHIA JSONL task events and score metadata, appended across resumes. |
@@ -282,12 +287,12 @@ If no local seed is present, same-host forks can use the original shared seed.
 Forks reconstruct a missing or different local seed from
 their recorded recipe and verify its baseline commits. Reconstructed seeds are
 cached by recipe so they can coexist with seeds from a different `:latest` image.
-No metadata edits are needed after extracting the archive. Deployment uses local
-paths and current settings; no overall code/configuration fingerprint is enforced.
+No metadata edits are needed after extracting the archive. The static cluster
+configuration uses local paths and current settings; no overall code/configuration fingerprint is enforced.
 
 Historical forks remain optional: `fork` copies the selected native checkpoint,
 filtered SQL, retaining a reference to the source seed. Raw
-logs, task caches, deployments, and workspaces remain in the source run.
+logs, task caches, and workspaces remain in the source run.
 Every fork saves the seed recipe in `run.json`; archive only that fork's
 directory, without `experiments/seeds/`.
 

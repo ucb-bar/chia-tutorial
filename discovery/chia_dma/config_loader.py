@@ -28,7 +28,7 @@ def digest(value):
 def load(path=ROOT / "cluster.yaml"):
     path = Path(path).resolve()
     cpus = str(len(os.sched_getaffinity(0)))
-    text = path.read_text().replace("${CPUS}", cpus)
+    text = path.read_text()
     document = yaml.safe_load(os.path.expandvars(text))
     controls = document.pop("tutorial")
     configuration = copy.deepcopy(DEFAULTS)
@@ -45,9 +45,6 @@ def load(path=ROOT / "cluster.yaml"):
         for pattern in BASE_FILE_PATTERNS
         for path in sorted((ROOT / "base").glob(pattern))
     }
-    configuration["agent"]["credentials"] = str(
-        (ROOT / os.path.expandvars(configuration["agent"]["credentials"])).resolve()
-    )
     # Each mutable checkout needs one task at a time; preserve extra resources.
     workers = configuration["cluster"]["available_node_types"]
     for role, resource in (("generation", "generation"), ("build", "chipyard")):
