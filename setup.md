@@ -45,10 +45,10 @@ If the script exits immediately, having only printed "Using gcloud signed in as 
    2. Choose **Continue with Google Cloud**.
    3. Open the link provided, and select the account provided to you in the email you received.
    4. Copy the code back into the Antigravity CLI and press Enter.
-   5. Choose **Pay As You Go – Pay only for the tokens you use, billed through Gemini platform.**
+   5. If asked, choose **Pay As You Go – Pay only for the tokens you use, billed through Gemini platform.**
    6. Enter the Project Name from the email you received as the Google Cloud Project ID
    7. Select **global**
-   8. Select **Agent Platform - Pay as you go...**
+   8. If asked now, select **Agent Platform - Pay as you go...**
    9. Choose any color scheme option (you won't be using AGY directly so it does not matter).
    10. Click **Done** on the terms of service page.
    11. Click **Yes, I trust this folder**
