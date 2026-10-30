@@ -1,0 +1,697 @@
+diff --git a/generators/chipyard/src/main/scala/config/DMAConfigs.scala b/generators/chipyard/src/main/scala/config/DMAConfigs.scala
+new file mode 100644
+index 0000000..f394c84
+--- /dev/null
++++ b/generators/chipyard/src/main/scala/config/DMAConfigs.scala
+@@ -0,0 +1,14 @@
++package chipyard
++
++import org.chipsalliance.cde.config.Config
++
++class DMARocketConfig extends Config(
++  new chipyard.dma.WithRoCCDMA ++
++  new freechips.rocketchip.rocket.WithNHugeCores(1) ++
++  new chipyard.config.AbstractConfig)
++
++// Same core and memory hierarchy; test-only stalls on accelerator A/D channels.
++class DMAStallRocketConfig extends Config(
++  new chipyard.dma.WithRoCCDMA(0.5) ++
++  new freechips.rocketchip.rocket.WithNHugeCores(1) ++
++  new chipyard.config.AbstractConfig)
+diff --git a/generators/chipyard/src/main/scala/dma/DMAController.scala b/generators/chipyard/src/main/scala/dma/DMAController.scala
+new file mode 100644
+index 0000000..0abf172
+--- /dev/null
++++ b/generators/chipyard/src/main/scala/dma/DMAController.scala
+@@ -0,0 +1,129 @@
++package chipyard.dma
++
++import chisel3._
++import chisel3.util._
++
++class DMACommand extends Bundle {
++  val funct = UInt(7.W)
++  val source = UInt(64.W)
++  val destination = UInt(64.W)
++  val rd = UInt(5.W)
++  val xd = Bool()
++  val xs1 = Bool()
++  val xs2 = Bool()
++}
++class DMAResponse extends Bundle {
++  val rd = UInt(5.W)
++  val status = UInt(64.W)
++}
++class DMARequest extends Bundle {
++  val address = UInt(64.W)
++  val write = Bool()
++  val data = UInt(64.W)
++}
++class DMAMemoryResponse extends Bundle {
++  val data = UInt(64.W)
++  val error = Bool()
++}
++
++/** Command ABI and one-unit datapath. Memory adapter owns TileLink encoding. */
++class DMAController(base: BigInt, size: BigInt) extends Module {
++  require(base >= 0 && size > 0 && base + size < (BigInt(1) << 64))
++  val io = IO(new Bundle {
++    val cmd = Flipped(Decoupled(new DMACommand))
++    val resp = Decoupled(new DMAResponse)
++    val request = Decoupled(new DMARequest)
++    val reply = Flipped(Decoupled(new DMAMemoryResponse))
++    val busy = Output(Bool())
++  })
++  val idle :: read :: readWait :: write :: writeWait :: complete :: Nil = Enum(6)
++  val state = RegInit(idle)
++  val configured = RegInit(false.B)
++  val srcConfig = Reg(UInt(64.W))
++  val dstConfig = Reg(UInt(64.W))
++  val src = Reg(UInt(64.W))
++  val dst = Reg(UInt(64.W))
++  val left = Reg(UInt(64.W))
++  val buffer = Reg(UInt(64.W))
++  val rd = Reg(UInt(5.W))
++  val status = Reg(UInt(64.W))
++  val respond = Reg(Bool())
++
++  io.cmd.ready := state === idle
++  io.busy := state =/= idle
++  io.resp.valid := state === complete && respond
++  io.resp.bits.rd := rd
++  io.resp.bits.status := status
++  io.request.valid := state === read || state === write
++  io.request.bits.address := Mux(state === write, dst, src)
++  io.request.bits.write := state === write
++  io.request.bits.data := buffer
++  io.reply.ready := state === readWait || state === writeWait
++
++  // Widened sums reject overflow before narrowing to the physical TL address.
++  val n = io.cmd.bits.source
++  val srcEnd = srcConfig +& n
++  val dstEnd = dstConfig +& n
++  val validRange = srcConfig >= base.U && dstConfig >= base.U &&
++    srcEnd <= (base + size).U && dstEnd <= (base + size).U
++  val disjoint = srcEnd <= dstConfig || dstEnd <= srcConfig
++  val aligned = (srcConfig(2,0) | dstConfig(2,0) | n(2,0)) === 0.U
++
++  when(io.cmd.fire) {
++    rd := io.cmd.bits.rd
++    respond := io.cmd.bits.xd
++    status := 1.U
++    state := complete
++    when(io.cmd.bits.funct === 0.U && io.cmd.bits.xd && io.cmd.bits.xs1 && io.cmd.bits.xs2) {
++      srcConfig := io.cmd.bits.source
++      dstConfig := io.cmd.bits.destination
++      configured := true.B
++      status := 0.U
++    }
++    when(io.cmd.bits.funct === 1.U && io.cmd.bits.xd && io.cmd.bits.xs1 && !io.cmd.bits.xs2) {
++      status := 2.U
++      when(n === 0.U) { status := 0.U }
++      .elsewhen(configured && validRange && aligned && disjoint) {
++        src := srcConfig
++        dst := dstConfig
++        left := n
++        status := 0.U
++        state := read
++      }
++    }
++  }
++  when(io.request.fire) {
++    assert(left >= 8.U && left(2,0) === 0.U)
++    state := Mux(state === read, readWait, writeWait)
++  }
++  when(io.reply.fire) {
++    when(io.reply.bits.error) {
++      // Even a denied write can leave earlier units committed: never CPU-retry.
++      status := 3.U
++      state := complete
++    }.elsewhen(state === readWait) {
++      buffer := io.reply.bits.data
++      state := write
++    }.otherwise {
++      when(left === 8.U) { state := complete }
++      .otherwise {
++        src := src + 8.U
++        dst := dst + 8.U
++        left := left - 8.U
++        state := read
++      }
++    }
++  }
++  when(state === complete && (!respond || io.resp.fire)) { state := idle }
++
++  // A response cannot be consumed before a corresponding request; only one
++  // memory transaction is outstanding, including when either channel stalls.
++  val outstanding = RegInit(false.B)
++  when(io.request.fire) { assert(!outstanding); outstanding := true.B }
++  when(io.reply.fire) { assert(outstanding); outstanding := false.B }
++  when(state === complete) { assert(!outstanding) }
++  assert(!(io.request.valid && io.reply.ready))
++  val stalled = RegNext(io.request.valid && !io.request.ready, false.B)
++  val previous = RegNext(io.request.bits.asUInt)
++  when(stalled) { assert(io.request.valid && io.request.bits.asUInt === previous) }
++}
+diff --git a/generators/chipyard/src/main/scala/dma/RoCCDMA.scala b/generators/chipyard/src/main/scala/dma/RoCCDMA.scala
+new file mode 100644
+index 0000000..9ff18dd
+--- /dev/null
++++ b/generators/chipyard/src/main/scala/dma/RoCCDMA.scala
+@@ -0,0 +1,79 @@
++package chipyard.dma
++
++import chisel3._
++import chisel3.util._
++import org.chipsalliance.cde.config.{Config, Parameters}
++import org.chipsalliance.diplomacy.lazymodule.LazyModule
++import freechips.rocketchip.diplomacy.IdRange
++import freechips.rocketchip.subsystem.ExtMem
++import freechips.rocketchip.tile._
++import freechips.rocketchip.tilelink._
++
++class RoCCDMA(val delay: Double = 0.0)(implicit p: Parameters) extends LazyRoCC(OpcodeSet.custom0) {
++  val client = TLClientNode(Seq(TLMasterPortParameters.v1(Seq(
++    TLMasterParameters.v1(name = "rocc-dma", sourceId = IdRange(0, 1))))))
++  // Test-only random A/D delays use an existing adapter; no interconnect edits.
++  if (delay > 0) tlNode := TLDelayer(delay) := client else tlNode := client
++  override lazy val module = new RoCCDMAModule(this)
++}
++class RoCCDMAModule(outer: RoCCDMA)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) {
++  require(io.cmd.bits.rs1.getWidth == 64, "DMA ABI requires RV64")
++  val region = p(ExtMem).get.master
++  val controller = Module(new DMAController(region.base, region.size))
++  controller.io.cmd.valid := io.cmd.valid
++  io.cmd.ready := controller.io.cmd.ready
++  controller.io.cmd.bits.funct := io.cmd.bits.inst.funct
++  controller.io.cmd.bits.source := io.cmd.bits.rs1
++  controller.io.cmd.bits.destination := io.cmd.bits.rs2
++  controller.io.cmd.bits.rd := io.cmd.bits.inst.rd
++  controller.io.cmd.bits.xd := io.cmd.bits.inst.xd
++  controller.io.cmd.bits.xs1 := io.cmd.bits.inst.xs1
++  controller.io.cmd.bits.xs2 := io.cmd.bits.inst.xs2
++  io.resp.valid := controller.io.resp.valid
++  controller.io.resp.ready := io.resp.ready
++  io.resp.bits.rd := controller.io.resp.bits.rd
++  io.resp.bits.data := controller.io.resp.bits.status
++  io.busy := controller.io.busy
++  io.interrupt := false.B
++  // Reserved for a future L1 policy; version 1 uses only coherent TileLink.
++  io.mem.req.valid := false.B
++  io.mem.s1_kill := false.B
++  io.mem.s2_kill := false.B
++  io.fpu_req.valid := false.B
++  io.fpu_resp.ready := true.B
++
++  val (mem, edge) = outer.client.out.head
++  val beatBytes = edge.bundle.dataBits / 8
++  require(beatBytes >= 8 && isPow2(beatBytes))
++  val request = controller.io.request
++  val address = request.bits.address(edge.bundle.addressBits - 1, 0)
++  // TileLink sub-beat reads return data in the addressed byte lanes.
++  def shift(a: UInt): UInt = if (beatBytes == 8) 0.U else Cat(a(log2Ceil(beatBytes)-1,3), 0.U(6.W))
++  val readShift = Reg(UInt(log2Ceil(beatBytes * 8).W))
++  val get = edge.Get(0.U, address, 3.U)
++  val put = edge.Put(0.U, address, 3.U, request.bits.data << shift(address))
++  mem.a.valid := request.valid
++  mem.a.bits := Mux(request.bits.write, put._2, get._2)
++  request.ready := mem.a.ready
++  when(mem.a.fire) {
++    assert(Mux(request.bits.write, put._1, get._1))
++    readShift := shift(address)
++  }
++  controller.io.reply.valid := mem.d.valid
++  mem.d.ready := controller.io.reply.ready
++  controller.io.reply.bits.data := mem.d.bits.data >> readShift
++  controller.io.reply.bits.error := mem.d.bits.denied || mem.d.bits.corrupt
++  when(mem.d.fire) {
++    assert(mem.d.bits.source === 0.U)
++    assert(mem.d.bits.size === 3.U)
++    assert(mem.d.bits.opcode === TLMessages.AccessAck || mem.d.bits.opcode === TLMessages.AccessAckData)
++  }
++  mem.b.ready := true.B
++  mem.c.valid := false.B
++  mem.c.bits := DontCare
++  mem.e.valid := false.B
++  mem.e.bits := DontCare
++}
++class WithRoCCDMA(delay: Double = 0.0) extends Config((site, here, up) => {
++  case BuildRoCC => up(BuildRoCC) :+ ((p: Parameters) => LazyModule(new RoCCDMA(delay)(p)))
++})
+diff --git a/sims/verilator/Makefile b/sims/verilator/Makefile
+index 2571925..51f1efe 100644
+--- a/sims/verilator/Makefile
++++ b/sims/verilator/Makefile
+@@ -57,6 +57,7 @@ $(sim_files): $(SIM_FILE_REQS) $(ALL_MODS_FILELIST) | $(GEN_COLLATERAL_DIR)
+ # import other necessary rules and variables
+ #########################################################################################
+ include $(base_dir)/common.mk
++include $(base_dir)/software/rocc-dma/sim/Makefrag
+ 
+ #########################################################################################
+ # verilator-specific user-interface variables and commands
+diff --git a/software/rocc-dma/boardsupport.c b/software/rocc-dma/boardsupport.c
+new file mode 100644
+index 0000000..b360565
+--- /dev/null
++++ b/software/rocc-dma/boardsupport.c
+@@ -0,0 +1,71 @@
++/* Baremetal memory-test timing and DMA statistics over HTIF. */
++#include <stdio.h>
++#include "rocc_dma.h"
++
++static uint64_t region_begin, region_end, instruction_begin, instruction_end;
++static uint64_t instructions(void) {
++    uint64_t n;
++    __asm__ volatile ("csrr %0, minstret" : "=r"(n) :: "memory");
++    return n;
++}
++static struct dma_statistics region_before, region_after;
++static int benchmark_result, verification_result;
++static void fence(void) { __asm__ volatile ("fence rw,rw" ::: "memory"); }
++void initialise_board(void) { dma_stats_reset(); }
++void __attribute__((noinline)) start_trigger(void)
++{
++    dma_stats_snapshot(&region_before);
++    /* Cumulative counters can be differenced; extrema need a fresh interval. */
++    dma_stats.min_cycles = dma_stats.max_cycles = 0;
++    fence();
++    region_begin = rocc_dma_cycles();
++    instruction_begin = instructions();
++}
++void __attribute__((noinline)) stop_trigger(void)
++{
++    fence();
++    instruction_end = instructions();
++    region_end = rocc_dma_cycles();
++    dma_stats_snapshot(&region_after);
++    if (region_before.min_cycles && (!dma_stats.min_cycles ||
++        region_before.min_cycles < dma_stats.min_cycles))
++        dma_stats.min_cycles = region_before.min_cycles;
++    if (region_before.max_cycles > dma_stats.max_cycles)
++        dma_stats.max_cycles = region_before.max_cycles;
++}
++int __real_verify_benchmark(int result);
++int __wrap_verify_benchmark(int result)
++{
++    benchmark_result = result;
++    verification_result = __real_verify_benchmark(result);
++    return verification_result;
++}
++int __real_main(int argc, char **argv);
++int __wrap_main(int argc, char **argv)
++{
++    struct dma_statistics total, region;
++    fence();
++    uint64_t begin = rocc_dma_cycles();
++    int result = __real_main(argc, argv);
++    fence();
++    uint64_t end = rocc_dma_cycles();
++    dma_stats_snapshot(&total);
++#define DELTA(f) region.f = region_after.f-region_before.f
++    DELTA(intercepted); DELTA(offloaded); DELTA(fallback); DELTA(bytes);
++    DELTA(cycles); DELTA(setup_cycles); DELTA(errors); DELTA(attempts);
++    DELTA(retry_fallback); DELTA(e2e_cycles);
++#undef DELTA
++    region.min_cycles = region_after.min_cycles;
++    region.max_cycles = region_after.max_cycles;
++    for (unsigned i=0; i<8; i++)
++        region.histogram[i] = region_after.histogram[i]-region_before.histogram[i];
++    /* Reporting and its libc calls are outside all recorded intervals/counts. */
++    printf("MEMORY_METRICS metrics_version=1 result=%d benchmark_result=%d verification_result=%d "
++           "main_cycles=%lu benchmark_cycles=%lu benchmark_instructions=%lu", result, benchmark_result,
++           verification_result, end-begin, region_end-region_begin, instruction_end-instruction_begin);
++    dma_stats_print(&total, "");
++    dma_stats_print(&region, "region_");
++    putchar('\n');
++    fflush(stdout);
++    return result;
++}
+diff --git a/software/rocc-dma/memcpy_wrap.c b/software/rocc-dma/memcpy_wrap.c
+new file mode 100644
+index 0000000..9d7436c
+--- /dev/null
++++ b/software/rocc-dma/memcpy_wrap.c
+@@ -0,0 +1,19 @@
++#include "rocc_dma.h"
++#include <stdio.h>
++#include <stdlib.h>
++void *__real_memcpy(void *, const void *, size_t);
++void *__wrap_memcpy(void *dst, const void *src, size_t n) {
++    dma_stats.intercepted++;
++    if (n >= DMA_THRESHOLD && dma_supported(dst,src,n)) {
++        int result=rocc_dma_copy(dst,src,n);
++        if (result == DMA_OK) return dst;
++        /* Only validation/unsupported errors promise no destination writes. */
++        if (result != DMA_UNSUPPORTED && result != DMA_BAD_COMMAND) {
++            printf("fatal DMA error status=%d\n",result);
++            exit(90);
++        }
++        dma_stats.retry_fallback++;
++    }
++    dma_stats.fallback++;
++    return __real_memcpy(dst,src,n);
++}
+diff --git a/software/rocc-dma/rocc_dma.c b/software/rocc-dma/rocc_dma.c
+new file mode 100644
+index 0000000..d82d64a
+--- /dev/null
++++ b/software/rocc-dma/rocc_dma.c
+@@ -0,0 +1,65 @@
++#include "rocc_dma.h"
++#include <stdio.h>
++struct dma_statistics dma_stats;
++void dma_stats_reset(void) {
++    dma_stats = (struct dma_statistics){0};
++}
++void dma_stats_snapshot(struct dma_statistics *out) {
++    volatile const struct dma_statistics *s = &dma_stats;
++#define COPY(f) out->f = s->f
++    COPY(intercepted); COPY(offloaded); COPY(fallback); COPY(bytes);
++    COPY(cycles); COPY(setup_cycles); COPY(errors); COPY(attempts);
++    COPY(retry_fallback); COPY(e2e_cycles); COPY(min_cycles); COPY(max_cycles);
++#undef COPY
++    for (unsigned i=0; i<8; i++) out->histogram[i] = s->histogram[i];
++}
++void dma_stats_print(const struct dma_statistics *s, const char *p) {
++#define PRINT(key, field) printf(" %s" key "=%lu", p, s->field)
++    PRINT("intercepted",intercepted); PRINT("offloaded",offloaded);
++    PRINT("fallback",fallback); PRINT("bytes",bytes); PRINT("dma_cycles",cycles);
++    PRINT("setup_cycles",setup_cycles); PRINT("errors",errors);
++    PRINT("attempts",attempts); PRINT("retry_fallback",retry_fallback);
++    PRINT("e2e_cycles",e2e_cycles); PRINT("min_cycles",min_cycles); PRINT("max_cycles",max_cycles);
++#undef PRINT
++    for (unsigned i=0; i<8; i++) printf(" %shist%u=%lu",p,i,s->histogram[i]);
++}
++int dma_supported(void *dst, const void *src, size_t n) {
++    uintptr_t d=(uintptr_t)dst, s=(uintptr_t)src;
++    if (!n) return 1;
++    if ((d | s | n) & 7) return 0;
++    /* Subtraction bounds avoid pointer arithmetic and integer overflow. */
++    if (s < DMA_RAM_BASE || s >= DMA_RAM_END || n > DMA_RAM_END-s ||
++        d < DMA_RAM_BASE || d >= DMA_RAM_END || n > DMA_RAM_END-d) return 0;
++    return d >= s ? n <= d-s : n <= s-d;
++}
++int rocc_dma_copy(void *dst, const void *src, size_t n) {
++    uint64_t entered=rocc_dma_cycles();
++    if (!dma_supported(dst, src, n)) return DMA_UNSUPPORTED;
++    if (!n) return DMA_OK;
++    unsigned long status;
++    dma_stats.attempts++;
++    uint64_t begin=rocc_dma_cycles();
++    __asm__ volatile ("fence rw,rw" ::: "memory");
++    __asm__ volatile (".insn r 0x0b, 7, 0, %0, %1, %2"
++                      : "=r"(status) : "r"(src), "r"(dst) : "memory");
++    uint64_t configured=rocc_dma_cycles();
++    if (!status) __asm__ volatile (".insn r 0x0b, 6, 1, %0, %1, x0"
++                      : "=r"(status) : "r"(n) : "memory");
++    /* Fence also waits for the selected Rocket's RoCC busy/pipeline state. */
++    __asm__ volatile ("fence rw,rw" ::: "memory");
++    uint64_t end=rocc_dma_cycles();
++    dma_stats.cycles += end-begin;
++    dma_stats.setup_cycles += configured-begin;
++    uint64_t elapsed=end-entered;
++    dma_stats.e2e_cycles += elapsed;
++    if (!dma_stats.min_cycles || elapsed < dma_stats.min_cycles) dma_stats.min_cycles=elapsed;
++    if (elapsed > dma_stats.max_cycles) dma_stats.max_cycles=elapsed;
++    if (status) dma_stats.errors++;
++    else {
++        dma_stats.offloaded++; dma_stats.bytes += n;
++        unsigned bucket = n<=8 ? 0 : n<=64 ? 1 : n<=256 ? 2 : n<=1024 ? 3 :
++                          n<=4096 ? 4 : n<=16384 ? 5 : n<=65536 ? 6 : 7;
++        dma_stats.histogram[bucket]++;
++    }
++    return (int)status;
++}
+diff --git a/software/rocc-dma/rocc_dma.h b/software/rocc-dma/rocc_dma.h
+new file mode 100644
+index 0000000..8e14c58
+--- /dev/null
++++ b/software/rocc-dma/rocc_dma.h
+@@ -0,0 +1,32 @@
++#ifndef ROCC_DMA_H
++#define ROCC_DMA_H
++#include <stddef.h>
++#include <stdint.h>
++#ifndef DMA_THRESHOLD
++#define DMA_THRESHOLD 64
++#endif
++#ifndef DMA_RAM_BASE
++#define DMA_RAM_BASE UINT64_C(0x80000000)
++#endif
++#ifndef DMA_RAM_END
++#define DMA_RAM_END UINT64_C(0x90000000)
++#endif
++enum { DMA_OK=0, DMA_BAD_COMMAND=1, DMA_UNSUPPORTED=2, DMA_MEMORY_ERROR=3 };
++struct dma_statistics {
++    uint64_t intercepted, offloaded, fallback, bytes, cycles, setup_cycles, errors;
++    uint64_t attempts, retry_fallback, e2e_cycles, min_cycles, max_cycles;
++    /* Upper bounds: 8, 64, 256, 1024, 4096, 16384, 65536, infinity. */
++    uint64_t histogram[8];
++};
++extern struct dma_statistics dma_stats;
++int dma_supported(void *dst, const void *src, size_t length);
++int rocc_dma_copy(void *dst, const void *src, size_t length);
++void dma_stats_reset(void);
++void dma_stats_snapshot(struct dma_statistics *out);
++void dma_stats_print(const struct dma_statistics *s, const char *prefix);
++static inline uint64_t rocc_dma_cycles(void) {
++    uint64_t n;
++    __asm__ volatile ("csrr %0, mcycle" : "=r"(n) :: "memory");
++    return n;
++}
++#endif
+diff --git a/software/rocc-dma/sim/DMAPassiveMonitor.sv b/software/rocc-dma/sim/DMAPassiveMonitor.sv
+new file mode 100644
+index 00000000..5ef855ba
+--- /dev/null
++++ b/software/rocc-dma/sim/DMAPassiveMonitor.sv
+@@ -0,0 +1,149 @@
++// Fixed, simulation-only observer. Inputs only: no ready/valid or datapath drivers.
++// The existing TileLink monitors retain full protocol/mask/stability assertions.
++module DMAPassiveMonitor #(parameter SOURCE_BITS=1) (
++  input clock, reset, busy, cmd_valid, cmd_ready,
++  input [6:0] funct,
++  input xd, xs1, xs2,
++  input [63:0] rs1, rs2,
++  input resp_valid, resp_ready,
++  input [63:0] status,
++  input a_valid, a_ready, d_valid, d_ready,
++  input [2:0] a_opcode, d_opcode,
++  input [3:0] a_size, d_size,
++  input [SOURCE_BITS-1:0] a_source, d_source,
++  input d_denied, d_corrupt
++);
++  localparam SOURCES=1<<SOURCE_BITS;
++  longint unsigned cycle=0, configs=0, copies=0, completed=0, failed=0;
++  longint unsigned busy_cycles=0, idle_cycles=0, busy_transitions=0;
++  longint unsigned reads=0, writes=0, read_bytes=0, write_bytes=0;
++  longint unsigned read_responses=0, write_acks=0, outstanding=0, peak_outstanding=0;
++  longint unsigned outstanding_cycles=0, a_stall=0, d_stall=0, cmd_stall=0, resp_stall=0;
++  longint unsigned read_latency=0, read_min=0, read_max=0;
++  longint unsigned write_latency=0, write_min=0, write_max=0;
++  longint unsigned denied=0, corrupt=0, protocol_errors=0;
++  longint unsigned config_cycle=0, copy_cycle=0, valid_cycle=0;
++  longint unsigned source_address=0, destination_address=0, length=0;
++  longint unsigned before_reads=0, before_writes=0, before_read_bytes=0, before_write_bytes=0;
++  longint unsigned accepted_at[SOURCES];
++  bit active[SOURCES], is_write[SOURCES];
++  logic [3:0] sizes[SOURCES];
++  bit pending=0, copy_pending=0, response_seen=0, was_busy=0;
++  bit trace_events, command_was_pending;
++  longint unsigned latency;
++  initial trace_events=$test$plusargs("dma-trace");
++
++  task automatic violation(input string message);
++    protocol_errors++;
++    $fdisplay(32'h80000002,"DMA_PROTOCOL_FAIL metrics_version=1 cycle=%0d reason=%s",cycle,message);
++    $fatal(1,"DMA passive protocol check failed");
++  endtask
++
++  task automatic accept_command;
++    if (pending) violation("overlapping_RoCC_commands");
++    pending=xd;
++    if (funct==0) begin
++      configs++; config_cycle=cycle;
++      if (xd && xs1 && xs2) begin source_address=rs1; destination_address=rs2; end
++      if (trace_events) $fdisplay(32'h80000002,"DMA_CONFIG metrics_version=1 accept_cycle=%0d src=%0d dst=%0d",cycle,rs1,rs2);
++    end
++    if (funct==1 && xd) begin
++      copies++; copy_pending=1; response_seen=0; copy_cycle=cycle; length=rs1;
++      before_reads=reads; before_writes=writes;
++      before_read_bytes=read_bytes; before_write_bytes=write_bytes;
++    end
++  endtask
++
++  always @(posedge clock) begin
++    if (reset) begin
++      // Board reset defines a fresh observation epoch.
++      cycle=0; configs=0; copies=0; completed=0; failed=0;
++      busy_cycles=0; idle_cycles=0; busy_transitions=0; was_busy=0;
++      reads=0; writes=0; read_bytes=0; write_bytes=0;
++      read_responses=0; write_acks=0; outstanding=0; peak_outstanding=0;
++      outstanding_cycles=0; a_stall=0; d_stall=0; cmd_stall=0; resp_stall=0;
++      read_latency=0; read_min=0; read_max=0; write_latency=0; write_min=0; write_max=0;
++      denied=0; corrupt=0; protocol_errors=0; config_cycle=0;
++      pending=0; copy_pending=0; response_seen=0;
++      foreach (active[i]) active[i]=0;
++    end else begin
++      command_was_pending=pending;
++      cycle++;
++      if (busy) busy_cycles++; else idle_cycles++;
++      if (busy != was_busy) busy_transitions++;
++      was_busy=busy;
++      outstanding_cycles+=outstanding;
++      if (a_valid && !a_ready) a_stall++;
++      if (d_valid && !d_ready) d_stall++;
++      if (cmd_valid && !cmd_ready) cmd_stall++;
++      if (resp_valid && !resp_ready) resp_stall++;
++
++      // With no older command, same-edge traffic and responses belong to this command.
++      if (cmd_valid && cmd_ready && !command_was_pending) accept_command();
++
++      // Count accepted A requests, keyed by TileLink source, before D handling
++      // so a legal zero-latency response can be measured as well.
++      if (a_valid && a_ready) begin
++        if (!copy_pending) violation("memory_request_without_COPY");
++        if (active[a_source]) violation("source_reused_before_response");
++        if (a_opcode!=4 && a_opcode!=0 && a_opcode!=1) violation("unsupported_A_opcode");
++        active[a_source]=1; accepted_at[a_source]=cycle;
++        is_write[a_source]=(a_opcode!=4); sizes[a_source]=a_size;
++        outstanding++;
++        if (outstanding>peak_outstanding) peak_outstanding=outstanding;
++        if (a_opcode==4) begin reads++; read_bytes+=(64'd1<<a_size); end
++        else begin writes++; write_bytes+=(64'd1<<a_size); end
++      end
++      if (d_valid && d_ready) begin
++        if (!active[d_source]) violation("response_without_request");
++        if (sizes[d_source]!=d_size) violation("response_size_mismatch");
++        if (d_opcode != (is_write[d_source] ? 0 : 1)) violation("response_opcode_mismatch");
++        latency=cycle-accepted_at[d_source];
++        if (is_write[d_source]) begin
++          write_acks++; write_latency+=latency;
++          if (write_acks==1 || latency<write_min) write_min=latency;
++          if (latency>write_max) write_max=latency;
++        end else begin
++          read_responses++; read_latency+=latency;
++          if (read_responses==1 || latency<read_min) read_min=latency;
++          if (latency>read_max) read_max=latency;
++        end
++        if (d_denied) denied++;
++        if (d_corrupt) corrupt++;
++        active[d_source]=0; outstanding--;
++      end
++      if (resp_valid) begin
++        if (!pending) violation("RoCC_response_without_command");
++        if (copy_pending && !response_seen) begin
++          if (outstanding) violation("COPY_completed_before_memory_ack");
++          valid_cycle=cycle; response_seen=1;
++        end
++      end
++      if (resp_valid && resp_ready) begin
++        if (copy_pending) begin
++          if (status==0) begin
++            if (read_bytes-before_read_bytes!=length || write_bytes-before_write_bytes!=length)
++              violation("successful_COPY_traffic_length_mismatch");
++            completed++;
++          end else failed++;
++          $fdisplay(32'h80000002,"DMA_COPY metrics_version=1 seq=%0d bytes=%0d src=%0d dst=%0d config_cycle=%0d accept_cycle=%0d valid_cycle=%0d response_cycle=%0d hw_cycles=%0d status=%0d reads=%0d writes=%0d read_bytes=%0d write_bytes=%0d",
++            copies,length,source_address,destination_address,config_cycle,copy_cycle,
++            valid_cycle,cycle,cycle-copy_cycle,status,reads-before_reads,writes-before_writes,
++            read_bytes-before_read_bytes,write_bytes-before_write_bytes);
++          $fflush(32'h80000002);
++        end
++        pending=0; copy_pending=0;
++      end
++      // Retire the previous response before recording its successor's metadata.
++      if (cmd_valid && cmd_ready && command_was_pending) accept_command();
++    end
++  end
++  final begin
++    $fdisplay(32'h80000002,"DMA_HW metrics_version=1 result=%0d cycles=%0d configs=%0d copies=%0d completed=%0d failed=%0d busy_cycles=%0d idle_cycles=%0d busy_transitions=%0d reads=%0d writes=%0d read_bytes=%0d write_bytes=%0d read_responses=%0d write_acks=%0d outstanding=%0d peak_outstanding=%0d outstanding_cycles=%0d a_stall=%0d d_stall=%0d cmd_stall=%0d resp_stall=%0d read_latency=%0d read_min=%0d read_max=%0d write_latency=%0d write_min=%0d write_max=%0d denied=%0d corrupt=%0d protocol_errors=%0d pending=%0d",
++      (outstanding!=0 || pending || protocol_errors!=0),cycle,configs,copies,completed,failed,
++      busy_cycles,idle_cycles,busy_transitions,reads,writes,read_bytes,write_bytes,
++      read_responses,write_acks,outstanding,peak_outstanding,outstanding_cycles,a_stall,d_stall,
++      cmd_stall,resp_stall,read_latency,read_min,read_max,write_latency,write_min,write_max,
++      denied,corrupt,protocol_errors,pending);
++  end
++endmodule
+diff --git a/software/rocc-dma/sim/Makefrag b/software/rocc-dma/sim/Makefrag
+new file mode 100644
+index 0000000..12b0adb
+--- /dev/null
++++ b/software/rocc-dma/sim/Makefrag
+@@ -0,0 +1,9 @@
++# Simulation-only input taps. Never included by synthesis or hardware elaboration.
++ifneq ($(filter DMARocketConfig DMAStallRocketConfig,$(CONFIG)),)
++DMA_OBSERVER_DIR := $(base_dir)/software/rocc-dma/sim
++DMA_BIND := $(build_dir)/dma-observer-bind.sv
++$(DMA_BIND): $(sim_common_files) $(DMA_OBSERVER_DIR)/bind.py
++	python $(DMA_OBSERVER_DIR)/bind.py $(GEN_COLLATERAL_DIR)/RoCCDMA.sv $@
++EXTRA_SIM_SOURCES += $(DMA_OBSERVER_DIR)/DMAPassiveMonitor.sv $(DMA_BIND)
++EXTRA_SIM_REQS += $(DMA_OBSERVER_DIR)/DMAPassiveMonitor.sv $(DMA_BIND)
++endif
+diff --git a/software/rocc-dma/sim/bind.py b/software/rocc-dma/sim/bind.py
+new file mode 100644
+index 0000000..4d846ad
+--- /dev/null
++++ b/software/rocc-dma/sim/bind.py
+@@ -0,0 +1,40 @@
++#!/usr/bin/env python3
++"""Bind only to the public RoCC/TL boundary; never inspect the DMA controller."""
++import re
++import sys
++from pathlib import Path
++
++rtl, output = map(Path, sys.argv[1:])
++header = rtl.read_text().split(');', 1)[0]
++ports = set(re.findall(r'\b(?:input|output)\s+(?:\[\d+:\d+\]\s+)?(\w+)', header))
++connections = {
++    'clock':'clock', 'reset':'reset', 'busy':'io_busy',
++    'cmd_valid':'io_cmd_valid', 'cmd_ready':'io_cmd_ready',
++    'funct':'io_cmd_bits_inst_funct', 'xd':'io_cmd_bits_inst_xd',
++    'xs1':'io_cmd_bits_inst_xs1', 'xs2':'io_cmd_bits_inst_xs2',
++    'rs1':'io_cmd_bits_rs1', 'rs2':'io_cmd_bits_rs2',
++    'resp_valid':'io_resp_valid', 'resp_ready':'io_resp_ready', 'status':'io_resp_bits_data',
++}
++for channel in ('a','d'):
++    for field in ('valid','ready'):
++        connections[f'{channel}_{field}']=f'auto_tl_out_{channel}_{field}'
++    for field in ('opcode','size','source'):
++        connections[f'{channel}_{field}']=f'auto_tl_out_{channel}_bits_{field}'
++for field in ('denied','corrupt'):
++    connections[f'd_{field}']=f'auto_tl_out_d_bits_{field}'
++# Firtool prunes constant A ports in the initial 8-byte/source-0 implementation.
++# A future variable-sized or multi-source implementation exposes those ports
++# automatically. Response size/source checks prevent silent bad measurements.
++constants={'a_size':"4'd3", 'a_source':"0"}
++for key, port in connections.items():
++    if port not in ports:
++        if key not in constants:
++            raise SystemExit(f'Missing observation port: {port}')
++        connections[key]=constants[key]
++source_port='auto_tl_out_d_bits_source'
++source_bits=re.search(r'(?:input|output)\s+\[(\d+):0\]\s+'+source_port,header)
++width=int(source_bits[1])+1 if source_bits else 1
++if width > 10:
++    raise SystemExit('Passive monitor supports at most 1024 source IDs')
++output.write_text('bind RoCCDMA DMAPassiveMonitor #(.SOURCE_BITS('+str(width)+')) dma_observer (\n'+
++                  ',\n'.join(f'  .{key}({port})' for key,port in connections.items())+'\n);\n')
+diff --git a/tests/atexit-workaround.c b/tests/atexit-workaround.c
+new file mode 100644
+index 0000000..9c08256
+--- /dev/null
++++ b/tests/atexit-workaround.c
+@@ -0,0 +1,12 @@
++/*
++ * GCC 16's nano Newlib dereferences a null _on_exit_args pointer when the
++ * callback registered by crt0 is run.  These bare-metal tests do not need
++ * process-exit callbacks, so keep the callback successful but omit it.
++ */
++#include <stdlib.h>
++
++int __wrap_atexit(void (*function)(void))
++{
++    (void)function;
++    return 0;
++}
