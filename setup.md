@@ -45,13 +45,14 @@ If the script exits immediately, having only printed "Using gcloud signed in as 
    2. Choose **Continue with Google Cloud**.
    3. Open the link provided, and select the account provided to you in the email you received.
    4. Copy the code back into the Antigravity CLI and press Enter.
-   5. Enter the Project Name from the email you received as the Google Cloud Project ID
-   6. Select **global**
-   7. Select **Agent Platform - Pay as you go...**
-   8. Choose any color scheme option (you won't be using AGY directly so it does not matter).
-   9. Click **Done** on the terms of service page.
-   10. Click **Yes, I trust this folder**
-   11. Press ctrl-D twice to exit Antigravity
+   5. Choose **Pay As You Go – Pay only for the tokens you use, billed through Gemini platform.**
+   6. Enter the Project Name from the email you received as the Google Cloud Project ID
+   7. Select **global**
+   8. Select **Agent Platform - Pay as you go...**
+   9. Choose any color scheme option (you won't be using AGY directly so it does not matter).
+   10. Click **Done** on the terms of service page.
+   11. Click **Yes, I trust this folder**
+   12. Press ctrl-D twice to exit Antigravity
 
 8. After the script has finished running, run the following command in the shell to download the SSH key you will use to SSH into the development machine the setup script provisioned for you:
 
@@ -59,13 +60,22 @@ If the script exits immediately, having only printed "Using gcloud signed in as 
    cloudshell download ~/.ssh/google_compute_engine
    ```
 
-   Save the key anywhere on your laptop and **note the path where you saved it**; you will need it in the next step. If you already have a `~/.ssh/google_compute_engine` file, don't overwrite it: save this one somewhere else, or under a different name such as `~/.ssh/chia-tutorial-key`. On macOS or Linux, also restrict the key's permissions, or SSH will refuse to use it:
+   Save the key anywhere on your laptop and **note the path where you saved it**; you will need it in the next step. If you already have a `~/.ssh/google_compute_engine` file, don't overwrite it: save this one somewhere else, or under a different name such as `~/.ssh/chia-tutorial-key`. Also restrict the key's permissions, or SSH will refuse to use it.
 
+For MacOS or Linux:
    ```bash
    chmod 600 <absolute path to the key>
    ```
 
-9. The script should have printed the command you can use to SSH into the development machine which was provisioned for you for this tutorial. It looks like `ssh -o IdentitiesOnly=yes -i <absolute path to the key> USER@IP`: replace `<absolute path to the key>` with the absolute path where you saved the key in step 8. You can use any remote development environment of your choosing throughout the tutorial. If you do not have one ready to use, we recommend using Visual Studio Code <https://code.visualstudio.com/download> with the **Remote SSH** Extension. 
+For Windows **using Powershell**
+   ```powershell
+   $key = <path_to_key>
+   icacls $key /inheritance:r
+   icacls $key /grant:r "$($env:USERNAME):(R)"
+   ```
+
+
+10. The script should have printed the command you can use to SSH into the development machine which was provisioned for you for this tutorial. It looks like `ssh -o IdentitiesOnly=yes -i <absolute path to the key> USER@IP`: replace `<absolute path to the key>` with the absolute path where you saved the key in step 8. You can use any remote development environment of your choosing throughout the tutorial. If you do not have one ready to use, we recommend using Visual Studio Code <https://code.visualstudio.com/download> with the **Remote SSH** Extension. 
     
     1. In VSCode with the remote ssh extension installed, you can add a new remote host by typing CTRL/CMD+Shift+P and searching for **Remote-SSH: Add New SSH Host**, and pasting in that ssh command (with your key's absolute path filled in).
 
