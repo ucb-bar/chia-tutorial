@@ -67,9 +67,9 @@ For MacOS or Linux:
    chmod 600 <absolute path to the key>
    ```
 
-For Windows **using Powershell**
+For Windows **using PowerShell**
    ```powershell
-   $key = "$env:USERPROFILE\.ssh\chia-gcp-key"
+   $key = "<path_to_key>"
    icacls $key /reset
    icacls $key /inheritance:r
    icacls $key /grant:r "$($env:USERNAME):(R)"
