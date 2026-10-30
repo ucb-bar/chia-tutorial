@@ -38,6 +38,7 @@ DEFAULTS = {
         "extra_make_args": {
             "CXX": "/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++",
             "JAVA_HEAP_SIZE": "32G",
+            "VERILATOR_THREADS": 4,
         },
         "clean": False,
     },
