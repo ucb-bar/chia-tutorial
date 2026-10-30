@@ -31,26 +31,26 @@ name throughout these commands.
 
 ## 2. Tutorial attendee run
 
-Clone a compatible tutorial repository version, complete the same setup, and
+<!-- Clone a compatible tutorial repository version, complete the same setup, and
 work in `chia-tutorial/discovery`. Place the distributed
 tarball at `checkpoints/tutorial.tar.gz`. The resumed search continues from the
 prepared checkpoint until you stop it, or until the run holds
 `tutorial.search.iterations` proposals in total (`status` reports the current
-count). Extract into a checkout without an existing `experiments/tutorial` run.
+count). Extract into a checkout without an existing `experiments/tutorial` run. -->
 
-- **Extract:** `tar -xzf checkpoints/tutorial.tar.gz` restores the run and all history through the selected checkpoint under `experiments`.
-- **Load environment:** `source load-env.sh`
-- **Prepare restored paths:** `python loop.py prepare --run tutorial` reconstructs the source seed from the recorded Docker image digest and `base/` files, and verifies the baseline. The first restoration can take time; the seed is then cached locally.
-- **Start workers:** `chia up cluster.yaml -y`
-- **Resume:** `chia job submit --chia-cluster cluster.yaml --submission-id tutorial-live --working-dir . -- python "$PWD/loop.py" resume --run tutorial` (choose a fresh submission ID for each resume).
-- **Follow progress:** the submit command streams the loop's output; from a second terminal (after `source load-env.sh`), `chia job logs --chia-cluster cluster.yaml tutorial-live --follow` streams it again and `python loop.py status --run tutorial` reports the proposal count and admitted candidates in the latest checkpoint.
-- **Stop:** when you have seen enough, `chia job stop tutorial-live --chia-cluster cluster.yaml` stops the search. Checkpoints are automatic, so a later resume continues from the latest one.
-- **Visualize the candidate timeline:** after the job exits, run `chia viz-profile experiments/tutorial/artifacts/profile/prof_candidates.log --format html` and open `prof_candidates_profile.html`; hover over or select a `score_point` to see its candidate ID and score.
-- **Visualize the full task timeline:** `chia viz-profile experiments/tutorial/artifacts/profile/ChiaProfileCollector.log --format html` opens the complete execution timeline in `ChiaProfileCollector_profile.html`.
-- **Plot candidate scores:** `python loop.py scores --run tutorial` writes `experiments/tutorial/artifacts/profile/scores.html`: time on X in 30-minute increments, score on Y in 0.5 increments, one dot per candidate labeled with its last 6 ID characters, and a separate best-score readout. Best valid dots are green. Hover or select a dot, then use **Copy ID** to copy its full ID. New forks retain the score history through their checkpoint, so this works before resuming and while the loop runs; rerun the command and reload the page for newer results. Older archives without a profile log need the original log to show pre-fork history.
-- **Tear down:** `chia down cluster.yaml -y`
+1. **Extract:** `tar -xzf checkpoints/tutorial.tar.gz` restores the run and all history through the selected checkpoint under `experiments`.
+1. **Load environment:** `source load-env.sh`
+1. **Prepare restored paths:** `python loop.py prepare --run tutorial` reconstructs the source seed from the recorded Docker image digest and `base/` files, and verifies the baseline. The first restoration can take time; the seed is then cached locally.
+1. **Start workers:** `chia up cluster.yaml -y`
+1. **Resume:** `chia job submit --chia-cluster cluster.yaml --submission-id tutorial-live --working-dir . -- python "$PWD/loop.py" resume --run tutorial` (choose a fresh submission ID for each resume).
+1. **Follow progress:** the submit command streams the loop's output; from a second terminal (after `source load-env.sh`), `chia job logs --chia-cluster cluster.yaml tutorial-live --follow` streams it again and `python loop.py status --run tutorial` reports the proposal count and admitted candidates in the latest checkpoint.
+1. **Stop:** when you have seen enough, `chia job stop tutorial-live --chia-cluster cluster.yaml` stops the search. Checkpoints are automatic, so a later resume continues from the latest one.
+1. **Visualize the candidate timeline:** after the job exits, run `chia viz-profile experiments/tutorial/artifacts/profile/prof_candidates.log --format html` and open `prof_candidates_profile.html`; hover over or select a `score_point` to see its candidate ID and score.
+1. **Visualize the full task timeline:** `chia viz-profile experiments/tutorial/artifacts/profile/ChiaProfileCollector.log --format html` opens the complete execution timeline in `ChiaProfileCollector_profile.html`.
+1. **Plot candidate scores:** `python loop.py scores --run tutorial` writes `experiments/tutorial/artifacts/profile/scores.html`: time on X in 30-minute increments, score on Y in 0.5 increments, one dot per candidate labeled with its last 6 ID characters, and a separate best-score readout. Best valid dots are green. Hover or select a dot, then use **Copy ID** to copy its full ID. New forks retain the score history through their checkpoint, so this works before resuming and while the loop runs; rerun the command and reload the page for newer results. Older archives without a profile log need the original log to show pre-fork history.
+1. **Tear down:** `chia down cluster.yaml -y`
 
-CHIA manages the cluster, job submission, and HTML visualization; `loop.py`
+<!-- CHIA manages the cluster, job submission, and HTML visualization; `loop.py`
 provides the tutorial's preparation and checkpoint operations. `--working-dir .`
 uploads the loop code to every worker; `experiments/` (`.gitignore`) and the hidden
-correctness tests in `private/` (`.rayignore`) are not uploaded.
+correctness tests in `private/` (`.rayignore`) are not uploaded. -->
