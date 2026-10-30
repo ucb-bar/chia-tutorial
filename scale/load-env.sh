@@ -2,7 +2,8 @@
 # Load into your current shell with: source load-env.sh
 source "$(conda info --base)/etc/profile.d/conda.sh" || return
 conda activate chia_env || return
-python -m pip install --upgrade 'chialoops==2.0.0' || return
+# This repository's chia/ checkout (chialoops 2.1.0, with chia.trace.live_status_monitor), editable.
+# python -m pip install -e "$(cd "$(dirname "${BASH_SOURCE[0]}")/../chia" && pwd)" || return
 export CHIA_TUT_PROJECT="$(hostname -f | cut -d. -f3)"
 export CHIA_HEAD_ZONE="$(gcloud compute instances list --filter="name=$(hostname -s)" --format='value(zone.basename())')"
 export CHIA_HEAD_IP="$(hostname -I | awk '{print $1}')"
