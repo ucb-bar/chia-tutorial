@@ -27,7 +27,14 @@ def test_status_handles_runs_before_and_after_the_first_checkpoint(tmp_path, mon
         return
 
     write_json(run / "run.json", {"run_id": "DMADiscovery"})
-    saved = {"admitted": ["seed-dma"], "requests": {"seed-dma": {"generated": True, "evaluated": True}}}
+    saved = {
+        "admitted": ["seed-dma", "candidate-1"],
+        "requests": {
+            "seed-dma": {"generated": True, "evaluated": True},
+            "candidate-1": {"generated": True, "evaluated": True},
+            "candidate-2": {"generated": True, "evaluated": False},
+        },
+    }
     if state == "checkpointed":
         write_json(run / "latest.json", {"checkpoint": "00000000-test"})
         write_json(run / "checkpoints/00000000-test/state.json", saved)
@@ -38,7 +45,7 @@ def test_status_handles_runs_before_and_after_the_first_checkpoint(tmp_path, mon
         assert "baseline evaluation" in output
         assert not (run / "latest.json").exists()
     else:
-        assert json.loads(output) == saved
+        assert json.loads(output) == {"proposals": 2, **saved}
 
 
 def test_native_cluster_uses_every_existing_worker(monkeypatch):

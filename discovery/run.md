@@ -33,16 +33,18 @@ name throughout these commands.
 
 Clone a compatible tutorial repository version, complete the same setup, and
 work in `chia-tutorial/discovery`. Place the distributed
-tarball at `checkpoints/tutorial.tar.gz`. Increase
-`tutorial.search.iterations` above the number of proposals already saved to
-generate additional candidates. Extract into a checkout without an existing
-`experiments/tutorial` run.
+tarball at `checkpoints/tutorial.tar.gz`. The resumed search continues from the
+prepared checkpoint until you stop it, or until the run holds
+`tutorial.search.iterations` proposals in total (`status` reports the current
+count). Extract into a checkout without an existing `experiments/tutorial` run.
 
 - **Extract:** `tar -xzf checkpoints/tutorial.tar.gz` restores the run and all history through the selected checkpoint under `experiments`.
 - **Load environment:** `source load-env.sh`
 - **Prepare restored paths:** `python loop.py prepare --run tutorial` reconstructs the source seed from the recorded Docker image digest and `base/` files, and verifies the baseline. The first restoration can take time; the seed is then cached locally.
 - **Start workers:** `chia up cluster.yaml -y`
 - **Resume:** `chia job submit --chia-cluster cluster.yaml --submission-id attendee --working-dir . -- python "$PWD/loop.py" resume --run tutorial` (choose a fresh submission ID for each resume).
+- **Follow progress:** the submit command streams the loop's output; from a second terminal (after `source load-env.sh`), `chia job logs --chia-cluster cluster.yaml attendee --follow` streams it again and `python loop.py status --run tutorial` reports the proposal count and admitted candidates in the latest checkpoint.
+- **Stop:** when you have seen enough, `chia job stop attendee --chia-cluster cluster.yaml` stops the search. Checkpoints are automatic, so a later resume continues from the latest one.
 - **Visualize scores over time:** after the job exits, run `chia viz-profile experiments/tutorial/artifacts/profile/prof_candidates.log --format html` and open the generated `prof_candidates_profile.html`; select a `score_point` to see its candidate ID and score. This timeline covers evaluations performed after the fork; earlier history remains in `metrics.db`.
 - **Tear down:** `chia down cluster.yaml -y`
 
