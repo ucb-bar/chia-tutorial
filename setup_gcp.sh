@@ -24,8 +24,9 @@
 # are reused.
 #
 # Steps: 1 project + billing, 2 APIs, 3 network + machine-type check, 4 quota requests,
-# 5 VMs, 6 VM setup, 7 agy sign-in, 8 workers' SSH access. --from-step N skips steps
-# 1 to N-1: the project must already exist, and from step 6 on so must the VMs.
+# 5 VMs, 6 VM setup, 7 agy sign-in, 8 Gemini / Antigravity check, 9 workers' SSH access.
+# --from-step N skips steps 1 to N-1: the project must already exist, and from step 6 on
+# so must the VMs.
 #
 # Optional environment overrides:
 #   DEV_REGION=us-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
@@ -51,7 +52,7 @@ done
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
-case "$FROM_STEP" in [1-8]) ;; *) die "--from-step takes a step number from 1 to 8" ;; esac
+case "$FROM_STEP" in [1-9]) ;; *) die "--from-step takes a step number from 1 to 9" ;; esac
 do_step() { [ "$FROM_STEP" -le "$1" ]; }  # step number -> true unless --from-step skips it
 
 command -v gcloud >/dev/null || die "gcloud not found. Run this script in Google Cloud Shell: https://shell.cloud.google.com"
@@ -472,7 +473,7 @@ EOF
 }
 
 # WORKER_JOBS lists each worker as name:zone:pid of its background setup. When this
-# step is skipped, the pid is empty and step 8 only gives chia-dev SSH access.
+# step is skipped, the pid is empty and step 9 only gives chia-dev SSH access.
 WORKER_JOBS=""
 if do_step 6; then
     # The docker command appears partway through Docker's install, before its group
@@ -583,7 +584,25 @@ EOF
         || echo "WARNING: no agy login found in ~/.gemini on $DEV_VM; re-run this script to try again."
 fi
 
-# --- 8. Workers: finish, and let chia-dev SSH into them ------------------------
+# --- 8. Gemini / Antigravity check -------------------------------------------
+AGY_CHECK_MODELS="gemini-4-argon-medium gemini-3.8-flash-medium"
+if do_step 8; then
+    log "Checking Gemini / Antigravity model availability on $DEV_VM: $AGY_CHECK_MODELS"
+    vm_ssh <<EOF || die "Gemini / Antigravity check failed on $DEV_VM"
+set -e
+[ -x ~/.local/bin/agy ] || { echo "ERROR: ~/.local/bin/agy not found (run step 7 first)" >&2; exit 1; }
+models="\$(~/.local/bin/agy models </dev/null)"
+printf '%s\n' "\$models"
+for model in $AGY_CHECK_MODELS; do
+    if ! printf '%s\n' "\$models" | awk '{print \$1}' | grep -qxF "\$model"; then
+        echo "ERROR: \$model is not available in 'agy models'" >&2
+        exit 1
+    fi
+done
+EOF
+fi
+
+# --- 9. Workers: finish, and let chia-dev SSH into them ------------------------
 READY="" FIRST_READY=""
 if [ -n "$WORKER_JOBS" ]; then
     log "Waiting for the workers' setup to finish"
