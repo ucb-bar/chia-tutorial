@@ -11,9 +11,9 @@ auth:
 
 available_node_types:
     chipyard:
-        resources: {chipyard: 1} # TUTORIAL: chipyard instances available per worker.
+        resources: {chipyard: 1} # DO NOT CHANGE. Chipyard instances available per worker.
         num_workers: 1  # TUTORIAL: builder workers; match the VM count below.
-        compatible_ips: ["chia-worker-1", "chia-worker-2", "chia-worker-3"] # TUTORIAL: add the correct IPs here.
+        compatible_ips: ["chia-worker-1", "chia-worker-2", "chia-worker-3"] # TUTORIAL: you can change the IPs your workers are distributed across.
         worker_setup_commands:
             - "source /home/ray/chipyard/env.sh"
         docker:
@@ -26,8 +26,8 @@ available_node_types:
                 - --shm-size=10.24gb
 
     verilator_run:
-        resources: {verilator_run: 8} # TUTORIAL: the number of verilator resources per worker. Try increasing it further
-        num_workers: 1  # TUTORIAL: simulator workers; match the VM count below.
+        resources: {verilator_run: 8} # DO NOT CHANGE. The number of verilator resources per worker. Try increasing it further
+        num_workers: 1  # TUTORIAL: simulator workers; Number of workers that advertise 8 concurrent verilator simulations. 
         compatible_ips: ["chia-worker-4"] # TUTORIAL: add the correct IPs here.
         docker:
             image: "ghcr.io/ucb-bar/chia-verilator-run:latest"
@@ -69,10 +69,17 @@ available_node_types:
 
 head_env_commands: ["source ~/.bashrc && conda activate chia_env"]
 
+head_setup_commands:
+    - >-
+        python -c 'from importlib.metadata import version; assert version("chialoops") == "2.1.0"' 2>/dev/null || python -m pip install --upgrade 'chialoops==2.1.0' || exit
+
 head_start_ray_commands:
     - ray stop --force
     - ulimit -c unlimited && ray start --head --port=6479 --include-dashboard=True --dashboard-port=8365 --ray-client-server-port=20101 --dashboard-agent-listen-port=52465 --temp-dir=/tmp/ray-${USER} --object-store-memory=2147483648
 
 worker_start_ray_commands:
+    # Enforce the same CHIA version in every role, including existing images.
+    - >-
+        python -c 'from importlib.metadata import version; assert version("chialoops") == "2.1.0"' 2>/dev/null || python -m pip install --upgrade 'chialoops==2.1.0' || exit
     - ray stop --force
     - ray start --address=$RAY_HEAD_IP:6479 --dashboard-agent-listen-port=0
