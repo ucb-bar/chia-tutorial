@@ -10,7 +10,7 @@
 #                                CLI (agy, signed in), and an SSH key (~/.ssh/chia-key)
 #   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo + its conda env, and
 #                                chia-dev's key in authorized_keys, so chia-dev can ssh in
-# chia-dev and workers 1-2 go in us-west4, workers 3-5 in europe-west4. Every VM
+# chia-dev and workers 1-2 go in europe-west1, workers 3-5 in europe-west4. Every VM
 # also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
 #
 # Usage:
@@ -29,9 +29,9 @@
 # so must the VMs.
 #
 # Optional environment overrides:
-#   DEV_REGION=us-west4   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
-#   WORKER_REGIONS="us-west4=2 europe-west4=3"   chia-worker VMs per region
-#   QUOTA_REGIONS="us-west4=100 europe-west4=100"   vCPU targets per region
+#   DEV_REGION=europe-west1   TUT_HOME=~/.chia-tutorial   (Google picks the VMs' zones)
+#   WORKER_REGIONS="europe-west1=2 europe-west4=3"   chia-worker VMs per region
+#   QUOTA_REGIONS="europe-west1=100 europe-west4=100"   vCPU targets per region
 #   QUOTA_FAMILIES="C4"                             VM families to raise them for
 #   QUOTA_HDB_GB=3000                               Hyperdisk Balanced GB per region
 #   BOOT_DISK_GB=1000                               boot disk size of every VM
@@ -67,10 +67,10 @@ if [ -z "${PROJECT_ID:-}" ] && [ -f "$STATE" ]; then
     . "$STATE"     # remembers this account's PROJECT_ID between runs
 fi
 
-DEV_REGION="${DEV_REGION:-us-west4}"
+DEV_REGION="${DEV_REGION:-europe-west1}"
 # C4 rejects --min-cpu-platform, so the CPU generation isn't pinned.
 DEV_VM=chia-dev    DEV_TYPE=c4-highcpu-32
-WORKER_REGIONS="${WORKER_REGIONS:-us-west4=2 europe-west4=3}"   WORKER_TYPE=c4-highcpu-32
+WORKER_REGIONS="${WORKER_REGIONS:-europe-west1=2 europe-west4=3}"   WORKER_TYPE=c4-highcpu-32
 # Workers are numbered across the regions in order: chia-worker-1..2 in the first,
 # chia-worker-3..5 in the second. region_of_worker maps a name back to its region.
 WORKERS="" i=0
@@ -98,15 +98,24 @@ IMAGE=(--image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud)
 # --- Teardown / purge ---------------------------------------------------------
 if [ -n "$TEARDOWN" ]; then
     if [ -n "${PROJECT_ID:-}" ]; then
+        # One list call finds every tutorial VM and its zone. Then one delete per zone
+        # (gcloud deletes the VMs in a call in parallel), with all zones at once.
+        found="$(gcloud compute instances list --project "$PROJECT_ID" \
+            --filter="name~^($(echo $DEV_VM $WORKERS | tr ' ' '|'))\$" \
+            --format='value(name,zone.basename())' 2>/dev/null </dev/null || true)"
         for vm in $DEV_VM $WORKERS; do
-            zone="$(zone_of "$vm")"
-            if [ -n "$zone" ]; then
-                log "Deleting $vm ($zone) in $PROJECT_ID"
-                gcloud compute instances delete "$vm" --zone "$zone" --project "$PROJECT_ID" --quiet || true
-            else
-                echo "No $vm found in $PROJECT_ID"
-            fi
+            printf '%s\n' "$found" | awk -v n="$vm" '$1 == n { f = 1 } END { exit !f }' \
+                || echo "No $vm found in $PROJECT_ID"
         done
+        pids=""
+        for zone in $(printf '%s\n' "$found" | awk '{ print $2 }' | sort -u); do
+            vms="$(printf '%s\n' "$found" | awk -v z="$zone" '$2 == z { print $1 }' | tr '\n' ' ')"
+            log "Deleting ${vms}($zone) in $PROJECT_ID"
+            # shellcheck disable=SC2086
+            gcloud compute instances delete $vms --zone "$zone" --project "$PROJECT_ID" --quiet </dev/null &
+            pids="$pids $!"
+        done
+        for pid in $pids; do wait "$pid" || true; done
     elif [ -z "$PURGE" ]; then
         die "no project recorded in $STATE"
     fi
@@ -233,8 +242,8 @@ fi
 # tutorial's CHIA clusters use (scale/cluster.yaml). Only limits below the target
 # are requested. Google reviews requests asynchronously, so this doesn't wait for
 # approval. (Cloud Shell's gcloud has the beta commands preinstalled.)
-# chia-dev + 2 workers in us-west4 and 3 workers in europe-west4 are 96 C4 vCPUs each.
-QUOTA_REGIONS="${QUOTA_REGIONS:-us-west4=100 europe-west4=100}"
+# chia-dev + 2 workers in europe-west1 and 3 workers in europe-west4 are 96 C4 vCPUs each.
+QUOTA_REGIONS="${QUOTA_REGIONS:-europe-west1=100 europe-west4=100}"
 QUOTA_FAMILIES="${QUOTA_FAMILIES:-C4}"
 # Every VM's boot disk is Hyperdisk Balanced (C4 needs it), which has its own storage
 # quota: new projects get 500 GB per region. Each region has 3 VMs x 1 TB = 3000 GB.
