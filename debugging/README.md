@@ -1,5 +1,49 @@
 # Debug section — 30 minutes, on top of `accel/`
 
+## Commands attendees run, in order
+
+Everything runs from `~/chia-tutorial/debugging`. `./run_debugging.sh` runs this
+same list unattended.
+
+```bash
+# Setup
+conda activate chia_env
+cd ~/chia-tutorial/debugging
+
+# 1. Caching and Bypassing
+ls -lsa cache
+# edit caching/replay.yaml: bypass: true on ChiselBuildNode.build and
+# AntigravityLLM.prompt (lines 17 and 19), the rest stay false
+./submit_job.sh caching                          # iter_4, half bypassed
+
+# 2. Profiling
+ls -lsa profiling/out
+chia viz-profile prof_full.log --format table    # the recorded run (iter_1-3)
+ls -lsa profiling/out
+chia viz-profile prof_half.log --format table    # the half-bypassed run (iter_4)
+./submit_job.sh profiling                        # iter_5, with the evaluation ChiaFunction
+chia viz-profile prof_eval.log --format table
+
+# 3. Live Status Monitor
+./submit_job.sh monitor                          # iter_6
+
+# 4. Logging
+chia up --add --yes logging/cluster_storage.yaml # the storage worker, on chia-worker-1
+./submit_job.sh logging                          # iter_7
+ssh chia-worker-1
+cd ~/chia_logs/sims
+ls -lsa
+exit
+
+# 5. Cluster Debugging
+chia status --chia-cluster cluster.yaml          # then any cheat-sheet line, with --chia-cluster cluster.yaml
+
+# At the very end, when you are done with the cluster
+chia down --yes cluster.yaml
+```
+
+---
+
 Base: the `roccaccel` branch (`accel/`). Our branch adds files only; it never
 edits theirs.
 
@@ -192,10 +236,9 @@ debugging/
     out/                  profiles this section records (git-ignored)
     debug_timing.py
   prof_full.log    -> profiling/out/profile_iter_1-3/ChiaProfileCollector.log
-  prof_bypass.log  -> profiling/out/profile_iter_4/ChiaProfileCollector.log
-  prof_half.log    -> profiling/out/profile_iter_5/ChiaProfileCollector.log
-  prof_eval.log    -> profiling/out/profile_iter_6/ChiaProfileCollector.log
-  prof_monitor.log -> profiling/out/profile_iter_7/ChiaProfileCollector.log
+  prof_half.log    -> profiling/out/profile_iter_4/ChiaProfileCollector.log
+  prof_eval.log    -> profiling/out/profile_iter_5/ChiaProfileCollector.log
+  prof_monitor.log -> profiling/out/profile_iter_6/ChiaProfileCollector.log
                       short links to each run's profile, dangling until that run ends
 ```
 
