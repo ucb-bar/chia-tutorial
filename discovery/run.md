@@ -22,8 +22,8 @@ Checkpoints are automatic; the first is saved after the baseline evaluation
 finishes. Until then, `status` reports that there is no checkpoint yet. The
 branch retains the selected snapshot's entire
 population, including other candidates admitted concurrently. Forking omits
-cache, build workspaces, and artifact logs; SQL history and
-checkpoint state are retained. The tarball contains candidate patches and search
+cache, build workspaces, and build/simulation logs; SQL history, checkpoint
+state, and a compact score-only profile are retained. The tarball contains candidate patches and search
 history, without the large Chipyard source tree, Git histories, or other cached
 seeds. Every fork includes the rebuild recipe. If
 `experiments/tutorial` already exists from an earlier fork, use a fresh branch
@@ -47,7 +47,7 @@ count). Extract into a checkout without an existing `experiments/tutorial` run.
 - **Stop:** when you have seen enough, `chia job stop attendee --chia-cluster cluster.yaml` stops the search. Checkpoints are automatic, so a later resume continues from the latest one.
 - **Visualize the candidate timeline:** after the job exits, run `chia viz-profile experiments/tutorial/artifacts/profile/prof_candidates.log --format html` and open `prof_candidates_profile.html`; hover over or select a `score_point` to see its candidate ID and score.
 - **Visualize the full task timeline:** `chia viz-profile experiments/tutorial/artifacts/profile/ChiaProfileCollector.log --format html` opens the complete execution timeline in `ChiaProfileCollector_profile.html`.
-- **Plot candidate scores:** `python loop.py scores --run tutorial` writes `experiments/tutorial/artifacts/profile/scores.html`: time on X, score on Y, one dot per candidate labeled with its last 6 ID characters, and a separate best-score readout. Hover or select a dot for its full ID. This works while the loop runs; rerun the command and reload the page for newer results. The profile covers evaluations after the fork; earlier history remains in `metrics.db`.
+- **Plot candidate scores:** `python loop.py scores --run tutorial` writes `experiments/tutorial/artifacts/profile/scores.html`: time on X in 30-minute increments, score on Y in 0.5 increments, one dot per candidate labeled with its last 6 ID characters, and a separate best-score readout. Best valid dots are green. Hover or select a dot, then use **Copy ID** to copy its full ID. New forks retain the score history through their checkpoint, so this works before resuming and while the loop runs; rerun the command and reload the page for newer results. Older archives without a profile log need the original log to show pre-fork history.
 - **Tear down:** `chia down cluster.yaml -y`
 
 CHIA manages the cluster, job submission, and HTML visualization; `loop.py`

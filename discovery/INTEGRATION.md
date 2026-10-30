@@ -293,6 +293,12 @@ configuration uses local paths and current settings; no overall code/configurati
 Historical forks remain optional: `fork` copies the selected native checkpoint,
 filtered SQL, retaining a reference to the source seed. Raw
 logs, task caches, and workspaces remain in the source run.
+When the source profile is available, a fork retains only paired score events
+visible at its checkpoint under `artifacts/profile/ChiaProfileCollector.log`,
+plus a timestamp marking the original start. This compact log lets
+`python loop.py scores --run NAME` plot checkpoint history before any resume.
+New profile events append to it when the restored loop runs. Old archives that
+omitted the profile cannot reconstruct historical completion times from SQL.
 Every fork saves the seed recipe in `run.json`; archive only that fork's
 directory, without `experiments/seeds/`.
 

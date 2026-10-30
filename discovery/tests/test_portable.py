@@ -13,6 +13,7 @@ import pytest
 from chia_dma.config_loader import digest, load
 from chia_dma.experiment import fork
 from chia_dma.runtime import prepare
+from chia_dma.score_viz import load_scores, render_scores
 from chia_dma.source import (
     apply_candidate_diff,
     capture_patch,
@@ -100,6 +101,18 @@ def test_portable_tar_retains_history_and_restores_root_and_submodule_patches(
         for name, patch in {**patches, "future-candidate": "later patch"}.items():
             db.execute("INSERT INTO proposals(id,patch,generation,metrics,program_id) VALUES(?,?,?,?,?)",
                        (name, patch, json.dumps({"response": name}), '{"validity":1}', name))
+    profile = origin / "artifacts/profile/ChiaProfileCollector.log"
+    profile.parent.mkdir(parents=True)
+    events = [{"type": "dispatch", "func": "build", "ts": 100}]
+    for index, name in enumerate([*patches, "future-candidate"]):
+        events.extend([
+            {"type": "local_start", "func": "score_point", "call_id": str(index), "ts": 110 + index},
+            {"type": "local_end", "func": "score_point", "call_id": str(index), "ts": 110.1 + index,
+             "extra": {"metric_series": "candidates", "candidate_id": name,
+                       "combined_score": 1 + index / 10, "validity": 1}},
+        ])
+    profile.write_text("\n".join(json.dumps(event) for event in events) + "\n")
+    (origin / "artifacts/build.log").write_text("Build logs are not distributed")
     fork(origin, None, instructor / "experiments/tutorial", candidate="candidate-2")
     meta = read_json(instructor / "experiments/tutorial/run.json")
     assert meta["seed_recipe"]["image"] == IMAGE
@@ -109,6 +122,8 @@ def test_portable_tar_retains_history_and_restores_root_and_submodule_patches(
     files = subprocess.check_output(["tar", "-tzf", str(archive)], text=True).splitlines()
     assert all(name.startswith("experiments/tutorial") for name in files)
     assert not any("/seeds/" in name or "/.git/" in name for name in files)
+    assert any(name.endswith("artifacts/profile/ChiaProfileCollector.log") for name in files)
+    assert not any(name.endswith("artifacts/build.log") for name in files)
 
     # The instructor's filesystem is unavailable to the attendee.
     subprocess.run(["chmod", "-R", "u+w", str(seed)], check=True)
@@ -116,6 +131,11 @@ def test_portable_tar_retains_history_and_restores_root_and_submodule_patches(
     attendee = tmp_path / "attendee"
     attendee.mkdir()
     subprocess.run(["tar", "-xzf", str(archive)], cwd=attendee, check=True)
+    # A fresh attendee can plot the checkpoint before rebuilding its seed or resuming.
+    run = attendee / "experiments/tutorial"
+    scores = load_scores(run / "artifacts/profile/ChiaProfileCollector.log")
+    assert {point["candidate_id"] for point in scores["points"]} == set(patches)
+    assert render_scores(run).exists()
     configuration["storage"] = str(attendee / "experiments")
     calls = image_capture(monkeypatch, image, latest=new_image)
     different_seed = preserve_source(configuration)

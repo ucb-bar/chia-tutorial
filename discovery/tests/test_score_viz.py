@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from chia_dma.score_viz import load_scores, render_scores
+from chia_dma.score_viz import copy_score_history, load_scores, render_scores
 
 
 def event(candidate, score, timestamp, series="candidates", valid=1, **fields):
@@ -71,7 +71,9 @@ def test_one_labeled_dot_per_candidate_in_completion_order(sample_run):
     assert labels == ["abcdef", "987654", "123456"]
     assert 'id="best-score">1.4</strong>' in html
     assert 'data-valid="failed"' in html
-    assert "Elapsed time (seconds)" in html
+    assert "Elapsed time (h:mm)" in html
+    green = svg.findall('.//s:g[@class="candidate valid best-candidate"]', ns)
+    assert [p.attrib["data-id"] for p in green] == ["candidate-123456"]
     assert not svg.findall(".//s:path", ns) and not svg.findall(".//s:polyline", ns)
     assert source.read_bytes() == original
 
@@ -108,12 +110,53 @@ def test_empty_log_and_escaped_candidate_ids(tmp_path):
     assert svg_from(html).find(".//{*}g").attrib["data-id"] == candidate
 
 
-def test_small_score_improvements_keep_distinct_axis_labels(tmp_path):
+def test_axes_use_half_hour_and_half_point_ticks_without_rounding_scores(tmp_path):
     run = tmp_path / "small"
-    write_log(run, [event("a", 1, 1), event("b", 1.00002, 2)])
+    write_log(run, [event("a", 1, 1), event("b", 1.00002, 4000)])
     svg = svg_from(render_scores(run).read_text())
-    labels = [t.text for t in svg.findall('.//{*}text[@text-anchor="end"]')]
-    assert len(set(labels)) == 6
+    x_ticks = svg.findall('.//{*}text[@class="tick x-tick"]')
+    assert [t.text for t in x_ticks] == ["0:00", "0:30", "1:00", "1:30"]
+    assert [float(t.attrib["data-value"]) for t in x_ticks] == [0, 1800, 3600, 5400]
+    y_ticks = svg.findall('.//{*}text[@class="tick y-tick"]')
+    assert [float(t.text) for t in y_ticks] == [0, 0.5, 1, 1.5]
+    assert [p.attrib["data-score"] for p in svg.findall('.//{*}g')] == ["1", "1.00002"]
+
+
+def test_best_dot_marks_valid_ties_but_not_failed_attempts(tmp_path):
+    run = tmp_path / "ties"
+    write_log(run, [event("a", 1.5, 1), event("b", 1.5, 2), event("failed", 1.5, 3, valid=0)])
+    svg = svg_from(render_scores(run).read_text())
+    green = svg.findall('.//{*}g[@class="candidate valid best-candidate"]')
+    assert [p.attrib["data-id"] for p in green] == ["a", "b"]
+
+
+def test_checkpoint_score_history_excludes_future_and_pending_results(tmp_path):
+    origin, target = tmp_path / "source", tmp_path / "fork"
+    points = [event("a", 1, 120), event("a", 1, 121, series="best"),
+              event("pending", 2, 130), event("future", 3, 140),
+              event("failed-generation", 0, 145, valid=0),
+              event("after-checkpoint", 0, 200, valid=0)]
+    points[1]["extra"]["evaluation_id"] = "a"
+    points[4]["extra"]["stage"] = points[5]["extra"]["stage"] = "generation"
+    future_best = event("future", 3, 149, series="best")
+    future_best["extra"]["evaluation_id"] = "a"
+    points.append(future_best)
+    events = [dict(type="dispatch", func="build", ts=100)]
+    for index, point in enumerate(points):
+        identity = str(index)
+        events.append(dict(type="local_start", func="score_point", call_id=identity, ts=point["ts"] - 0.1))
+        point["call_id"] = identity
+        events.append(point)
+    write_log(origin, events)
+    copy_score_history(origin, target, {
+        "a": {"evaluated": True}, "pending": {"evaluated": False},
+        "failed-generation": {"evaluated": False}, "after-checkpoint": {"evaluated": False},
+    }, cutoff=150)
+    saved = load_scores(target / "artifacts/profile/ChiaProfileCollector.log")
+    assert [p["candidate_id"] for p in saved["points"]] == ["a", "failed-generation"]
+    assert saved["start"] == 100
+    assert saved["best"]["score"] == 1
+    assert render_scores(target).exists()  # No resumed loop, source tree, or database required.
 
 
 def test_scores_cli_does_not_start_or_lock_a_running_loop(sample_run, monkeypatch, capsys):
@@ -143,31 +186,64 @@ def test_missing_profile_has_a_clear_cli_error(tmp_path, monkeypatch, capsys):
     assert not (tmp_path / "missing").exists()
 
 
-def test_click_and_keyboard_selection_show_full_candidate_id(sample_run, tmp_path):
+@pytest.mark.parametrize("mode", ["modern", "fallback", "denied"])
+def test_copyable_tooltip_and_keyboard_selection(sample_run, tmp_path, mode):
     engine = shutil.which("node") or shutil.which("gjs")
     if not engine:
         pytest.skip("Node.js or GJS is required to execute the selection handlers")
     html = render_scores(sample_run).read_text()
     code = re.search(r"<script>(.*?)</script>", html, re.S)[1]
-    script = tmp_path / "selection.js"
-    script.write_text("""
-const point = {
-  dataset: {id:'candidate-123456', score:'1.4', time:'50.000', valid:'valid'},
-  listeners: {}, classList: {add() {}, remove() {}},
-  addEventListener(type, fn) { this.listeners[type]=fn; },
+    script = tmp_path / "selection.mjs"
+    script.write_text("const mode=" + json.dumps(mode) + ";\n" + """
+let copied='', selected=false;
+const elements=new Map();
+function element() {
+  return {value:'',textContent:'',hidden:true,style:{},listeners:{},
+    addEventListener(type,fn) { this.listeners[type]=fn; },
+    getBoundingClientRect: () => ({left:100,top:100,width:200,height:100}),
+    select() { selected=true; }, contains: () => true,
+  };
+}
+const point = {...element(),
+  dataset: {id:'candidate-123456',score:'1.4',time:'50.000',valid:'valid'},
+  classList: {add() {},remove() {}},
 };
-const selection = {};
 const document = {
   querySelectorAll: () => [point],
-  getElementById: () => selection,
+  getElementById(id) { if (!elements.has(id)) elements.set(id,element()); return elements.get(id); },
+  addEventListener() {},
+  execCommand(command) {
+    if (command!=='copy') throw new Error('Expected clipboard copy');
+    copied=document.getElementById('tooltip-id').value;
+    return mode!=='denied';
+  },
 };
+const navigator=mode==='fallback' ? {} : {clipboard:{writeText: async text => {
+  if (mode==='denied') throw new Error('Clipboard blocked');
+  copied=text;
+}}};
+const window={innerWidth:1200,innerHeight:800};
 """ + code + """
+point.listeners.mouseenter({clientX:200,clientY:200});
+if (elements.get('tooltip').hidden || elements.get('tooltip-id').value!=='candidate-123456')
+  throw new Error('Hover must show a copyable full ID');
 point.listeners.click();
-if (!selection.textContent.includes('candidate-123456') || !selection.textContent.includes('1.4'))
-  throw new Error('Full candidate ID and score must be shown');
-selection.textContent='';
-point.listeners.keydown({key:'Enter', preventDefault() {}});
-if (!selection.textContent.includes('50.000s')) throw new Error('Keyboard selection must work');
+if (!elements.get('selection').textContent.includes('candidate-123456'))
+  throw new Error('Click must select the full candidate');
+await elements.get('copy-id').listeners.click();
+if (copied!=='candidate-123456') throw new Error('Must copy the full ID, not its suffix');
+if (mode==='modern' && selected) throw new Error('Use clipboard API when available');
+if (mode!=='modern' && !selected) throw new Error('Fallback must select the copyable field');
+if (mode==='denied' && !elements.get('copy-status').textContent.includes('Ctrl/Cmd+C'))
+  throw new Error('Manual copy must remain available if clipboard access is denied');
+if (mode!=='denied' && elements.get('copy-status').textContent!=='Copied')
+  throw new Error('Copy success must be reported');
+elements.get('selection').textContent='';
+point.listeners.keydown({key:'Enter',preventDefault() {}});
+if (!elements.get('selection').textContent.includes('50.000s')) throw new Error('Keyboard selection must work');
+elements.get('tooltip-close').listeners.click();
+if (!elements.get('tooltip').hidden) throw new Error('Tooltip must close');
 """)
-    result = subprocess.run([engine, str(script)], capture_output=True, text=True, timeout=20)
+    command = [engine, "-m", str(script)] if Path(engine).name == "gjs" else [engine, str(script)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr

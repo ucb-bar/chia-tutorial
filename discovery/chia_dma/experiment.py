@@ -277,6 +277,9 @@ def fork(origin, checkpoint, target, *, candidate=None):
     )
     write_json(target / "run.json", meta)
     write_json(target / "latest.json", {"checkpoint": checkpoint})
+    from .score_viz import copy_score_history
+    copy_score_history(origin, target, envelope["requests"],
+                       (checkpoint_directory / "state.json").stat().st_mtime)
 
 
 def restore_history(fork_database, envelope):

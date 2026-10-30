@@ -275,7 +275,9 @@ archive can skip checkpoint selection and forking entirely.
 Distribute a portable fork with compatible tutorial code and the original
 `base/` files. The archive contains SQL history, candidate patches, a native
 population checkpoint, and a small seed rebuild recipe. It omits Chipyard source,
-Git histories, task caches, and other cached seeds. CPU-affinity counts may differ
+Git histories, task caches, and other cached seeds. A compact score-only profile
+is retained when available, so the XY chart can show the checkpoint's history
+before resuming. CPU-affinity counts may differ
 when restoring it. See [run.md](run.md) for the minimal runbook.
 
 From the directory containing `loop.py`, select a candidate from `RUN` and package
@@ -383,17 +385,24 @@ python loop.py scores --run DMADiscovery
 ```
 
 Open `experiments/DMADiscovery/artifacts/profile/scores.html`. Time is on X and
-score is on Y. Each candidate appears once, with its last 6 ID characters next
-to its dot; hover or select the dot for its full ID, score, and completion time.
+score is on Y, with 30-minute time ticks and 0.5 score ticks. Each candidate
+appears once, with its last 6 ID characters next to its dot. Hover or select
+the dot for its full ID, score, and completion time; **Copy ID** copies the full
+ID. The ID field is also selectable for manual copying from a local HTML file.
 The best valid score is a separate number above the chart, including any best
-inherited from a checkpoint. Failed attempts remain visible as pink dots.
+inherited from a checkpoint. Best valid dots are green; failed attempts are pink.
+Long time ranges scroll horizontally to keep the half-hour labels readable.
 
 This viewer lives entirely in `discovery/` and reads the existing native
 `ChiaProfileCollector.log`; CHIA's `viz-profile` commands continue to provide
 the task timelines. The command works while discovery runs and writes a snapshot:
 rerun it and reload the page for newer completed evaluations. Pulling the viewer
-changes requires no job restart, worker restart, or checkpoint restore. A fork's
-profile starts with evaluations performed after the fork.
+changes requires no job restart, worker restart, or checkpoint restore. New forks
+retain a small, checkpoint-filtered score profile, so the chart works immediately
+after extracting the archive, before rebuilding the seed or resuming. Native
+profiling appends subsequent events when the restored loop runs. Older archives
+that omitted profile logs cannot recover historical completion times from SQL;
+use their original profile log to plot pre-fork history.
 
 The configured Ray dashboard is at `http://127.0.0.1:8287`. Worker Ray logs are under `/tmp/ray/session_latest/logs` **inside each
 container**; use `docker ps` to find its name (`dma-ROLE`), then `docker exec` to
