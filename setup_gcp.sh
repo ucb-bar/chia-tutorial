@@ -11,7 +11,8 @@
 #   chia-worker-1 .. -5          workers: Docker, conda, the chia-tutorial repo + its conda env, and
 #                                chia-dev's key in authorized_keys, so chia-dev can ssh in
 # chia-dev and workers 1-2 go in europe-west1, workers 3-5 in europe-west4. Every VM
-# also starts pulling ghcr.io/ucb-bar/chia-chisel-build:latest in the background.
+# also starts pulling the chia-chisel-build, chia-verilator-run and chia-antigravity
+# images (ghcr.io/ucb-bar) in the background.
 #
 # Usage:
 #   ./setup_gcp.sh [--project ID] [--billing-account ID] [--from-step N]
@@ -84,7 +85,8 @@ region_of_worker() {  # chia-worker-N -> region
         [ "$n" -le "$i" ] && { echo "${spec%%=*}"; return; }
     done
 }
-CHISEL_IMAGE=ghcr.io/ucb-bar/chia-chisel-build:latest
+# Pulled in the background on every VM, in this order (chisel-build is the biggest).
+PULL_IMAGES="ghcr.io/ucb-bar/chia-chisel-build:latest ghcr.io/ucb-bar/chia-verilator-run:latest ghcr.io/ucb-bar/chia-antigravity:latest"
 LOGS="$TUT_HOME/logs"
 # The VMs are created by region and Google picks the zone, so look zones up (this
 # also finds a chia-dev made by an older version of this script in another zone).
@@ -405,13 +407,15 @@ fi
 ssh_on() { gcloud compute ssh "$1" --zone "$2" --quiet --command "${3:-bash -s}"; }  # vm zone [cmd]
 vm_ssh() { ssh_on "$DEV_VM" "$DEV_ZONE" "$@"; }
 
-# Starts pulling the chisel-build image on a VM, detached so it keeps going after
-# this SSH session ends (it's large). Progress: ~/chisel-pull.log on the VM.
-start_chisel_pull() {  # vm zone
+# Starts pulling the tutorial's Docker images on a VM, one after another, detached so
+# it keeps going after this SSH session ends (they're large). Progress:
+# ~/image-pull.log on the VM.
+start_image_pulls() {  # vm zone
     # flock -n makes a second run exit at once while a pull still holds the lock.
-    ssh_on "$1" "$2" "echo \"\$(date) starting pull\" >> ~/chisel-pull.log;
-        sudo nohup setsid flock -n /tmp/chisel-pull.lock docker pull $CHISEL_IMAGE \
-            >> ~/chisel-pull.log 2>&1 </dev/null &" </dev/null
+    ssh_on "$1" "$2" "echo \"\$(date) starting pulls\" >> ~/image-pull.log;
+        sudo nohup setsid flock -n /tmp/image-pull.lock \
+            sh -c 'for img in $PULL_IMAGES; do docker pull \$img; done' \
+            >> ~/image-pull.log 2>&1 </dev/null &" </dev/null
 }
 
 # Environment variables the tutorial uses, and activating its conda env, at the end
@@ -451,7 +455,7 @@ setup_worker() {  # vm zone
     set -e
     wait_for_docker "$1" "$2"
     ssh_on "$1" "$2" 'sudo usermod -aG docker "$USER"' </dev/null
-    start_chisel_pull "$1" "$2"
+    start_image_pulls "$1" "$2"
     ssh_on "$1" "$2" <<'EOF'
 set -e
 if [ ! -x ~/miniforge3/bin/conda ]; then
@@ -489,8 +493,8 @@ if do_step 6; then
     # and service exist, so wait for those instead.
     log "Waiting for SSH + Docker on $DEV_VM (the VM installs Docker on first boot, a few minutes)"
     wait_for_docker "$DEV_VM" "$DEV_ZONE" || die "Docker isn't running on $DEV_VM"
-    start_chisel_pull "$DEV_VM" "$DEV_ZONE"
-    echo "Pulling $CHISEL_IMAGE in the background on every VM (log: ~/chisel-pull.log on each)"
+    start_image_pulls "$DEV_VM" "$DEV_ZONE"
+    echo "Pulling $PULL_IMAGES in the background on every VM (log: ~/image-pull.log on each)"
 
     # Start the workers' setup now, after the first SSH to chia-dev has put this Cloud
     # Shell's key in the project metadata (parallel first-time SSHs would race on that).
