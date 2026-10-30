@@ -120,7 +120,7 @@ worker_start_ray_commands:
 tutorial:
   agent:
     model: null             # null uses the authenticated AGY default
-    effort: high
+    effort: medium
   search:
     iterations: 2           # total optimization proposals after the baseline
     max_in_flight: 2        # candidate rounds progressing concurrently

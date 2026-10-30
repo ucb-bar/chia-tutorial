@@ -40,6 +40,21 @@ The framework saves a Git patch relative to the seed and rebuilds the candidate.
 The external evaluator, expected checksums, and measurement harness are fixed;
 changing their workspace copies does not change the evaluation contract.
 
+CODE MAP (paths relative to /home/ray/workspace; about 530 lines in total)
+Read these first. They are the whole design under optimization:
+- generators/chipyard/src/main/scala/dma/RoCCDMA.scala: RoCC accelerator, command decode.
+- generators/chipyard/src/main/scala/dma/DMAController.scala: copy engine and memory traffic.
+- generators/chipyard/src/main/scala/config/DMAConfigs.scala: DMARocketConfig, the SoC built.
+- tests/memory-tests/src/*/copy-*.c: the six workloads (small, stream, gather, scatter,
+  chain, mixed).
+Fixed harness, useful as reference only (the evaluator restores these):
+- software/rocc-dma/: rocc_dma.h/.c driver API, memcpy_wrap.c (memcpy -> DMA above
+  DMA_THRESHOLD), boardsupport.c timing; sim/ holds the passive observer.
+- tests/memory-tests/support/, */checksum.c, Makefile, workloads.json, check.py.
+The rest of Chipyard (rocket-chip, other generators, sims/) is unmodified upstream
+infrastructure. Consult it when a design decision depends on it, such as an
+interface or parameter your change touches, rather than surveying it broadly.
+
 WORKFLOW
 1. Read the selected parent's hardware, C code, and recorded cycle/instruction data.
 2. Choose a focused hardware/software change that could reduce total cycles.

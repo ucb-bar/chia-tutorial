@@ -59,7 +59,7 @@ def test_native_cluster_uses_every_existing_worker(monkeypatch):
     assert len(simulations) == 5
     assert 'gcp_nodes' not in deployment
     assert deployment['auth']['ssh_private_key'].endswith('/.ssh/chia-key')
-    assert configuration['agent']['effort'] == 'high'
+    assert configuration['agent']['effort'] == 'medium'
     # Loop code arrives through `chia job submit --working-dir .`, not file mounts.
     assert 'file_mounts' not in deployment
     assert 'run_options' not in deployment['available_node_types']['simulation']['docker']

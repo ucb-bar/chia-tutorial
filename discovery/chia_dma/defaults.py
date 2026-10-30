@@ -4,7 +4,7 @@ DEFAULTS = {
     "agent": {
         "backend": "antigravity",
         "model": None,
-        "effort": "high",
+        "effort": "medium",
         "timeout_seconds": 600,
         "retries": 1,  # CHIA counts total attempts: one call, no retry.
     },
