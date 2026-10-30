@@ -24,7 +24,7 @@ Leave `FIXED` settings unchanged.
 ## 3. Start and run
 
 ```bash
-chia up cluster.yaml
+chia up --yes cluster.yaml
 python run.py
 ```
 There should be a out/run_... value printed out, save this! We will use this to check our progress.
