@@ -69,7 +69,8 @@ For MacOS or Linux:
 
 For Windows **using Powershell**
    ```powershell
-   $key = <path_to_key>
+   $key = "$env:USERPROFILE\.ssh\chia-gcp-key"
+   icacls $key /reset
    icacls $key /inheritance:r
    icacls $key /grant:r "$($env:USERNAME):(R)"
    ```
