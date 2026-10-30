@@ -4,35 +4,36 @@ DEFAULTS = {
     "agent": {
         "backend": "antigravity",
         "model": None,
-        "effort": "high",
+        "effort": "medium",
         "timeout_seconds": 600,
         "retries": 1,  # CHIA counts total attempts: one call, no retry.
     },
     "search": {
         "random_seed": 42,
-        "inspirations": 3,
-        "num_islands": 2,
+        "inspirations": 2,
+        "num_islands": 3,
         "population_size": 40,
-        "archive_size": 100,
+        "archive_size": 9,
         "feature_dimensions": ["source_bytes", "instructions"],
-        "feature_bins": 8,
-        "exploration_ratio": 0.2,
-        "exploitation_ratio": 0.7,
+        "feature_bins": 3,
+        "exploration_ratio": 0.3,
+        "exploitation_ratio": 0.6,
         "elite_selection_ratio": 0.1,
-        "migration_interval": 2,
+        "migration_interval": 5,
         "migration_rate": 0.1,
         "island_guidance": [
-            "Reduce instruction count through C algorithm and data-layout changes.",
-            "Reduce cycles and memory stalls through coordinated C and DMA changes.",
+            "Raise DMA throughput in hardware and adapt the C workloads to exploit it.",
+            "Cut per-copy DMA setup and synchronization cost through coordinated hardware and C changes.",
+            "Experiment boldly: invent a new DMA capability or way of using it that the other directions would not try, and rewrite the C to exploit it; higher-risk ideas are welcome.",
         ],
         "type": "openevolve_native",
-        "iterations": 2,
-        "max_in_flight": 2,
+        "iterations": 100,
+        "max_in_flight": 6,
     },
     "hardware": {
         "config": "DMARocketConfig",
         "config_package": "chipyard",
-        "make_jobs": "${CPUS}",
+        "make_jobs": 32,
         "build_timeout_seconds": 600,
         "extra_make_args": {
             "CXX": "/home/ray/chipyard/.conda-env/bin/x86_64-conda-linux-gnu-c++",
@@ -72,9 +73,10 @@ SOFTWARE_FILES = (
     "tests/memory-tests/src/copy-mixed/copy-mixed.c",
 )
 
+# prepare.sh is the recipe, not an input: its output is checked by baseline
+# revisions, so editing it does not invalidate seeds or checkpoints.
 BASE_FILE_PATTERNS = (
     "chipyard.patch",
-    "prepare.sh",
     "memory-tests/Makefile",
     "memory-tests/workloads.json",
     "memory-tests/check.py",

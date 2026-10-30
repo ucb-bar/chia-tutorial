@@ -108,7 +108,7 @@ Ray rejects even a Python patch-version mismatch. Native YAML activates
 Chipyard environment; the host environment is never mounted into workers.
 
 Set `tutorial.agent.model` and `tutorial.agent.effort` in `cluster.yaml`. A null
-model uses the authenticated Antigravity default; effort defaults to `high`.
+model uses the authenticated Antigravity default; effort defaults to `medium`.
 `tutorial.search.iterations` is the **total** number of search proposals across all
 resumes (20 means 20 proposals total), excluding the seed evaluation.
 To extend a run, increase that total. `tutorial.search.max_in_flight` bounds concurrent

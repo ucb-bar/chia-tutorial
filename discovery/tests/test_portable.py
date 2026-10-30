@@ -70,6 +70,10 @@ def test_portable_tar_retains_history_and_restores_root_and_submodule_patches(
     commit_tree(new_image)
     calls = image_capture(monkeypatch, image)
     configuration = load()
+    # cluster.yaml pins a digest; this test covers recording one for a moving tag.
+    configuration["cluster"]["available_node_types"]["build"]["docker"]["image"] = (
+        "ghcr.io/ucb-bar/chia-chisel-build:latest"
+    )
     instructor = tmp_path / "instructor"
     configuration["storage"] = str(instructor / "experiments")
     seed = preserve_source(configuration)

@@ -56,6 +56,10 @@ def flow(tmp_path, monkeypatch, request, base_tree):
     from chia_dma import evaluation, search
 
     configuration = load()
+    # Pin what the assertions assume so participant tuning cannot change the
+    # fixture: model None makes the fake agent fail island 1's candidate.
+    configuration["agent"]["model"] = None
+    configuration["search"].update(num_islands=2, migration_interval=2, max_in_flight=2)
     configuration["storage"] = str(tmp_path)
     root = Path(__file__).resolve().parents[1]
     ray.init(

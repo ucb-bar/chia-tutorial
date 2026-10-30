@@ -191,7 +191,7 @@ def test_tutorial_uses_antigravity_with_the_requested_effort(configuration, monk
     agent = make_agent(configuration)
     assert type(agent).__name__ == "AntigravityLLM"
     assert agent.timeout_seconds == configuration["agent"]["timeout_seconds"]
-    assert agent.extra_cli_args == ["--effort", "high"]
+    assert agent.extra_cli_args == ["--effort", configuration["agent"]["effort"]]
     calls = []
     def cli(*args):
         calls.append(True)

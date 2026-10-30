@@ -11,7 +11,7 @@ from chia.base.ChiaFunction import ChiaFunction
 from chia.chipyard.chisel_build_node import ChiselBuildNode
 
 from .config_loader import digest
-from .source import apply_candidate_diff, initialize_checkout, run_git_command
+from .source import apply_candidate_diff, prepare_checkout, run_git_command
 from .observations import run_observed
 
 
@@ -59,11 +59,11 @@ def software_inputs(baseline, patch):
 
 
 @ChiaFunction(resources={"chipyard": 1}, max_retries=0)
-def build(configuration, seed, patch):
+def build(configuration, baseline_commit, patch):
     tree = Path("/home/ray/dma-build")
-    baseline = Path(seed) / "tree"
-    initialize_checkout(tree, baseline)
-    apply_candidate_diff(tree, baseline, patch)
+    prepare_checkout(tree, baseline_commit)
+    # Candidates are never committed, so the checkout's own HEAD stays the baseline.
+    apply_candidate_diff(tree, tree, patch)
     for name in (".sbt", ".ivy2"):
         if not (tree / name).exists():
             (tree / name).symlink_to(Path("/home/ray/chipyard") / name)

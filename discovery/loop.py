@@ -188,7 +188,10 @@ def main():
             return
         latest = read_json(latest_path)
         checkpoint_directory = run_directory / "checkpoints" / latest["checkpoint"]
-        print(json.dumps(read_json(checkpoint_directory / "state.json"), indent=2))
+        state = read_json(checkpoint_directory / "state.json")
+        # Proposals count toward tutorial.search.iterations; the baseline does not.
+        proposals = sum(1 for name in state["requests"] if name != "seed-dma")
+        print(json.dumps({"proposals": proposals, **state}, indent=2))
     else:
         if (
             args.action not in ("prepare", "run")

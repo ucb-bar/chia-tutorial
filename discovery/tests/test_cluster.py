@@ -27,7 +27,14 @@ def test_status_handles_runs_before_and_after_the_first_checkpoint(tmp_path, mon
         return
 
     write_json(run / "run.json", {"run_id": "DMADiscovery"})
-    saved = {"admitted": ["seed-dma"], "requests": {"seed-dma": {"generated": True, "evaluated": True}}}
+    saved = {
+        "admitted": ["seed-dma", "candidate-1"],
+        "requests": {
+            "seed-dma": {"generated": True, "evaluated": True},
+            "candidate-1": {"generated": True, "evaluated": True},
+            "candidate-2": {"generated": True, "evaluated": False},
+        },
+    }
     if state == "checkpointed":
         write_json(run / "latest.json", {"checkpoint": "00000000-test"})
         write_json(run / "checkpoints/00000000-test/state.json", saved)
@@ -38,7 +45,7 @@ def test_status_handles_runs_before_and_after_the_first_checkpoint(tmp_path, mon
         assert "baseline evaluation" in output
         assert not (run / "latest.json").exists()
     else:
-        assert json.loads(output) == saved
+        assert json.loads(output) == {"proposals": 2, **saved}
 
 
 def test_native_cluster_uses_every_existing_worker(monkeypatch):
@@ -51,15 +58,15 @@ def test_native_cluster_uses_every_existing_worker(monkeypatch):
     native = load_config(str(path))
     assignments = assign_nodes(native)
     generators = [a for a in assignments if a.node_type.name == 'generation']
-    assert len(generators) == 2
-    assert {a.worker_index for a in generators} == {0, 1}
+    count = deployment['available_node_types']['generation']['num_workers']
+    assert {a.worker_index for a in generators} == set(range(count))
     assert all(a.ip == '10.0.0.1' and a.resources['generation'] == 1 for a in generators)
     simulations = [a for a in assignments if a.node_type.name == 'simulation']
     assert {a.ip for a in simulations} == {f'chia-worker-{i}' for i in range(1, 6)}
     assert len(simulations) == 5
     assert 'gcp_nodes' not in deployment
     assert deployment['auth']['ssh_private_key'].endswith('/.ssh/chia-key')
-    assert configuration['agent']['effort'] == 'high'
+    assert configuration['agent']['effort'] == 'medium'
     # Loop code arrives through `chia job submit --working-dir .`, not file mounts.
     assert 'file_mounts' not in deployment
     assert 'run_options' not in deployment['available_node_types']['simulation']['docker']

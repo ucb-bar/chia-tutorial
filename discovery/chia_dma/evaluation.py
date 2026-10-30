@@ -17,7 +17,7 @@ from chia.trace.profiler import get_profiler
 from skydiscover.evaluation.evaluation_result import EvaluationResult
 
 from chia_dma.config_loader import ROOT, digest
-from chia_dma.source import read_json, write_json
+from chia_dma.source import read_json, run_git_command, write_json
 from chia_dma.nodes import build, simulate, parse, aggregate, software_inputs, require
 
 class CorrectnessFailure(ValueError):
@@ -28,8 +28,9 @@ class DMAEvaluator:
     def __init__(self, configuration, experiment, seed):
         self.configuration = configuration
         self.experiment = experiment
-        self.seed = str(seed)
         self.tree = Path(seed) / "tree"
+        # Build workers recreate the seed from their image and check this commit.
+        self.baseline_commit = run_git_command(self.tree, "rev-parse", "HEAD").strip()
         self.stopped = threading.Event()
         self.expected = read_json(self.tree / configuration["software"]["workloads"])
         dram_directory = self.tree / configuration["software"]["dram_ini"]
@@ -175,7 +176,7 @@ class DMAEvaluator:
         tasks = {}
         try:
             tasks["hardware"] = build.chia_remote(
-                self.configuration, self.seed, patch, _chia_tag=cache_tag + "/build"
+                self.configuration, self.baseline_commit, patch, _chia_tag=cache_tag + "/build"
             )
             for name in self.expected:
                 elf = self.configuration["software"]["elf"].format(benchmark=name)
