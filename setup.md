@@ -1,4 +1,4 @@
-This file contains the instructions for setting up the provided Google Cloud account for the CHIA tutorial.
+This file contains the instructions for setting up the provided Google Cloud account for the CHIA tutorial. We highly recommend using **Google Chrome** as your browser for this setup if possible.
 
 1. In your browser, open <http://console.cloud.google.com/> and sign in with the credentials provided to you in the email you received. You may be signed in to a different account by default. If so, click your profile picture in the top right, then click **Add account**. Please accept that you understand the terms if prompted.
 
