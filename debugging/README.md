@@ -1,5 +1,69 @@
 # Debug section — 30 minutes, on top of `accel/`
 
+## Commands attendees run, in order
+
+Everything runs from `~/chia-tutorial/debugging`, except bringing up the accel
+cluster. `./run_debugging.sh` runs the section (setup to 5) unattended, on a cluster
+that is already up.
+
+```bash
+# If you have just arrived (missed the accel session): bring up its cluster
+conda activate chia_env
+cd ~/chia-tutorial/accel
+chia up --yes cluster.yaml
+
+# Setup
+conda activate chia_env
+cd ~/chia-tutorial/debugging
+
+# 1. Caching and Bypassing
+ls -lsa cache
+# edit caching/replay.yaml: bypass: true on ChiselBuildNode.build and
+# AntigravityLLM.prompt (lines 17 and 19), the rest stay false
+./submit_job.sh caching                          # iter_4, half bypassed
+
+# 2. Profiling
+ls -lsa profiling/out
+chia viz-profile prof_full.log --format table    # the recorded run (iter_1-3)
+ls -lsa profiling/out
+chia viz-profile prof_half.log --format table    # the half-bypassed run (iter_4)
+./submit_job.sh profiling                        # iter_5, with the evaluation ChiaFunction
+chia viz-profile prof_eval.log --format table
+
+# 3. Live Status Monitor
+./submit_job.sh monitor                          # iter_6
+
+# 4. Logging
+chia up --add --yes logging/cluster_storage.yaml # the storage worker, on chia-worker-1
+./submit_job.sh logging                          # iter_7
+ssh chia-worker-1
+cd ~/chia_logs/sims
+ls -lsa
+exit
+
+# 5. Cluster Debugging: the cheat sheet, each line with --chia-cluster cluster.yaml
+chia status --chia-cluster cluster.yaml                           # is the cluster up? free resources
+chia list nodes --chia-cluster cluster.yaml                       # machines alive or dead
+chia list jobs --chia-cluster cluster.yaml                        # jobs that ran, failed, are running
+chia job status <submission_id> --chia-cluster cluster.yaml       # did my job succeed?
+chia job logs <submission_id> --chia-cluster cluster.yaml         # what did my job print?
+chia list tasks --filter "state=RUNNING" --chia-cluster cluster.yaml
+chia ray summary tasks --chia-cluster cluster.yaml                # tasks per function, by state
+chia list actors --filter "state=ALIVE" --chia-cluster cluster.yaml
+chia ray summary actors --chia-cluster cluster.yaml               # actors by class, alive and dead
+chia ray memory --stats-only --chia-cluster cluster.yaml          # is the object store filling up?
+chia ray logs cluster --chia-cluster cluster.yaml                 # log files on each machine
+chia ray stack --chia-cluster cluster.yaml                        # where a stuck job's Python is now
+chia job stop <id> --kill-tracked-pids --chia-cluster cluster.yaml   # stop a job and its processes
+chia ray kill-actor --name <name> --chia-cluster cluster.yaml     # remove a leftover named actor
+
+# At the very end: take the whole cluster down (the storage worker included)
+cd ~/chia-tutorial/debugging
+chia down --yes cluster.yaml
+```
+
+---
+
 Base: the `roccaccel` branch (`accel/`). Our branch adds files only; it never
 edits theirs.
 
@@ -192,10 +256,9 @@ debugging/
     out/                  profiles this section records (git-ignored)
     debug_timing.py
   prof_full.log    -> profiling/out/profile_iter_1-3/ChiaProfileCollector.log
-  prof_bypass.log  -> profiling/out/profile_iter_4/ChiaProfileCollector.log
-  prof_half.log    -> profiling/out/profile_iter_5/ChiaProfileCollector.log
-  prof_eval.log    -> profiling/out/profile_iter_6/ChiaProfileCollector.log
-  prof_monitor.log -> profiling/out/profile_iter_7/ChiaProfileCollector.log
+  prof_half.log    -> profiling/out/profile_iter_4/ChiaProfileCollector.log
+  prof_eval.log    -> profiling/out/profile_iter_5/ChiaProfileCollector.log
+  prof_monitor.log -> profiling/out/profile_iter_6/ChiaProfileCollector.log
                       short links to each run's profile, dangling until that run ends
 ```
 
