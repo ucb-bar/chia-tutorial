@@ -66,14 +66,17 @@ It will print a command. Copy this command, replace the path to your already dow
 
 **If you are using Cloud Shell for this tutorial**, run the following in a _new_ Cloud Shell terminal:
 ```
+# Set Project ID
+gcloud config set project [PROJECT_ID]
+
 # Find chia-dev's zone
 ZONE=$(gcloud compute instances list --filter="name=chia-dev" --format="value(zone)")
 
-# 2. Copy the file from chia-dev into Cloud Shell
+# Copy the file from chia-dev into Cloud Shell
 gcloud compute scp --zone "$ZONE" \
   chia-dev:~/chia-tutorial/discovery/experiments/tutorial/artifacts/profile/scores.html .
 
-# 3. Download it from Cloud Shell to your local machine (opens a browser download)
+# Download it from Cloud Shell to your local machine (opens a browser download)
 cloudshell download scores.html
 ```
 Then, you can view the downloaded html file in a web browser.
