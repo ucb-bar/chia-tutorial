@@ -1,4 +1,4 @@
-"""Standalone XY score chart from the loop's existing native CHIA profile log."""
+"""Score tables and XY charts from the loop's existing native CHIA profile log."""
 
 from html import escape
 from collections import defaultdict, deque
@@ -109,6 +109,26 @@ def load_scores(path):
     valid = recorded_bests + [p for p in points if p["valid"]]
     return dict(points=points, best=max(valid, key=lambda p: p["score"]) if valid else None,
                 start=start or 0, duration=max(1, (end or 0) - (start or 0)))
+
+
+def score_table(run):
+    """Format one row per candidate, ordered by descending unrounded score."""
+    scores = load_scores(Path(run) / "artifacts/profile/ChiaProfileCollector.log")
+    points = sorted(scores["points"], key=lambda p: (-p["score"], p["timestamp"], p["candidate_id"]))
+    if not points:
+        return "No completed candidate scores yet."
+    headers = ("Rank", "Candidate ID", "Score", "Status")
+    rows = [(str(index), point["candidate_id"], format(point["score"], ".15g"),
+             "valid" if point["valid"] else "failed")
+            for index, point in enumerate(points, 1)]
+    widths = [max(len(headers[i]), max(len(row[i]) for row in rows)) for i in range(len(headers))]
+
+    def line(row):
+        return "  ".join(value.rjust(width) if i in (0, 2) else value.ljust(width)
+                         for i, (value, width) in enumerate(zip(row, widths))).rstrip()
+
+    return "\n".join([line(headers), line(tuple("-" * width for width in widths)),
+                      *(line(row) for row in rows)])
 
 
 def render_scores(run):

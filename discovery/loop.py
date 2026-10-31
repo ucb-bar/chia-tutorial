@@ -164,6 +164,8 @@ def main():
     selection.add_argument("--candidate")
     selection.add_argument("--checkpoint")
     parser.add_argument("--new-run", help="New run name or absolute experiment path")
+    parser.add_argument("--format", choices=("html", "table"),
+                        help="Output for scores: html (default) or a table sorted by descending score")
     args = parser.parse_args()
 
     for name in (args.candidate, args.checkpoint):
@@ -171,13 +173,15 @@ def main():
             parser.error("Use simple run/candidate/checkpoint names")
     if args.action == "fork" and not args.new_run:
         parser.error("fork requires --new-run")
+    if args.format and args.action != "scores":
+        parser.error("--format requires scores")
 
     configuration = load(args.config)
     run_directory = Path(configuration["storage"]) / args.run
     if args.action == "scores":
-        from chia_dma.score_viz import render_scores
+        from chia_dma.score_viz import render_scores, score_table
         try:
-            print(render_scores(run_directory))
+            print(score_table(run_directory) if args.format == "table" else render_scores(run_directory))
         except FileNotFoundError:
             parser.error("No profile log yet for run " + repr(args.run))
     elif args.action == "fork":

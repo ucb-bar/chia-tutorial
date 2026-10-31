@@ -38,7 +38,7 @@ prepared checkpoint until you stop it, or until the run holds
 `tutorial.search.iterations` proposals in total (`status` reports the current
 count). Extract into a checkout without an existing `experiments/tutorial` run. -->
 
-1. **Extract:** `tar -xzf checkpoints/tutorial.tar.gz` restores the run and all history through the selected checkpoint under `experiments`.
+1. **Extract:** `tar -xzf tutorial.tar.gz` restores the run and all history through the selected checkpoint under `experiments`.
 1. **Load environment:** `source load-env.sh`
 1. **Prepare restored paths:** `python loop.py prepare --run tutorial` reconstructs the source seed from the recorded Docker image digest and `base/` files, and verifies the baseline. The first restoration can take time; the seed is then cached locally.
 1. **Start workers:** `chia up cluster.yaml -y`
@@ -48,6 +48,7 @@ count). Extract into a checkout without an existing `experiments/tutorial` run. 
 1. **Visualize the candidate timeline:** after the job exits, run `chia viz-profile experiments/tutorial/artifacts/profile/prof_candidates.log --format html` and open `prof_candidates_profile.html`; hover over or select a `score_point` to see its candidate ID and score.
 1. **Visualize the full task timeline:** `chia viz-profile experiments/tutorial/artifacts/profile/ChiaProfileCollector.log --format html` opens the complete execution timeline in `ChiaProfileCollector_profile.html`.
 1. **Plot candidate scores:** `python loop.py scores --run tutorial` writes `experiments/tutorial/artifacts/profile/scores.html`: time on X in 30-minute increments, score on Y in 0.5 increments, one dot per candidate labeled with its last 6 ID characters, and a separate best-score readout. Best valid dots are green. Hover or select a dot, then use **Copy ID** to copy its full ID. New forks retain the score history through their checkpoint, so this works before resuming and while the loop runs; rerun the command and reload the page for newer results. Older archives without a profile log need the original log to show pre-fork history.
+1. **List candidate scores:** `python loop.py scores --run tutorial --format table` prints full candidate IDs, scores, and validity, sorted from highest score to lowest. HTML remains the default; `--format html` selects it explicitly.
 1. **Tear down:** `chia down cluster.yaml -y`
 
 <!-- CHIA manages the cluster, job submission, and HTML visualization; `loop.py`

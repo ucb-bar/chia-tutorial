@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from chia_dma.score_viz import copy_score_history, load_scores, render_scores
+from chia_dma.score_viz import copy_score_history, load_scores, render_scores, score_table
 
 
 def event(candidate, score, timestamp, series="candidates", valid=1, **fields):
@@ -159,18 +159,44 @@ def test_checkpoint_score_history_excludes_future_and_pending_results(tmp_path):
     assert render_scores(target).exists()  # No resumed loop, source tree, or database required.
 
 
-def test_scores_cli_does_not_start_or_lock_a_running_loop(sample_run, monkeypatch, capsys):
+@pytest.mark.parametrize("output_format", [None, "html", "table"])
+def test_scores_cli_does_not_start_or_lock_a_running_loop(sample_run, monkeypatch, capsys, output_format):
     import sys
     import loop
 
-    monkeypatch.setattr(sys, "argv", ["loop.py", "scores", "--run", sample_run.name])
+    options = ["--format", output_format] if output_format else []
+    monkeypatch.setattr(sys, "argv", ["loop.py", "scores", "--run", sample_run.name, *options])
     monkeypatch.setattr(loop, "load", lambda *args: {"storage": str(sample_run.parent)})
     def unexpected(*args):
         pytest.fail("Plotting must not attach to, restart, or lock the discovery run")
     monkeypatch.setattr(loop, "RunLock", unexpected)
     monkeypatch.setattr(loop, "run_experiment", unexpected)
     loop.main()
-    assert str(sample_run / "artifacts/profile/scores.html") in capsys.readouterr().out
+    output = capsys.readouterr().out
+    html_path = sample_run / "artifacts/profile/scores.html"
+    if output_format == "table":
+        assert "Candidate ID" in output
+        assert output.index("candidate-123456") < output.index("candidate-abcdef") < output.index("failed-987654")
+        assert not html_path.exists()
+    else:
+        assert str(html_path) in output and html_path.exists()
+
+
+def test_score_table_deduplicates_and_sorts_numerically_with_full_ids(tmp_path):
+    run = tmp_path / "table"
+    write_log(run, [event("candidate-abcdef", 2, 2), event("candidate-123456", 10, 4),
+                    event("candidate-abcdef", 2, 2), event("failed-987654", 0, 3, valid=0),
+                    event("candidate-000001", 2.00002, 1),
+                    event("candidate-123456", 10, 5, series="best")])
+    table = score_table(run)
+    rows = [line.split() for line in table.splitlines()[2:]]
+    assert [row[1] for row in rows] == [
+        "candidate-123456", "candidate-000001", "candidate-abcdef", "failed-987654",
+    ]
+    assert [row[2] for row in rows] == ["10", "2.00002", "2", "0"]
+    assert [row[3] for row in rows] == ["valid", "valid", "valid", "failed"]
+    write_log(run, [])
+    assert score_table(run) == "No completed candidate scores yet."
 
 
 def test_missing_profile_has_a_clear_cli_error(tmp_path, monkeypatch, capsys):

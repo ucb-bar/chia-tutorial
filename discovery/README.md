@@ -384,6 +384,15 @@ For a separate XY score chart, use the discovery viewer from `discovery/`:
 python loop.py scores --run DMADiscovery
 ```
 
+For a terminal table ranked from highest score to lowest, including full candidate
+IDs and validity:
+
+```sh
+python loop.py scores --run DMADiscovery --format table
+```
+
+HTML remains the default output; `--format html` also selects it explicitly.
+
 Open `experiments/DMADiscovery/artifacts/profile/scores.html`. Time is on X and
 score is on Y, with 30-minute time ticks and 0.5 score ticks. Each candidate
 appears once, with its last 6 ID characters next to its dot. Hover or select
