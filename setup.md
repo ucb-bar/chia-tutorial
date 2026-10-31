@@ -2,7 +2,7 @@ This file contains the instructions for setting up the provided Google Cloud acc
 
 1. In your browser, open <http://console.cloud.google.com/> and sign in with the credentials provided to you in the email you received. You may be signed in to a different account by default. If so, click your profile picture in the top right, then click **Add account**. Please accept that you understand the terms if prompted.
 
-2. Open <https://console.cloud.google.com/cloudshelleditor/> and make sure you are still signed in with the account provided to you in the email you received with credentials, by checking the profile in the top right corner of the page. Please authorize the use of Cloud Shell.
+2. Open <https://console.cloud.google.com/cloudshelleditor/> and make sure you are still signed in with the account provided to you in the email you received with credentials, by checking the profile in the top right corner of the page. Please authorize the use of Cloud Shell. If at any point you lose connection to your Cloudshell terminal, you can refresh the page and the session should be resumed.
 
 3. Click **Select a project** at the top left of the screen, and choose the only project listed. Please then refresh the page.
 
@@ -36,11 +36,15 @@ devstar1956@cloudshell:~ (chia-codesign26oak-1956)$
    ./setup_gcp.sh
    ```
 
-If the script exits immediately, having only printed "Using gcloud signed in as ..." and no line with "Using project ...", then please ensure that a project is selected at the top left (see step 3 and 4), and then refresh the page.
+If the script exits immediately, having only printed "Using gcloud signed in as ..." and no line with "Using project ...", then please run the following command, filling in `[PROJECT_ID]` with the project id provided in the email to you:
+
+```bash
+gcloud config set project [PROJECT_ID]
+```
 
 6. The script may ask you to open a link and accept the terms of service. If so, follow the instructions in the terminal.
 
-7. Towards the end, the script will open an Antigravity CLI session. Sign in with the following steps:
+7. Towards the end, the script will open an Antigravity CLI session. Antigravity's login process does always render cleanly in Cloudshell, so if you are unsure what to do, please raise your hand for help. You should sign in with the following steps:
    1. Choose **Use a Google Cloud Project**.
    2. Choose **Continue with Google Cloud**.
    3. Open the link provided, and select the account provided to you in the email you received.
